@@ -29,10 +29,12 @@ model Property {
 
 // 租客
 model Tenant {
-  id         String   @id @default(cuid())
-  lineUserId String   @unique             // LINE User ID
-  name       String?
-  phone      String?
+  id            String   @id @default(cuid())
+  lineUserId    String   @unique             // LINE User ID
+  name          String?
+  avatarUrl     String?                      // LINE 頭像
+  statusMessage String?                      // LINE 狀態消息
+  phone         String?
   propertyId String?
   moveInDate DateTime?
   rentDue    Int      @default(5)         // 每月幾號繳租（預設5號）

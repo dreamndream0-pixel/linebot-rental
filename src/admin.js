@@ -251,14 +251,20 @@ function renderTenants() {
   return DATA.tenants.map(t => \`
     <div class="card">
       <div class="card-row">
-        <div>
-          <h3>\${t.name || '未命名用戶'}</h3>
-          <div class="meta">
-            \${t.property ? '🏠 ' + t.property.name : '尚未入住'}
-            \${t.phone ? ' · 📞 ' + t.phone : ''}
-            <br>加入時間：\${fmtDate(t.createdAt)}
+        <div style="display:flex;gap:14px;align-items:flex-start;">
+          \${t.avatarUrl
+            ? '<img src="' + t.avatarUrl + '" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\\'none\\'">'
+            : '<div style="width:52px;height:52px;border-radius:50%;background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">👤</div>'}
+          <div>
+            <h3>\${t.name || '未命名用戶'}</h3>
+            \${t.statusMessage ? '<div style="font-size:13px;color:var(--sage);margin-bottom:4px;">💬 ' + t.statusMessage + '</div>' : ''}
+            <div class="meta">
+              \${t.property ? '🏠 ' + t.property.name : '尚未入住'}
+              \${t.phone ? ' · 📞 ' + t.phone : ''}
+              <br>加入時間：\${fmtDate(t.createdAt)}
+            </div>
+            <span class="uid" onclick="copyText('\${t.lineUserId}')" title="點擊複製">\${t.lineUserId}</span>
           </div>
-          <span class="uid" onclick="copyText('\${t.lineUserId}')" title="點擊複製">\${t.lineUserId}</span>
         </div>
       </div>
     </div>
