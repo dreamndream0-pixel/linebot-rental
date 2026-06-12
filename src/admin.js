@@ -5,25 +5,61 @@ const router = express.Router()
 
 const ADMIN_KEY = process.env.ADMIN_KEY || 'snail1234'
 
-// ── API：取得所有資料 ───────────────────────────────────────────
-router.get('/admin/api/data', async (req, res) => {
-  if (req.query.key !== ADMIN_KEY) {
-    return res.status(401).json({ error: 'unauthorized' })
+// ── 權限解析 ─────────────────────────────────────────────────────
+// ADMIN_KEY          → 總管理員，看全部
+// MAIN_ADMIN_KEY     → 只看主帳號（source = main）
+// LINE<n>_ADMIN_KEY  → 只看該帳號（source = LINE<n>_NAME）
+function resolveRole(key) {
+  if (!key) return null
+  if (key === ADMIN_KEY) return { role: 'super', source: null, label: '總管理員' }
+  if (process.env.MAIN_ADMIN_KEY && key === process.env.MAIN_ADMIN_KEY) {
+    return { role: 'limited', source: 'main', label: '主帳號' }
   }
+  for (const envKey of Object.keys(process.env)) {
+    const m = envKey.match(/^LINE(\d+)_ADMIN_KEY$/)
+    if (m && process.env[envKey] === key) {
+      const source = process.env[`LINE${m[1]}_NAME`] || `channel${m[1]}`
+      return { role: 'limited', source, label: source }
+    }
+  }
+  return null
+}
+
+// source 過濾條件
+function sourceFilter(auth) {
+  return auth.role === 'super' ? {} : { source: auth.source }
+}
+
+// ── API：取得所有資料（依權限過濾） ─────────────────────────────
+router.get('/admin/api/data', async (req, res) => {
+  const auth = resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  const tenantWhere = sourceFilter(auth)
 
   const [tenants, bookings, repairs, properties] = await Promise.all([
-    prisma.tenant.findMany({ include: { property: true }, orderBy: { createdAt: 'desc' } }),
-    prisma.booking.findMany({ include: { tenant: true, property: true }, orderBy: { createdAt: 'desc' } }),
-    prisma.repair.findMany({ include: { tenant: true, property: true }, orderBy: { createdAt: 'desc' } }),
+    prisma.tenant.findMany({ where: tenantWhere, include: { property: true }, orderBy: { createdAt: 'desc' } }),
+    prisma.booking.findMany({ where: { tenant: tenantWhere }, include: { tenant: true, property: true }, orderBy: { createdAt: 'desc' } }),
+    prisma.repair.findMany({ where: { tenant: tenantWhere }, include: { tenant: true, property: true }, orderBy: { createdAt: 'desc' } }),
     prisma.property.findMany({ orderBy: { name: 'asc' } }),
   ])
 
-  res.json({ tenants, bookings, repairs, properties })
+  res.json({ tenants, bookings, repairs, properties, account: auth.label })
 })
 
 // ── API：更新預約狀態 ───────────────────────────────────────────
 router.post('/admin/api/booking/:id/status', express.json(), async (req, res) => {
-  if (req.query.key !== ADMIN_KEY) return res.status(401).json({ error: 'unauthorized' })
+  const auth = resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  // 受限帳號只能改自己 source 的資料
+  if (auth.role === 'limited') {
+    const existing = await prisma.booking.findUnique({ where: { id: req.params.id }, include: { tenant: true } })
+    if (!existing || existing.tenant.source !== auth.source) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+  }
+
   const { status } = req.body
   const booking = await prisma.booking.update({ where: { id: req.params.id }, data: { status } })
   res.json(booking)
@@ -31,7 +67,16 @@ router.post('/admin/api/booking/:id/status', express.json(), async (req, res) =>
 
 // ── API：更新維修狀態 ───────────────────────────────────────────
 router.post('/admin/api/repair/:id/status', express.json(), async (req, res) => {
-  if (req.query.key !== ADMIN_KEY) return res.status(401).json({ error: 'unauthorized' })
+  const auth = resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  if (auth.role === 'limited') {
+    const existing = await prisma.repair.findUnique({ where: { id: req.params.id }, include: { tenant: true } })
+    if (!existing || existing.tenant.source !== auth.source) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+  }
+
   const { status } = req.body
   const repair = await prisma.repair.update({ where: { id: req.params.id }, data: { status } })
   res.json(repair)
@@ -39,7 +84,16 @@ router.post('/admin/api/repair/:id/status', express.json(), async (req, res) => 
 
 // ── API：更新租客備註名稱 ───────────────────────────────────────
 router.post('/admin/api/tenant/:id/name', express.json(), async (req, res) => {
-  if (req.query.key !== ADMIN_KEY) return res.status(401).json({ error: 'unauthorized' })
+  const auth = resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  if (auth.role === 'limited') {
+    const existing = await prisma.tenant.findUnique({ where: { id: req.params.id } })
+    if (!existing || existing.source !== auth.source) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+  }
+
   const { customName } = req.body
   const tenant = await prisma.tenant.update({
     where: { id: req.params.id },
@@ -200,8 +254,13 @@ const ADMIN_HTML = `<!DOCTYPE html>
 
 <div id="mainView">
   <header>
-    <h1>🐌 小蝸出租 管理後台</h1>
-    <p>用戶、預約、維修一覽</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <h1>🐌 小蝸出租 管理後台</h1>
+        <p id="accountLabel">用戶、預約、維修一覽</p>
+      </div>
+      <button onclick="logout()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;">登出</button>
+    </div>
   </header>
 
   <div class="stats" id="stats"></div>
@@ -247,6 +306,9 @@ async function login(savedKey) {
     document.getElementById('loginView').style.display = 'none'
     document.getElementById('loadingView').style.display = 'none'
     document.getElementById('mainView').style.display = 'block'
+    if (DATA.account) {
+      document.getElementById('accountLabel').textContent = '👤 ' + DATA.account
+    }
     renderStats()
     renderTab()
   } catch (e) {
@@ -385,6 +447,16 @@ async function updateRepair(id, status) {
 function copyText(text) {
   navigator.clipboard.writeText(text)
   showToast('📋 已複製 User ID')
+}
+
+function logout() {
+  sessionStorage.removeItem('adminKey')
+  KEY = ''
+  DATA = null
+  document.getElementById('mainView').style.display = 'none'
+  document.getElementById('loadingView').style.display = 'none'
+  document.getElementById('loginView').style.display = 'flex'
+  document.getElementById('keyInput').value = ''
 }
 
 async function editName(tenantId, currentName) {
