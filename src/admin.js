@@ -81,6 +81,17 @@ const ADMIN_HTML = `<!DOCTYPE html>
     display: flex; align-items: center; justify-content: center;
     min-height: 100vh; flex-direction: column; gap: 20px;
   }
+  #loadingView {
+    display: none; align-items: center; justify-content: center;
+    min-height: 100vh; flex-direction: column; gap: 16px;
+  }
+  .spinner {
+    width: 40px; height: 40px; border: 4px solid #E5E0D5;
+    border-top-color: var(--sage); border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loadingView p { color: #888; font-size: 14px; }
   .login-card {
     background: var(--white); padding: 40px; border-radius: 20px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.08); text-align: center;
@@ -173,6 +184,11 @@ const ADMIN_HTML = `<!DOCTYPE html>
 </head>
 <body>
 
+<div id="loadingView">
+  <div class="spinner"></div>
+  <p>🐌 載入中...</p>
+</div>
+
 <div id="loginView">
   <div class="login-card">
     <h1>🐌 小蝸出租</h1>
@@ -206,23 +222,37 @@ let DATA = null
 let KEY = sessionStorage.getItem('adminKey') || ''
 let currentTab = 'tenants'
 
-if (KEY) { login(KEY) }
+// 有記住密碼 → 隱藏登入畫面，顯示載入動畫，直接自動登入
+if (KEY) {
+  document.getElementById('loginView').style.display = 'none'
+  document.getElementById('loadingView').style.display = 'flex'
+  login(KEY)
+}
 
 async function login(savedKey) {
   const key = savedKey || document.getElementById('keyInput').value.trim()
   if (!key) return
   try {
     const res = await fetch('/admin/api/data?key=' + encodeURIComponent(key))
-    if (!res.ok) { showToast('❌ 密碼錯誤'); sessionStorage.removeItem('adminKey'); return }
+    if (!res.ok) {
+      showToast('❌ 密碼錯誤')
+      sessionStorage.removeItem('adminKey')
+      document.getElementById('loadingView').style.display = 'none'
+      document.getElementById('loginView').style.display = 'flex'
+      return
+    }
     DATA = await res.json()
     KEY = key
     sessionStorage.setItem('adminKey', key)
     document.getElementById('loginView').style.display = 'none'
+    document.getElementById('loadingView').style.display = 'none'
     document.getElementById('mainView').style.display = 'block'
     renderStats()
     renderTab()
   } catch (e) {
     showToast('❌ 連線失敗')
+    document.getElementById('loadingView').style.display = 'none'
+    document.getElementById('loginView').style.display = 'flex'
   }
 }
 
