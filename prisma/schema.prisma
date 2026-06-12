@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 房源
+model Property {
+  id          String   @id @default(cuid())
+  name        String                      // 房間名稱，例如「201室」
+  floor       Int?
+  rent        Int                         // 月租金
+  deposit     Int                         // 押金
+  size        Float?                      // 坪數
+  description String?
+  isAvailable Boolean  @default(true)    // 是否空房
+  address     String?
+  photos      String[] @default([])      // 照片 URL 陣列
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenants     Tenant[]
+  bookings    Booking[]
+  repairs     Repair[]
+}
+
+// 租客
+model Tenant {
+  id         String   @id @default(cuid())
+  lineUserId String   @unique             // LINE User ID
+  name       String?
+  phone      String?
+  propertyId String?
+  moveInDate DateTime?
+  rentDue    Int      @default(5)         // 每月幾號繳租（預設5號）
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  property   Property? @relation(fields: [propertyId], references: [id])
+  bookings   Booking[]
+  repairs    Repair[]
+}
+
+// 看房預約
+model Booking {
+  id         String        @id @default(cuid())
+  tenantId   String
+  propertyId String
+  visitDate  DateTime
+  visitTime  String        // "14:00"
+  status     BookingStatus @default(PENDING)
+  note       String?
+  createdAt  DateTime      @default(now())
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  property   Property @relation(fields: [propertyId], references: [id])
+}
+
+// 維修回報
+model Repair {
+  id          String       @id @default(cuid())
+  tenantId    String
+  propertyId  String
+  title       String
+  description String
+  status      RepairStatus @default(PENDING)
+  photoUrl    String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  property    Property @relation(fields: [propertyId], references: [id])
+}
+
+enum BookingStatus {
+  PENDING    // 待確認
+  CONFIRMED  // 已確認
+  CANCELLED  // 已取消
+  DONE       // 已完成
+}
+
+enum RepairStatus {
+  PENDING      // 待處理
+  IN_PROGRESS  // 處理中
+  DONE         // 已完成
+}
