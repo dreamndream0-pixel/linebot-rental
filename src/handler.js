@@ -168,11 +168,19 @@ async function handleMessage(event, client) {
   const text = event.message?.text?.trim() || ''
   const state = userState.get(userId) || {}
 
-  // ── 確保租客存在 DB ──
+  // ── 確保租客存在 DB（並抓取 LINE 顯示名稱） ──
+  let displayName = null
+  try {
+    const profile = await client.getProfile(userId)
+    displayName = profile.displayName
+  } catch (e) {
+    console.log('無法取得用戶名稱:', e.message)
+  }
+
   await prisma.tenant.upsert({
     where: { lineUserId: userId },
-    update: {},
-    create: { lineUserId: userId }
+    update: displayName ? { name: displayName } : {},
+    create: { lineUserId: userId, name: displayName }
   })
 
   let reply
