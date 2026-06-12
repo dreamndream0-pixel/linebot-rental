@@ -1,15 +1,14 @@
-FROM node:20-alpine
+FROM node:20-slim
+
+RUN apt-get update -y && apt-get install -y openssl
 
 WORKDIR /app
 
-# 安裝依賴
 COPY package*.json ./
 RUN npm install --only=production
 
-# 複製程式碼
 COPY . .
 
-# 產生 Prisma Client
 RUN npx prisma generate
 
 EXPOSE 3000
