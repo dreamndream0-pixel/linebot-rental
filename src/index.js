@@ -5,6 +5,7 @@ const { handleMessage } = require('./handler')
 const { startCronJobs } = require('./cron')
 const prisma = require('./db')
 const adminRouter = require('./admin')
+const { registerExtraChannels } = require('./extraChannels')
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -16,6 +17,9 @@ const app = express()
 
 // ── 管理後台 ───────────────────────────────────────────────────
 app.use(adminRouter)
+
+// ── 其他官方帳號的輕量 Webhook（只抓 userId） ─────────────────
+registerExtraChannels(app)
 
 // ── Webhook 端點 ───────────────────────────────────────────────
 app.post('/webhook', middleware(config), (req, res) => {

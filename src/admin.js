@@ -302,6 +302,7 @@ function renderTenants() {
             </h3>
             \${t.statusMessage ? '<div style="font-size:13px;color:var(--sage);margin-bottom:4px;">💬 ' + t.statusMessage + '</div>' : ''}
             <div class="meta">
+              \${t.source && t.source !== 'main' ? '<span style="background:#E8F1E9;color:var(--deep-sage);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;">📍 ' + t.source + '</span> ' : ''}
               \${t.property ? '🏠 ' + t.property.name : '尚未入住'}
               \${t.phone ? ' · 📞 ' + t.phone : ''}
               <br>加入時間：\${fmtDate(t.createdAt)}

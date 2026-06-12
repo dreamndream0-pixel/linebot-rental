@@ -39,6 +39,7 @@ model Tenant {
   propertyId String?
   moveInDate DateTime?
   rentDue    Int      @default(5)         // 每月幾號繳租（預設5號）
+  source     String   @default("main")    // 來源帳號（main / 第二帳號名稱）
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
 
