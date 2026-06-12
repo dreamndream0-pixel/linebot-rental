@@ -23,6 +23,9 @@ app.post('/webhook', middleware(config), (req, res) => {
       if (event.type === 'message' && event.message.type === 'text') {
         await handleMessage(event, client)
       } else if (event.type === 'follow') {
+        const prisma = require('./db')
+        await prisma.tenant.upsert({ where: { lineUserId: event.source.userId }, update: { isActive: true }, create: { lineUserId: event.source.userId } })
+        console.log('👋 新好友:', event.source.userId)
         // 新用戶加入時
         await client.replyMessage(event.replyToken, {
           type: 'text',
