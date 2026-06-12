@@ -4,6 +4,7 @@ const { Client, middleware } = require('@line/bot-sdk')
 const { handleMessage } = require('./handler')
 const { startCronJobs } = require('./cron')
 const prisma = require('./db')
+const adminRouter = require('./admin')
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -12,6 +13,9 @@ const config = {
 
 const client = new Client(config)
 const app = express()
+
+// ── 管理後台 ───────────────────────────────────────────────────
+app.use(adminRouter)
 
 // ── Webhook 端點 ───────────────────────────────────────────────
 app.post('/webhook', middleware(config), (req, res) => {
@@ -23,9 +27,6 @@ app.post('/webhook', middleware(config), (req, res) => {
       if (event.type === 'message' && event.message.type === 'text') {
         await handleMessage(event, client)
       } else if (event.type === 'follow') {
-        const prisma = require('./db')
-        await prisma.tenant.upsert({ where: { lineUserId: event.source.userId }, update: { isActive: true }, create: { lineUserId: event.source.userId } })
-        console.log('👋 新好友:', event.source.userId)
         // 新用戶加入時
         await client.replyMessage(event.replyToken, {
           type: 'text',
