@@ -21,7 +21,7 @@ app.use(adminRouter)
 // ── 其他官方帳號的輕量 Webhook（只抓 userId） ─────────────────
 registerExtraChannels(app)
 
-// ── Webhook 端點 ───────────────────────────────────────────────
+// ── 主帳號 Webhook ─────────────────────────────────────────────
 app.post('/webhook', middleware(config), (req, res) => {
   res.json({ status: 'ok' })
 
@@ -31,10 +31,29 @@ app.post('/webhook', middleware(config), (req, res) => {
       if (event.type === 'message' && event.message.type === 'text') {
         await handleMessage(event, client)
       } else if (event.type === 'follow') {
-        // 新用戶加入時
+        // 新好友加入：抓取資料並記錄
+        const userId = event.source.userId
+        let profileData = {}
+        try {
+          const profile = await client.getProfile(userId)
+          profileData = {
+            name: profile.displayName,
+            avatarUrl: profile.pictureUrl || null,
+            statusMessage: profile.statusMessage || null,
+          }
+        } catch (e) {
+          console.log('無法取得新好友資料:', e.message)
+        }
+        await prisma.tenant.upsert({
+          where: { lineUserId: userId },
+          update: { isActive: true, ...profileData },
+          create: { lineUserId: userId, ...profileData }
+        })
+        console.log('👋 新好友:', userId, profileData.name || '')
+
         await client.replyMessage(event.replyToken, {
           type: 'text',
-          text: '👋 歡迎加入小蝸出租！\n\n輸入「選單」或點下方按鈕開始使用服務。'
+          text: '👋 歡迎加入小蝸出租！\n\n輸入「選單」開始使用服務。'
         })
       }
     } catch (err) {
@@ -59,7 +78,6 @@ async function main() {
 
   app.listen(PORT, () => {
     console.log(`🚀 小蝸出租 LINE Bot 啟動於 port ${PORT}`)
-    console.log(`📡 Webhook URL: https://你的網域/webhook`)
   })
 }
 

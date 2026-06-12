@@ -1,3 +1,6 @@
+// prisma/schema.prisma
+// 小蝸出租 統一資料庫 Schema（網站 + LINE Bot 共用）
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,66 +10,292 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 房源
-model Property {
-  id          String   @id @default(cuid())
-  name        String                      // 房間名稱，例如「201室」
-  floor       Int?
-  rent        Int                         // 月租金
-  deposit     Int                         // 押金
-  size        Float?                      // 坪數
-  description String?
-  isAvailable Boolean  @default(true)    // 是否空房
-  address     String?
-  photos      String[] @default([])      // 照片 URL 陣列
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// ─────────────────────────────────────────────
+// 網站使用者 (租客 + 房東 + 管理員)
+// ─────────────────────────────────────────────
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  phone         String?   @unique
+  passwordHash  String?
+  role          UserRole  @default(TENANT)
 
-  tenants     Tenant[]
-  bookings    Booking[]
-  repairs     Repair[]
+  name          String
+  handle        String?   @unique
+  avatar        String?
+  bio           String?
+  lineId        String?
+  verified      Boolean   @default(false)
+
+  totalListings Int       @default(0)
+  avgRating     Float?
+  reviewCount   Int       @default(0)
+  yearsActive   Int       @default(0)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  properties    Property[]
+  favorites     Favorite[]
+  sentMessages  Message[]     @relation("SentMessages")
+  receivedMessages Message[]  @relation("ReceivedMessages")
+  bookingsAsTenant Booking[]  @relation("TenantBookings")
+  reviews       Review[]
+  accounts      Account[]
+  sessions      Session[]
+
+  @@index([email])
+  @@index([handle])
+  @@index([role])
+  @@map("users")
 }
 
-// 租客
-model Tenant {
-  id            String   @id @default(cuid())
-  lineUserId    String   @unique             // LINE User ID
-  name          String?
-  customName    String?                      // 房東自訂備註名稱（不會被 LINE 名稱覆蓋）
-  avatarUrl     String?                      // LINE 頭像
-  statusMessage String?                      // LINE 狀態消息
-  phone         String?
-  propertyId String?
-  moveInDate DateTime?
-  rentDue    Int      @default(5)         // 每月幾號繳租（預設5號）
-  source     String   @default("main")    // 來源帳號（main / 第二帳號名稱）
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
+enum UserRole {
+  TENANT
+  LANDLORD
+  ADMIN
+}
 
-  property   Property? @relation(fields: [propertyId], references: [id])
+// ─────────────────────────────────────────────
+// LINE Bot 用戶（從 LINE 官方帳號來的用戶）
+// ─────────────────────────────────────────────
+model Tenant {
+  id            String    @id @default(cuid())
+  lineUserId    String    @unique
+  name          String?
+  customName    String?                      // 房東自訂備註名稱
+  avatarUrl     String?
+  statusMessage String?
+  phone         String?
+  propertyId    String?
+  moveInDate    DateTime?
+  rentDue       Int       @default(5)        // 每月幾號繳租
+  isActive      Boolean   @default(true)
+  source        String    @default("main")   // 來源官方帳號
+  createdAt     DateTime  @default(now())
+
+  property   Property? @relation("TenantResidence", fields: [propertyId], references: [id])
   bookings   Booking[]
   repairs    Repair[]
 }
 
-// 看房預約
-model Booking {
-  id         String        @id @default(cuid())
-  tenantId   String
-  propertyId String
-  visitDate  DateTime
-  visitTime  String        // "14:00"
-  status     BookingStatus @default(PENDING)
-  note       String?
-  createdAt  DateTime      @default(now())
+// ─────────────────────────────────────────────
+// NextAuth (OAuth)
+// ─────────────────────────────────────────────
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
 
-  tenant     Tenant   @relation(fields: [tenantId], references: [id])
-  property   Property @relation(fields: [propertyId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
 }
 
-// 維修回報
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("sessions")
+}
+
+// ─────────────────────────────────────────────
+// 房源（網站刊登 + Bot 查詢共用）
+// ─────────────────────────────────────────────
+model Property {
+  id          String         @id @default(cuid())
+  landlordId  String
+  landlord    User           @relation(fields: [landlordId], references: [id])
+
+  title       String
+  type        PropertyType
+  status      PropertyStatus @default(PENDING)
+  featured    Boolean        @default(false)
+  description String         @db.Text
+
+  city        String
+  district    String
+  address     String
+  lat         Float?
+  lng         Float?
+
+  size        Float
+  floor       String?
+  totalFloors Int?
+
+  price       Int
+  deposit     String         @default("兩個月")
+  mgmtFee     Int            @default(0)
+
+  inclWifi    Boolean        @default(false)
+  inclWater   Boolean        @default(false)
+  inclCable   Boolean        @default(false)
+
+  allowPets   Boolean        @default(false)
+  allowCook   Boolean        @default(false)
+  allowShortTerm Boolean     @default(false)
+  welcomeStudent Boolean     @default(true)
+
+  boostPlan   BoostPlan      @default(NONE)
+  boostUntil  DateTime?
+
+  viewCount   Int            @default(0)
+  favoriteCount Int          @default(0)
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  deletedAt   DateTime?
+
+  images      PropertyImage[]
+  amenities   PropertyAmenity[]
+  favorites   Favorite[]
+  bookings    Booking[]
+  reviews     Review[]
+  messages    Message[]
+  lineTenants Tenant[]       @relation("TenantResidence")
+  repairs     Repair[]
+
+  @@index([landlordId])
+  @@index([city, district])
+  @@index([status])
+  @@index([price])
+  @@index([type])
+  @@index([featured])
+  @@map("properties")
+}
+
+enum PropertyType {
+  SUITE
+  ROOM
+  WHOLE_FLOOR
+  SHARED_SUITE
+}
+
+enum PropertyStatus {
+  PENDING
+  AVAILABLE
+  RENTED
+  PAUSED
+  REJECTED
+}
+
+enum BoostPlan {
+  NONE
+  BASIC
+  PREMIUM
+}
+
+// ─────────────────────────────────────────────
+// 房源照片
+// ─────────────────────────────────────────────
+model PropertyImage {
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  url         String
+  cloudinaryId String?
+  order       Int      @default(0)
+  isCover     Boolean  @default(false)
+  width       Int?
+  height      Int?
+
+  createdAt   DateTime @default(now())
+
+  @@index([propertyId])
+  @@map("property_images")
+}
+
+// ─────────────────────────────────────────────
+// 房源設施
+// ─────────────────────────────────────────────
+model PropertyAmenity {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name       String
+
+  @@unique([propertyId, name])
+  @@index([propertyId])
+  @@map("property_amenities")
+}
+
+// ─────────────────────────────────────────────
+// 收藏
+// ─────────────────────────────────────────────
+model Favorite {
+  id         String   @id @default(cuid())
+  userId     String
+  propertyId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, propertyId])
+  @@index([userId])
+  @@map("favorites")
+}
+
+// ─────────────────────────────────────────────
+// 看房預約（網站用戶 或 LINE 用戶皆可預約）
+// ─────────────────────────────────────────────
+model Booking {
+  id         String        @id @default(cuid())
+  propertyId String
+  property   Property      @relation(fields: [propertyId], references: [id])
+
+  // 網站用戶（二擇一）
+  tenantId   String?
+  tenant     User?         @relation("TenantBookings", fields: [tenantId], references: [id])
+
+  // LINE 用戶（二擇一）
+  lineUserId String?
+  lineUser   Tenant?       @relation(fields: [lineUserId], references: [id])
+
+  date       DateTime
+  timeslot   String        // "14:00" 或 "10:00-11:00"
+  status     BookingStatus @default(PENDING)
+  note       String?
+  rejectReason String?
+
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([propertyId])
+  @@index([tenantId])
+  @@index([lineUserId])
+  @@index([status])
+  @@map("bookings")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+// ─────────────────────────────────────────────
+// 維修回報（LINE Bot）
+// ─────────────────────────────────────────────
 model Repair {
   id          String       @id @default(cuid())
-  tenantId    String
+  lineUserId  String
   propertyId  String
   title       String
   description String
@@ -75,19 +304,61 @@ model Repair {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  lineUser    Tenant   @relation(fields: [lineUserId], references: [id])
   property    Property @relation(fields: [propertyId], references: [id])
-}
 
-enum BookingStatus {
-  PENDING    // 待確認
-  CONFIRMED  // 已確認
-  CANCELLED  // 已取消
-  DONE       // 已完成
+  @@index([lineUserId])
+  @@index([propertyId])
+  @@map("repairs")
 }
 
 enum RepairStatus {
-  PENDING      // 待處理
-  IN_PROGRESS  // 處理中
-  DONE         // 已完成
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+// ─────────────────────────────────────────────
+// 站內訊息（網站，預留功能）
+// ─────────────────────────────────────────────
+model Message {
+  id         String   @id @default(cuid())
+  senderId   String
+  receiverId String
+  propertyId String?
+
+  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  property   Property? @relation(fields: [propertyId], references: [id])
+
+  content    String   @db.Text
+  readAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([propertyId])
+  @@map("messages")
+}
+
+// ─────────────────────────────────────────────
+// 評價（網站，預留功能）
+// ─────────────────────────────────────────────
+model Review {
+  id         String   @id @default(cuid())
+  propertyId String
+  userId     String
+  property   Property @relation(fields: [propertyId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  rating     Int
+  content    String?  @db.Text
+  isAnonymous Boolean @default(false)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([propertyId, userId])
+  @@index([propertyId])
+  @@map("reviews")
 }

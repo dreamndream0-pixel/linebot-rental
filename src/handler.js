@@ -43,54 +43,61 @@ function menuButton(label, action) {
   }
 }
 
-// ── 空房列表 ─────────────────────────────────────────────────────
+// ── 空房列表（讀取統一資料庫的 AVAILABLE 房源） ──────────────────
 async function listAvailableRooms() {
   const rooms = await prisma.property.findMany({
-    where: { isAvailable: true },
-    orderBy: { rent: 'asc' }
+    where: { status: 'AVAILABLE', deletedAt: null },
+    include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] } },
+    orderBy: { price: 'asc' },
+    take: 10
   })
 
   if (rooms.length === 0) {
     return { type: 'text', text: '😔 目前沒有空房，歡迎留下聯絡方式，有空房第一時間通知您！' }
   }
 
-  const bubbles = rooms.map(room => ({
-    type: 'bubble',
-    size: 'kilo',
-    hero: room.photos[0] ? {
-      type: 'image',
-      url: room.photos[0],
-      size: 'full',
-      aspectRatio: '20:13',
-      aspectMode: 'cover'
-    } : undefined,
-    body: {
-      type: 'box',
-      layout: 'vertical',
-      spacing: 'sm',
-      contents: [
-        { type: 'text', text: room.name, weight: 'bold', size: 'lg' },
-        {
-          type: 'box', layout: 'horizontal', contents: [
-            { type: 'text', text: `💰 NT$ ${room.rent.toLocaleString()} / 月`, size: 'sm', color: '#7A9E7E', flex: 1 },
-            { type: 'text', text: room.size ? `📐 ${room.size} 坪` : '', size: 'sm', color: '#888', flex: 1 }
-          ]
-        },
-        room.description ? { type: 'text', text: room.description, size: 'xs', color: '#888', wrap: true } : null,
-      ].filter(Boolean)
-    },
-    footer: {
-      type: 'box',
-      layout: 'vertical',
-      contents: [{
-        type: 'button',
-        action: { type: 'message', label: '預約看這間', text: `BOOK_ROOM_${room.id}` },
-        style: 'primary',
-        color: '#7A9E7E',
-        height: 'sm'
-      }]
+  const typeLabel = { SUITE: '套房', ROOM: '雅房', WHOLE_FLOOR: '整層住家', SHARED_SUITE: '分租套房' }
+
+  const bubbles = rooms.map(room => {
+    const coverUrl = room.images[0]?.url
+    return {
+      type: 'bubble',
+      size: 'kilo',
+      hero: coverUrl ? {
+        type: 'image',
+        url: coverUrl,
+        size: 'full',
+        aspectRatio: '20:13',
+        aspectMode: 'cover'
+      } : undefined,
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          { type: 'text', text: room.title, weight: 'bold', size: 'lg', wrap: true },
+          { type: 'text', text: `${room.city}${room.district} · ${typeLabel[room.type] || ''}`, size: 'xs', color: '#aaa' },
+          {
+            type: 'box', layout: 'horizontal', contents: [
+              { type: 'text', text: `💰 NT$ ${room.price.toLocaleString()} / 月`, size: 'sm', color: '#7A9E7E', flex: 1 },
+              { type: 'text', text: room.size ? `📐 ${room.size} 坪` : '', size: 'sm', color: '#888', flex: 1 }
+            ]
+          },
+        ].filter(Boolean)
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [{
+          type: 'button',
+          action: { type: 'message', label: '預約看這間', text: `BOOK_ROOM_${room.id}` },
+          style: 'primary',
+          color: '#7A9E7E',
+          height: 'sm'
+        }]
+      }
     }
-  }))
+  })
 
   return {
     type: 'flex',
@@ -99,7 +106,7 @@ async function listAvailableRooms() {
   }
 }
 
-// ── 維修回報流程 ──────────────────────────────────────────────────
+// ── 維修回報選單 ──────────────────────────────────────────────────
 function repairMenu() {
   return {
     type: 'flex',
@@ -142,25 +149,24 @@ async function myBookings(lineUserId) {
   }
 
   const bookings = await prisma.booking.findMany({
-    where: { tenantId: tenant.id, status: { in: ['PENDING', 'CONFIRMED'] } },
+    where: { lineUserId: tenant.id, status: { in: ['PENDING', 'CONFIRMED'] } },
     include: { property: true },
-    orderBy: { visitDate: 'asc' }
+    orderBy: { date: 'asc' }
   })
 
   if (bookings.length === 0) {
     return { type: 'text', text: '目前沒有進行中的預約。\n輸入「預約看房」來預約！' }
   }
 
-  const statusLabel = { PENDING: '⏳ 待確認', CONFIRMED: '✅ 已確認', CANCELLED: '❌ 已取消', DONE: '🏁 已完成' }
+  const statusLabel = { PENDING: '⏳ 待確認', CONFIRMED: '✅ 已確認' }
   const lines = bookings.map(b =>
-    `${statusLabel[b.status]} ${b.property.name}\n📅 ${new Date(b.visitDate).toLocaleDateString('zh-TW')} ${b.visitTime}`
+    `${statusLabel[b.status]} ${b.property.title}\n📅 ${new Date(b.date).toLocaleDateString('zh-TW')} ${b.timeslot}`
   )
 
   return { type: 'text', text: `📋 您的預約：\n\n${lines.join('\n\n')}` }
 }
 
-// ── 處理用戶狀態（多步驟流程） ──────────────────────────────────
-// 簡易 in-memory state（正式上線建議改用 Redis 或 DB）
+// ── 用戶狀態（多步驟流程） ──────────────────────────────────────
 const userState = new Map()
 
 async function handleMessage(event, client) {
@@ -168,7 +174,7 @@ async function handleMessage(event, client) {
   const text = event.message?.text?.trim() || ''
   const state = userState.get(userId) || {}
 
-  // ── 確保租客存在 DB（並抓取 LINE 顯示名稱、頭像、狀態消息） ──
+  // ── 確保 LINE 用戶存在 DB（抓取名稱、頭像、狀態消息） ──
   let profileData = {}
   try {
     const profile = await client.getProfile(userId)
@@ -190,31 +196,25 @@ async function handleMessage(event, client) {
   let reply
 
   // ── 多步驟流程中 ──
-  if (state.flow === 'booking') {
+  if (state.flow === 'booking' && (state.step === 'select_date' || text.startsWith('TIME_'))) {
     reply = await handleBookingFlow(userId, text, state, client)
   } else if (state.flow === 'repair') {
     reply = await handleRepairFlow(userId, text, state, client)
   }
-
   // ── 主要指令 ──
-  else if (['開始', 'hi', 'hello', '你好', '選單', 'menu', 'ACTION_LIST_ROOMS', 'ACTION_BOOK_VISIT', 'ACTION_REPORT_REPAIR', 'ACTION_MY_BOOKINGS'].includes(text.toLowerCase()) || text === '開始') {
-    if (text === 'ACTION_LIST_ROOMS' || text === '查詢空房') {
-      reply = await listAvailableRooms()
-    } else if (text === 'ACTION_BOOK_VISIT' || text === '預約看房') {
-      userState.set(userId, { flow: 'booking', step: 'select_room' })
-      reply = await listAvailableRooms()
-    } else if (text === 'ACTION_REPORT_REPAIR' || text === '維修回報') {
-      reply = repairMenu()
-    } else if (text === 'ACTION_MY_BOOKINGS' || text === '我的預約') {
-      reply = await myBookings(userId)
-    } else {
-      reply = mainMenu()
-    }
+  else if (text === 'ACTION_LIST_ROOMS' || text === '查詢空房') {
+    reply = await listAvailableRooms()
+  } else if (text === 'ACTION_BOOK_VISIT' || text === '預約看房') {
+    reply = await listAvailableRooms()
+  } else if (text === 'ACTION_REPORT_REPAIR' || text === '維修回報') {
+    reply = repairMenu()
+  } else if (text === 'ACTION_MY_BOOKINGS' || text === '我的預約') {
+    reply = await myBookings(userId)
   }
   else if (text.startsWith('BOOK_ROOM_')) {
     const propertyId = text.replace('BOOK_ROOM_', '')
     userState.set(userId, { flow: 'booking', step: 'select_date', propertyId })
-    reply = { type: 'text', text: '📅 請輸入想看房的日期（格式：2025/06/15）' }
+    reply = { type: 'text', text: '📅 請輸入想看房的日期（格式：2026/06/15）' }
   }
   else if (text.startsWith('REPAIR_')) {
     const category = text.replace('REPAIR_', '')
@@ -235,10 +235,9 @@ async function handleBookingFlow(userId, text, state, client) {
   const { step, propertyId } = state
 
   if (step === 'select_date') {
-    // 驗證日期格式
     const dateRegex = /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/
     if (!dateRegex.test(text)) {
-      return { type: 'text', text: '❌ 日期格式不對，請輸入如：2025/06/15' }
+      return { type: 'text', text: '❌ 日期格式不對，請輸入如：2026/06/15' }
     }
     userState.set(userId, { ...state, step: 'select_time', visitDate: text })
     return {
@@ -264,17 +263,16 @@ async function handleBookingFlow(userId, text, state, client) {
   }
 
   if (step === 'select_time' && text.startsWith('TIME_')) {
-    const visitTime = text.replace('TIME_', '')
+    const timeslot = text.replace('TIME_', '')
     const { visitDate } = state
 
-    // 儲存預約
     const tenant = await prisma.tenant.findUnique({ where: { lineUserId: userId } })
     const booking = await prisma.booking.create({
       data: {
-        tenantId: tenant.id,
+        lineUserId: tenant.id,
         propertyId,
-        visitDate: new Date(visitDate),
-        visitTime,
+        date: new Date(visitDate),
+        timeslot,
         status: 'PENDING'
       },
       include: { property: true }
@@ -282,15 +280,14 @@ async function handleBookingFlow(userId, text, state, client) {
 
     userState.delete(userId)
 
-    // 通知房東
-    const ownerMsg = `📅 新看房預約！\n房間：${booking.property.name}\n時間：${visitDate} ${visitTime}\n請至後台確認`
+    const ownerMsg = `📅 新看房預約！\n房源：${booking.property.title}\n時間：${visitDate} ${timeslot}\n用戶：${tenant.name || tenant.lineUserId}\n請至後台確認`
     if (process.env.OWNER_LINE_USER_ID) {
-      await client.pushMessage(process.env.OWNER_LINE_USER_ID, { type: 'text', text: ownerMsg })
+      try { await client.pushMessage(process.env.OWNER_LINE_USER_ID, { type: 'text', text: ownerMsg }) } catch (e) { console.error('通知房東失敗:', e.message) }
     }
 
     return {
       type: 'text',
-      text: `✅ 預約成功！\n\n🏠 ${booking.property.name}\n📅 ${visitDate} ${visitTime}\n\n房東確認後會通知您，感謝！`
+      text: `✅ 預約成功！\n\n🏠 ${booking.property.title}\n📅 ${visitDate} ${timeslot}\n\n房東確認後會通知您，感謝！`
     }
   }
 
@@ -304,7 +301,6 @@ async function handleRepairFlow(userId, text, state, client) {
   if (step === 'describe') {
     const tenant = await prisma.tenant.findUnique({ where: { lineUserId: userId } })
 
-    // 找到租客目前租住的房間
     const property = tenant?.propertyId
       ? await prisma.property.findUnique({ where: { id: tenant.propertyId } })
       : null
@@ -316,7 +312,7 @@ async function handleRepairFlow(userId, text, state, client) {
 
     await prisma.repair.create({
       data: {
-        tenantId: tenant.id,
+        lineUserId: tenant.id,
         propertyId: property.id,
         title: category,
         description: text,
@@ -326,10 +322,9 @@ async function handleRepairFlow(userId, text, state, client) {
 
     userState.delete(userId)
 
-    // 通知房東
-    const ownerMsg = `🔧 維修回報！\n房間：${property.name}\n類型：${category}\n描述：${text}`
+    const ownerMsg = `🔧 維修回報！\n房源：${property.title}\n類型：${category}\n描述：${text}\n回報人：${tenant.name || tenant.lineUserId}`
     if (process.env.OWNER_LINE_USER_ID) {
-      await client.pushMessage(process.env.OWNER_LINE_USER_ID, { type: 'text', text: ownerMsg })
+      try { await client.pushMessage(process.env.OWNER_LINE_USER_ID, { type: 'text', text: ownerMsg }) } catch (e) { console.error('通知房東失敗:', e.message) }
     }
 
     return {
