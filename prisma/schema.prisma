@@ -32,6 +32,7 @@ model Tenant {
   id            String   @id @default(cuid())
   lineUserId    String   @unique             // LINE User ID
   name          String?
+  customName    String?                      // 房東自訂備註名稱（不會被 LINE 名稱覆蓋）
   avatarUrl     String?                      // LINE 頭像
   statusMessage String?                      // LINE 狀態消息
   phone         String?

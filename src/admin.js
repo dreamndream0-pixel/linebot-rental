@@ -37,6 +37,17 @@ router.post('/admin/api/repair/:id/status', express.json(), async (req, res) => 
   res.json(repair)
 })
 
+// ── API：更新租客備註名稱 ───────────────────────────────────────
+router.post('/admin/api/tenant/:id/name', express.json(), async (req, res) => {
+  if (req.query.key !== ADMIN_KEY) return res.status(401).json({ error: 'unauthorized' })
+  const { customName } = req.body
+  const tenant = await prisma.tenant.update({
+    where: { id: req.params.id },
+    data: { customName: customName || null }
+  })
+  res.json(tenant)
+})
+
 // ── 後台頁面 ─────────────────────────────────────────────────────
 router.get('/admin', (req, res) => {
   res.send(ADMIN_HTML)
@@ -256,7 +267,9 @@ function renderTenants() {
             ? '<img src="' + t.avatarUrl + '" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\\'none\\'">'
             : '<div style="width:52px;height:52px;border-radius:50%;background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">👤</div>'}
           <div>
-            <h3>\${t.name || '未命名用戶'}</h3>
+            <h3>\${t.customName ? t.customName + ' <span style="font-weight:400;font-size:13px;color:#aaa;">(' + (t.name || '未命名') + ')</span>' : (t.name || '未命名用戶')}
+              <button onclick="editName('\${t.id}', '\${(t.customName || '').replace(/'/g, "\\\\'")}')" style="border:none;background:none;cursor:pointer;font-size:14px;" title="編輯備註名稱">✏️</button>
+            </h3>
             \${t.statusMessage ? '<div style="font-size:13px;color:var(--sage);margin-bottom:4px;">💬 ' + t.statusMessage + '</div>' : ''}
             <div class="meta">
               \${t.property ? '🏠 ' + t.property.name : '尚未入住'}
@@ -341,6 +354,17 @@ async function updateRepair(id, status) {
 function copyText(text) {
   navigator.clipboard.writeText(text)
   showToast('📋 已複製 User ID')
+}
+
+async function editName(tenantId, currentName) {
+  const newName = prompt('輸入備註名稱（清空 = 恢復顯示 LINE 名稱）:', currentName)
+  if (newName === null) return
+  await fetch('/admin/api/tenant/' + tenantId + '/name?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ customName: newName.trim() })
+  })
+  showToast('✅ 名稱已更新')
+  reload()
 }
 
 function fmtDate(d) {
