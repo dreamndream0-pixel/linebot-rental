@@ -36,7 +36,7 @@ async function notifyLandlord(landlordId, message, fallbackClient) {
 }
 
 // ── 主選單 Flex Message ──────────────────────────────────────────
-function mainMenu() {
+function mainMenu(t = {}) {
   return {
     type: 'flex',
     altText: '小蝸出租 - 主選單',
@@ -47,8 +47,8 @@ function mainMenu() {
         type: 'box',
         layout: 'vertical',
         contents: [
-          { type: 'text', text: '🐌 小蝸出租', weight: 'bold', size: 'xl', color: '#ffffff' },
-          { type: 'text', text: '請選擇服務項目', size: 'sm', color: '#ffffff99' }
+          { type: 'text', text: t.menuTitle || '🐌 小蝸出租', weight: 'bold', size: 'xl', color: '#ffffff' },
+          { type: 'text', text: t.menuSubtitle || '請選擇服務項目', size: 'sm', color: '#ffffff99' }
         ],
         backgroundColor: '#7A9E7E',
         paddingAll: '20px'
@@ -58,13 +58,13 @@ function mainMenu() {
         layout: 'vertical',
         spacing: 'sm',
         contents: [
-          menuButton('🏠 查詢空房', 'ACTION_LIST_ROOMS'),
-          menuButton('📅 預約看房', 'ACTION_BOOK_VISIT'),
-          menuButton('🔧 維修回報', 'ACTION_REPORT_REPAIR'),
-          menuButton('📋 我的預約', 'ACTION_MY_BOOKINGS'),
+          menuButton(t.btnListRooms || '🏠 查詢空房', 'ACTION_LIST_ROOMS'),
+          menuButton(t.btnBookVisit || '📅 預約看房', 'ACTION_BOOK_VISIT'),
+          menuButton(t.btnReportRepair || '🔧 維修回報', 'ACTION_REPORT_REPAIR'),
+          menuButton(t.btnMyBookings || '📋 我的預約', 'ACTION_MY_BOOKINGS'),
           { type: 'separator', margin: 'md' },
-          { type: 'text', text: '💡 也可直接輸入條件搜尋', size: 'xs', color: '#888888', margin: 'md', wrap: true },
-          { type: 'text', text: '例如：台中市 沙鹿區 5000-8000', size: 'xs', color: '#aaaaaa', wrap: true },
+          { type: 'text', text: t.searchHint || '💡 也可直接輸入條件搜尋', size: 'xs', color: '#888888', margin: 'md', wrap: true },
+          { type: 'text', text: t.searchExample || '例如：台中市 沙鹿區 5000-8000', size: 'xs', color: '#aaaaaa', wrap: true },
         ]
       }
     }
@@ -85,7 +85,7 @@ function menuButton(label, action) {
 const TYPE_LABEL = { SUITE: '套房', ROOM: '雅房', WHOLE_FLOOR: '整層住家', SHARED_SUITE: '分租套房' }
 
 // ── 把房源陣列轉成 Flex 卡片輪播（list 與 search 共用） ──────────
-function roomsToCarousel(rooms, altText) {
+function roomsToCarousel(rooms, altText, t = {}) {
   const bubbles = rooms.map(room => {
     // 只接受有效的 https 圖片網址，否則不放 hero（避免 LINE 400 錯誤）
     const firstUrl = room.images && room.images[0] ? room.images[0].url : null
@@ -120,7 +120,7 @@ function roomsToCarousel(rooms, altText) {
         layout: 'vertical',
         contents: [{
           type: 'button',
-          action: { type: 'message', label: '預約看這間', text: `BOOK_ROOM_${room.id}` },
+          action: { type: 'message', label: t.bookButtonLabel || '預約看這間', text: `BOOK_ROOM_${room.id}` },
           style: 'primary',
           color: '#7A9E7E',
           height: 'sm'
@@ -136,7 +136,7 @@ function roomsToCarousel(rooms, altText) {
   }
 }
 
-async function listAvailableRooms(landlordId = null) {
+async function listAvailableRooms(landlordId = null, t = {}) {
   const where = { status: 'AVAILABLE', deletedAt: null }
   if (landlordId) where.ownerId = landlordId
   const rooms = await prisma.property.findMany({
@@ -147,10 +147,10 @@ async function listAvailableRooms(landlordId = null) {
   })
 
   if (rooms.length === 0) {
-    return { type: 'text', text: '😔 目前沒有空房，歡迎留下聯絡方式，有空房第一時間通知您！' }
+    return { type: 'text', text: t.noRooms || '😔 目前沒有空房，歡迎留下聯絡方式，有空房第一時間通知您！' }
   }
 
-  return roomsToCarousel(rooms, `目前有 ${rooms.length} 間空房`)
+  return roomsToCarousel(rooms, `目前有 ${rooms.length} 間空房`, t)
 }
 
 // ── 關鍵字解析 ────────────────────────────────────────────────────
@@ -206,7 +206,7 @@ function parseSearchQuery(text) {
 }
 
 // ── 關鍵字搜尋房源 ────────────────────────────────────────────────
-async function searchRooms(parsed, landlordId = null) {
+async function searchRooms(parsed, landlordId = null, t = {}) {
   const where = { status: 'AVAILABLE', deletedAt: null }
   if (landlordId) where.ownerId = landlordId
   if (parsed.city) where.city = parsed.city
@@ -234,14 +234,15 @@ async function searchRooms(parsed, landlordId = null) {
   const condText = parts.join(' ')
 
   if (rooms.length === 0) {
-    return { type: 'text', text: `🔍 找不到符合「${condText}」的空房。\n\n可以試試放寬條件，或輸入「查詢空房」看全部房源。` }
+    const msg = (t.searchNoResult || '🔍 找不到符合條件的空房。\n\n可以試試放寬條件，或輸入「查詢空房」看全部房源。')
+    return { type: 'text', text: msg }
   }
 
-  return roomsToCarousel(rooms, `找到 ${rooms.length} 間符合「${condText}」的房源`)
+  return roomsToCarousel(rooms, `找到 ${rooms.length} 間符合「${condText}」的房源`, t)
 }
 
 // ── 維修回報選單 ──────────────────────────────────────────────────
-function repairMenu() {
+function repairMenu(t = {}) {
   return {
     type: 'flex',
     altText: '維修回報',
@@ -252,7 +253,7 @@ function repairMenu() {
         layout: 'vertical',
         spacing: 'sm',
         contents: [
-          { type: 'text', text: '🔧 請選擇問題類型', weight: 'bold', size: 'md' },
+          { type: 'text', text: t.repairTitle || '🔧 請選擇問題類型', weight: 'bold', size: 'md' },
           repairButton('💧 漏水問題', 'REPAIR_漏水問題'),
           repairButton('💡 電氣問題', 'REPAIR_電氣問題'),
           repairButton('🚿 衛浴設備', 'REPAIR_衛浴設備'),
@@ -276,10 +277,10 @@ function repairButton(label, action) {
 }
 
 // ── 我的預約 ──────────────────────────────────────────────────────
-async function myBookings(lineUserId) {
+async function myBookings(lineUserId, t = {}) {
   const tenant = await prisma.tenant.findUnique({ where: { lineUserId } })
   if (!tenant) {
-    return { type: 'text', text: '您尚未有任何預約記錄。\n輸入「查詢空房」開始預約看房！' }
+    return { type: 'text', text: t.noBookingHistory || '您尚未有任何預約記錄。\n輸入「查詢空房」開始預約看房！' }
   }
 
   const bookings = await prisma.booking.findMany({
@@ -289,7 +290,7 @@ async function myBookings(lineUserId) {
   })
 
   if (bookings.length === 0) {
-    return { type: 'text', text: '目前沒有進行中的預約。\n輸入「預約看房」來預約！' }
+    return { type: 'text', text: t.noActiveBooking || '目前沒有進行中的預約。\n輸入「預約看房」來預約！' }
   }
 
   const statusLabel = { PENDING: '⏳ 待確認', CONFIRMED: '✅ 已確認' }
@@ -307,6 +308,18 @@ async function handleMessage(event, client, landlordId = null) {
   const userId = event.source.userId
   const text = event.message?.text?.trim() || ''
   const state = userState.get(userId) || {}
+
+  // 載入該房東的 Bot 文字設定 + 開關狀態
+  const { getBotText } = require('./botText')
+  const t = await getBotText(landlordId)
+
+  // Bot 已被房東關閉 → 回固定訊息，不處理功能
+  if (landlordId && t._enabled === false) {
+    try {
+      await client.replyMessage(event.replyToken, { type: 'text', text: t.botDisabledMsg })
+    } catch (e) { console.error('關閉訊息回覆失敗:', e.message) }
+    return
+  }
 
   // ── 確保 LINE 用戶存在 DB（抓取名稱、頭像、狀態消息） ──
   let profileData = {}
@@ -333,37 +346,37 @@ async function handleMessage(event, client, landlordId = null) {
 
   // ── 多步驟流程中 ──
   if (state.flow === 'booking' && (state.step === 'select_date' || text.startsWith('TIME_'))) {
-    reply = await handleBookingFlow(userId, text, state, client)
+    reply = await handleBookingFlow(userId, text, state, client, landlordId, t)
   } else if (state.flow === 'repair') {
-    reply = await handleRepairFlow(userId, text, state, client)
+    reply = await handleRepairFlow(userId, text, state, client, landlordId, t)
   }
   // ── 主要指令 ──
   else if (text === 'ACTION_LIST_ROOMS' || text === '查詢空房') {
-    reply = await listAvailableRooms(landlordId)
+    reply = await listAvailableRooms(landlordId, t)
   } else if (text === 'ACTION_BOOK_VISIT' || text === '預約看房') {
-    reply = await listAvailableRooms(landlordId)
+    reply = await listAvailableRooms(landlordId, t)
   } else if (text === 'ACTION_REPORT_REPAIR' || text === '維修回報') {
-    reply = repairMenu()
+    reply = repairMenu(t)
   } else if (text === 'ACTION_MY_BOOKINGS' || text === '我的預約') {
-    reply = await myBookings(userId)
+    reply = await myBookings(userId, t)
   }
   else if (text.startsWith('BOOK_ROOM_')) {
     const propertyId = text.replace('BOOK_ROOM_', '')
     userState.set(userId, { flow: 'booking', step: 'select_date', propertyId })
-    reply = { type: 'text', text: '📅 請輸入想看房的日期（格式：2026/06/15）' }
+    reply = { type: 'text', text: t.askDate }
   }
   else if (text.startsWith('REPAIR_')) {
     const category = text.replace('REPAIR_', '')
     userState.set(userId, { flow: 'repair', step: 'describe', category })
-    reply = { type: 'text', text: `🔧 ${category}\n\n請描述問題詳情（例如：浴室天花板漏水，已持續3天）` }
+    reply = { type: 'text', text: `🔧 ${category}\n\n${t.askRepairDesc}` }
   }
   else {
     // 嘗試把訊息當作搜尋關鍵字解析
     const parsed = parseSearchQuery(text)
     if (parsed) {
-      reply = await searchRooms(parsed, landlordId)
+      reply = await searchRooms(parsed, landlordId, t)
     } else {
-      reply = mainMenu()
+      reply = mainMenu(t)
     }
   }
 
@@ -372,7 +385,6 @@ async function handleMessage(event, client, landlordId = null) {
       await client.replyMessage(event.replyToken, reply)
     } catch (err) {
       console.error('回覆訊息失敗:', err.statusCode, JSON.stringify(err.originalError?.response?.data || err.message))
-      // Flex 訊息可能格式有誤，改回純文字確保使用者收得到回覆
       try {
         await client.replyMessage(event.replyToken, {
           type: 'text',
@@ -386,13 +398,13 @@ async function handleMessage(event, client, landlordId = null) {
 }
 
 // ── 看房預約流程 ──────────────────────────────────────────────────
-async function handleBookingFlow(userId, text, state, client) {
+async function handleBookingFlow(userId, text, state, client, landlordId = null, t = {}) {
   const { step, propertyId } = state
 
   if (step === 'select_date') {
     const dateRegex = /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/
     if (!dateRegex.test(text)) {
-      return { type: 'text', text: '❌ 日期格式不對，請輸入如：2026/06/15' }
+      return { type: 'text', text: t.dateError || '❌ 日期格式不對，請輸入如：2026/06/15' }
     }
     userState.set(userId, { ...state, step: 'select_time', visitDate: text })
     return {
@@ -405,10 +417,10 @@ async function handleBookingFlow(userId, text, state, client) {
           layout: 'vertical',
           spacing: 'sm',
           contents: [
-            { type: 'text', text: '⏰ 請選擇看房時間', weight: 'bold' },
-            ...['10:00', '11:00', '14:00', '15:00', '16:00'].map(t => ({
+            { type: 'text', text: t.askTime || '⏰ 請選擇看房時間', weight: 'bold' },
+            ...['10:00', '11:00', '14:00', '15:00', '16:00'].map(slot => ({
               type: 'button',
-              action: { type: 'message', label: t, text: `TIME_${t}` },
+              action: { type: 'message', label: slot, text: `TIME_${slot}` },
               style: 'secondary', height: 'sm', margin: 'xs'
             }))
           ]
@@ -441,9 +453,10 @@ async function handleBookingFlow(userId, text, state, client) {
     const ownerMsg = `📅 新看房預約！\n房源：${booking.property.title}\n時間：${visitDate} ${timeslot}\n用戶：${tenant.name || tenant.lineUserId}\n請至後台確認`
     await notifyLandlord(prop?.ownerId, ownerMsg, client)
 
+    const successMsg = (t.bookSuccess || '✅ 預約成功！\n\n房東確認後會通知您，感謝！')
     return {
       type: 'text',
-      text: `✅ 預約成功！\n\n🏠 ${booking.property.title}\n📅 ${visitDate} ${timeslot}\n\n房東確認後會通知您，感謝！`
+      text: `${successMsg}\n\n🏠 ${booking.property.title}\n📅 ${visitDate} ${timeslot}`
     }
   }
 
@@ -451,7 +464,7 @@ async function handleBookingFlow(userId, text, state, client) {
 }
 
 // ── 維修回報流程 ──────────────────────────────────────────────────
-async function handleRepairFlow(userId, text, state, client) {
+async function handleRepairFlow(userId, text, state, client, landlordId = null, t = {}) {
   const { step, category } = state
 
   if (step === 'describe') {
@@ -463,7 +476,7 @@ async function handleRepairFlow(userId, text, state, client) {
 
     if (!property) {
       userState.delete(userId)
-      return { type: 'text', text: '⚠️ 無法找到您的租住資訊，請聯絡房東確認。' }
+      return { type: 'text', text: t.repairNoProperty || '⚠️ 無法找到您的租住資訊，請聯絡房東確認。' }
     }
 
     await prisma.repair.create({
@@ -482,9 +495,10 @@ async function handleRepairFlow(userId, text, state, client) {
     const ownerMsg = `🔧 維修回報！\n房源：${property.title}\n類型：${category}\n描述：${text}\n回報人：${tenant.name || tenant.lineUserId}`
     await notifyLandlord(property.ownerId, ownerMsg, client)
 
+    const successMsg = (t.repairSuccess || '✅ 維修申請已送出！\n\n我們會盡快處理，感謝您的回報！')
     return {
       type: 'text',
-      text: `✅ 維修申請已送出！\n\n問題類型：${category}\n描述：${text}\n\n我們會盡快處理，感謝您的回報！`
+      text: `${successMsg}\n\n問題類型：${category}\n描述：${text}`
     }
   }
 

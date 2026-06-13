@@ -69,7 +69,7 @@ router.get('/admin/api/data', async (req, res) => {
     auth.role === 'super'
       ? prisma.landlord.findMany({
           orderBy: { createdAt: 'desc' },
-          select: { id: true, name: true, email: true, phone: true, adminKey: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, richMenuConfig: true, richMenuId: true, richMenuEnabled: true, siteName: true, siteLogo: true }
+          select: { id: true, name: true, email: true, phone: true, adminKey: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, richMenuConfig: true, richMenuId: true, richMenuEnabled: true, siteName: true, siteLogo: true, botTextConfig: true, botEnabled: true }
         })
       : Promise.resolve([]),
   ])
@@ -85,6 +85,8 @@ router.get('/admin/api/data', async (req, res) => {
     richMenuEnabled: !!l.richMenuEnabled,
     siteName: l.siteName || null,
     siteLogo: l.siteLogo || null,
+    botTextConfig: l.botTextConfig || null,
+    botEnabled: l.botEnabled !== false,
   }))
 
   res.json({ tenants, bookings, repairs, properties, landlords: safeLandlords, account: auth.label, role: auth.role, landlordId: auth.landlordId || null, siteUrl: process.env.SITE_URL || 'https://xiaowo-rental.vercel.app' })
@@ -420,6 +422,33 @@ router.post('/admin/api/landlord/:id/site', express.json(), async (req, res) => 
 
   await prisma.landlord.update({ where: { id: req.params.id }, data })
   res.json({ ok: true })
+})
+
+// 儲存 Bot 自訂文字
+router.post('/admin/api/landlord/:id/bottext', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  if (auth.role === 'landlord' && auth.landlordId !== req.params.id) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  const config = JSON.stringify(req.body.botText || {})
+  await prisma.landlord.update({ where: { id: req.params.id }, data: { botTextConfig: config } })
+  try { require('./botText').clearTextCache(req.params.id) } catch (e) {}
+  res.json({ ok: true })
+})
+
+// 開關 Bot
+router.post('/admin/api/landlord/:id/bot-toggle', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  if (auth.role === 'landlord' && auth.landlordId !== req.params.id) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  await prisma.landlord.update({ where: { id: req.params.id }, data: { botEnabled: !!req.body.enabled } })
+  try { require('./botText').clearTextCache(req.params.id) } catch (e) {}
+  res.json({ ok: true, enabled: !!req.body.enabled })
 })
 
 // ── 後台頁面 ─────────────────────────────────────────────────────
@@ -1027,6 +1056,8 @@ function renderLandlords() {
       '<button class="action-btn" onclick="openSiteEditor(\\'' + l.id + '\\')">⚙️ 官網設定</button>' +
       '<button class="action-btn" onclick="viewLandlordSite(\\'' + l.id + '\\')">🌐 個人官網</button>' +
       '<button class="action-btn" onclick="setupBot(\\'' + l.id + '\\', \\'' + esc(l.name).replace(/'/g, '') + '\\', \\'' + webhookUrl + '\\')">🤖 設定 Bot</button>' +
+      '<button class="action-btn" onclick="openBotTextEditor(\\'' + l.id + '\\')">💬 Bot 文字</button>' +
+      '<button class="action-btn ' + (l.botEnabled ? 'danger' : '') + '" onclick="toggleBotEnabled(\\'' + l.id + '\\', ' + (!l.botEnabled) + ')">' + (l.botEnabled ? '⏸️ 停用 Bot' : '▶️ 啟用 Bot') + '</button>' +
       '<button class="action-btn" onclick="openMenuEditor(\\'' + l.id + '\\')">📱 設定選單</button>' +
       (l.hasRichMenu ? '<button class="action-btn ' + (l.richMenuEnabled ? 'danger' : '') + '" onclick="toggleMenu(\\'' + l.id + '\\', ' + (!l.richMenuEnabled) + ')">' + (l.richMenuEnabled ? '🔕 關閉選單' : '🔔 開啟選單') + '</button>' : '') +
       '<button class="action-btn" onclick="regenerateKey(\\'' + l.id + '\\')">🔑 重發金鑰</button>' +
@@ -1290,6 +1321,94 @@ async function saveSite() {
   if (!res.ok) { showToast('❌ 儲存失敗'); return }
   showToast('✅ 官網設定已儲存')
   closeSiteEditor()
+  reload()
+}
+
+// ── Bot 文字編輯器 ──────────────────────────────────────────────
+var BOT_TEXT_FIELDS = [
+  { key: 'menuTitle', label: '主選單標題', ph: '🐌 小蝸出租' },
+  { key: 'menuSubtitle', label: '主選單副標', ph: '請選擇服務項目' },
+  { key: 'btnListRooms', label: '按鈕：查詢空房', ph: '🏠 查詢空房' },
+  { key: 'btnBookVisit', label: '按鈕：預約看房', ph: '📅 預約看房' },
+  { key: 'btnReportRepair', label: '按鈕：維修回報', ph: '🔧 維修回報' },
+  { key: 'btnMyBookings', label: '按鈕：我的預約', ph: '📋 我的預約' },
+  { key: 'welcome', label: '加好友歡迎語', ph: '👋 歡迎加入！...', multi: true },
+  { key: 'noRooms', label: '沒有空房時', ph: '😔 目前沒有空房...', multi: true },
+  { key: 'searchNoResult', label: '搜尋無結果時', ph: '🔍 找不到符合條件...', multi: true },
+  { key: 'bookButtonLabel', label: '房源卡按鈕', ph: '預約看這間' },
+  { key: 'askDate', label: '預約：問日期', ph: '📅 請輸入想看房的日期...', multi: true },
+  { key: 'askTime', label: '預約：問時段', ph: '⏰ 請選擇看房時間' },
+  { key: 'bookSuccess', label: '預約成功訊息', ph: '✅ 預約成功！...', multi: true },
+  { key: 'repairTitle', label: '維修：選類型標題', ph: '🔧 請選擇問題類型' },
+  { key: 'askRepairDesc', label: '維修：問描述', ph: '請描述問題詳情...', multi: true },
+  { key: 'repairSuccess', label: '維修成功訊息', ph: '✅ 維修申請已送出！...', multi: true },
+  { key: 'botDisabledMsg', label: 'Bot 停用時訊息', ph: '目前暫停服務...', multi: true },
+]
+var botTextState = { id: null, values: {} }
+
+function openBotTextEditor(id) {
+  var l = (DATA.landlords || []).find(function(x){ return x.id === id })
+  botTextState.id = id
+  botTextState.values = {}
+  if (l && l.botTextConfig) {
+    try { botTextState.values = JSON.parse(l.botTextConfig) } catch (e) {}
+  }
+  renderBotTextEditor()
+}
+
+function renderBotTextEditor() {
+  var fields = BOT_TEXT_FIELDS.map(function(f) {
+    var val = botTextState.values[f.key] || ''
+    var input = f.multi
+      ? '<textarea id="bt_' + f.key + '" rows="2" placeholder="' + esc(f.ph) + '" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;font-size:13px;">' + esc(val) + '</textarea>'
+      : '<input id="bt_' + f.key + '" value="' + esc(val) + '" placeholder="' + esc(f.ph) + '" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;font-size:13px;">'
+    return '<div style="margin-bottom:12px;"><label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">' + f.label + '</label>' + input + '</div>'
+  }).join('')
+
+  var html = '<div id="botTextModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:white;border-radius:18px;padding:24px;max-width:480px;width:100%;margin:auto;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+    '<h3 style="margin:0;">💬 Bot 文字內容</h3>' +
+    '<button onclick="closeBotTextEditor()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button></div>' +
+    '<p style="font-size:12px;color:var(--gray-light);margin:0 0 16px;">留空的欄位會使用系統預設文字</p>' +
+    fields +
+    '<div style="display:flex;gap:8px;margin-top:16px;position:sticky;bottom:0;background:white;padding-top:12px;">' +
+    '<button class="btn" style="flex:1;background:var(--deep-sage);" onclick="saveBotText()">儲存文字</button>' +
+    '</div></div></div>'
+
+  var existing = document.getElementById('botTextModal')
+  if (existing) existing.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
+function closeBotTextEditor() {
+  var m = document.getElementById('botTextModal')
+  if (m) m.remove()
+}
+
+async function saveBotText() {
+  var values = {}
+  BOT_TEXT_FIELDS.forEach(function(f) {
+    var el = document.getElementById('bt_' + f.key)
+    if (el && el.value.trim()) values[f.key] = el.value.trim()
+  })
+  var res = await fetch('/admin/api/landlord/' + botTextState.id + '/bottext?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ botText: values })
+  })
+  if (!res.ok) { showToast('❌ 儲存失敗'); return }
+  showToast('✅ Bot 文字已儲存')
+  closeBotTextEditor()
+  reload()
+}
+
+async function toggleBotEnabled(id, enable) {
+  var res = await fetch('/admin/api/landlord/' + id + '/bot-toggle?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ enabled: enable })
+  })
+  if (!res.ok) { showToast('❌ 操作失敗'); return }
+  showToast(enable ? '▶️ Bot 已啟用' : '⏸️ Bot 已停用')
   reload()
 }
 

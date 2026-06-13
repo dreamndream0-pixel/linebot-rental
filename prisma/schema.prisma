@@ -84,6 +84,8 @@ model Landlord {
   richMenuEnabled        Boolean   @default(false)  // 選單是否開啟
   siteName               String?   // 房東官網名稱
   siteLogo               String?   // 房東官網 LOGO 圖片網址
+  botTextConfig          String?   @db.Text   // Bot 自訂文字（JSON）
+  botEnabled             Boolean   @default(true)   // Bot 是否啟用
   source                 String    @unique @default(cuid())  // 該房東用戶的來源標記
 
   isActive      Boolean   @default(true)

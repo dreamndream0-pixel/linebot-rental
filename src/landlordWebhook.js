@@ -91,9 +91,13 @@ function registerLandlordWebhooks(app) {
               update: { isActive: true, landlordId: landlord.id, ...profileData },
               create: { lineUserId: userId, landlordId: landlord.id, ...profileData }
             })
+            const { getBotText } = require('./botText')
+            const t = await getBotText(landlord.id)
+            const welcomeText = (t.welcome || '👋 歡迎加入！\n\n輸入「選單」開始使用服務。')
+              .replace('歡迎加入！', `歡迎加入${landlord.name}！`)
             await client.replyMessage(event.replyToken, {
               type: 'text',
-              text: `👋 歡迎加入${landlord.name}！\n\n輸入「選單」開始使用服務。`
+              text: welcomeText
             })
           }
         } catch (err) {
