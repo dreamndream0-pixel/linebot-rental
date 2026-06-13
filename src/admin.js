@@ -653,7 +653,7 @@ async function login(savedKey) {
       if (sl) {
         if (DATA.role === 'landlord' && DATA.landlordId) {
           // 房東：第一顆＝個人官網，第二顆＝小蝸主站
-          sl.href = DATA.siteUrl + '/landlord/' + DATA.landlordId
+          sl.href = DATA.siteUrl + '/site/' + DATA.landlordId
           sl.textContent = '🌐 個人官網'
           if (msl) { msl.href = DATA.siteUrl; msl.style.display = 'inline-flex' }
         } else {
@@ -1219,7 +1219,7 @@ async function applyMenu() {
 
 function viewLandlordSite(id) {
   var base = (DATA && DATA.siteUrl) ? DATA.siteUrl : 'https://xiaowo-rental.vercel.app'
-  window.open(base + '/landlord/' + id, '_blank')
+  window.open(base + '/site/' + id, '_blank')
 }
 
 function openSiteEditor(id) {
