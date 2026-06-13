@@ -85,7 +85,7 @@ router.get('/admin/api/data', async (req, res) => {
     richMenuEnabled: !!l.richMenuEnabled,
   }))
 
-  res.json({ tenants, bookings, repairs, properties, landlords: safeLandlords, account: auth.label, role: auth.role })
+  res.json({ tenants, bookings, repairs, properties, landlords: safeLandlords, account: auth.label, role: auth.role, siteUrl: process.env.SITE_URL || 'https://xiaowo-rental.vercel.app' })
 })
 
 // 共用：確認某筆資料屬於該 auth（房東只能動自己的）
@@ -573,7 +573,10 @@ const ADMIN_HTML = `<!DOCTYPE html>
         <h1>🐌 小蝸出租 管理後台</h1>
         <p id="accountLabel">用戶、預約、維修一覽</p>
       </div>
-      <button onclick="logout()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;">登出</button>
+      <div style="display:flex;gap:8px;">
+        <a id="siteLink" href="#" target="_blank" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;">🌐 前往網站</a>
+        <button onclick="logout()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;">登出</button>
+      </div>
     </div>
   </header>
 
@@ -623,6 +626,10 @@ async function login(savedKey) {
     document.getElementById('mainView').style.display = 'block'
     if (DATA.account) {
       document.getElementById('accountLabel').textContent = '👤 ' + DATA.account
+    }
+    if (DATA.siteUrl) {
+      var sl = document.getElementById('siteLink')
+      if (sl) sl.href = DATA.siteUrl
     }
     renderTabBar()
     renderStats()
@@ -984,6 +991,7 @@ function renderLandlords() {
       '<span class="uid" onclick="copyText(\\'' + webhookUrl + '\\')" title="點擊複製" style="font-size:11px;">' + webhookUrl + '</span></div>' +
       '</div></div>' +
       '<div class="actions">' +
+      '<button class="action-btn" onclick="viewLandlordSite(\\'' + l.id + '\\')">🌐 看房源頁</button>' +
       '<button class="action-btn" onclick="setupBot(\\'' + l.id + '\\', \\'' + esc(l.name).replace(/'/g, '') + '\\', \\'' + webhookUrl + '\\')">🤖 設定 Bot</button>' +
       '<button class="action-btn" onclick="openMenuEditor(\\'' + l.id + '\\')">📱 設定選單</button>' +
       (l.hasRichMenu ? '<button class="action-btn ' + (l.richMenuEnabled ? 'danger' : '') + '" onclick="toggleMenu(\\'' + l.id + '\\', ' + (!l.richMenuEnabled) + ')">' + (l.richMenuEnabled ? '🔕 關閉選單' : '🔔 開啟選單') + '</button>' : '') +
@@ -1173,6 +1181,11 @@ async function applyMenu() {
   showToast('✅ 選單已套用')
   closeMenuEditor()
   reload()
+}
+
+function viewLandlordSite(id) {
+  var base = (DATA && DATA.siteUrl) ? DATA.siteUrl : 'https://xiaowo-rental.vercel.app'
+  window.open(base + '/listings?landlord=' + id, '_blank')
 }
 
 async function toggleMenu(id, enable) {
