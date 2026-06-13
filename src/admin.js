@@ -69,7 +69,7 @@ router.get('/admin/api/data', async (req, res) => {
     auth.role === 'super'
       ? prisma.landlord.findMany({
           orderBy: { createdAt: 'desc' },
-          select: { id: true, name: true, email: true, phone: true, adminKey: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, richMenuConfig: true, richMenuId: true, richMenuEnabled: true }
+          select: { id: true, name: true, email: true, phone: true, adminKey: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, richMenuConfig: true, richMenuId: true, richMenuEnabled: true, siteName: true, siteLogo: true }
         })
       : Promise.resolve([]),
   ])
@@ -83,6 +83,8 @@ router.get('/admin/api/data', async (req, res) => {
     richMenuConfig: l.richMenuConfig || null,
     hasRichMenu: !!l.richMenuId,
     richMenuEnabled: !!l.richMenuEnabled,
+    siteName: l.siteName || null,
+    siteLogo: l.siteLogo || null,
   }))
 
   res.json({ tenants, bookings, repairs, properties, landlords: safeLandlords, account: auth.label, role: auth.role, landlordId: auth.landlordId || null, siteUrl: process.env.SITE_URL || 'https://xiaowo-rental.vercel.app' })
@@ -403,6 +405,23 @@ router.post('/admin/api/landlord/:id/richmenu/toggle', express.json(), async (re
   }
 })
 
+// 設定房東官網（名稱 + LOGO）
+router.post('/admin/api/landlord/:id/site', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  if (auth.role === 'landlord' && auth.landlordId !== req.params.id) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  const { siteName, siteLogo } = req.body
+  const data = {}
+  if (siteName !== undefined) data.siteName = siteName || null
+  if (siteLogo !== undefined) data.siteLogo = siteLogo || null
+
+  await prisma.landlord.update({ where: { id: req.params.id }, data })
+  res.json({ ok: true })
+})
+
 // ── 後台頁面 ─────────────────────────────────────────────────────
 router.get('/admin', (req, res) => {
   res.send(ADMIN_HTML)
@@ -634,7 +653,7 @@ async function login(savedKey) {
       if (sl) {
         if (DATA.role === 'landlord' && DATA.landlordId) {
           // 房東：第一顆＝個人官網，第二顆＝小蝸主站
-          sl.href = DATA.siteUrl + '/listings?landlord=' + DATA.landlordId
+          sl.href = DATA.siteUrl + '/landlord/' + DATA.landlordId
           sl.textContent = '🌐 個人官網'
           if (msl) { msl.href = DATA.siteUrl; msl.style.display = 'inline-flex' }
         } else {
@@ -1005,6 +1024,7 @@ function renderLandlords() {
       '<span class="uid" onclick="copyText(\\'' + webhookUrl + '\\')" title="點擊複製" style="font-size:11px;">' + webhookUrl + '</span></div>' +
       '</div></div>' +
       '<div class="actions">' +
+      '<button class="action-btn" onclick="openSiteEditor(\\'' + l.id + '\\')">⚙️ 官網設定</button>' +
       '<button class="action-btn" onclick="viewLandlordSite(\\'' + l.id + '\\')">🌐 個人官網</button>' +
       '<button class="action-btn" onclick="setupBot(\\'' + l.id + '\\', \\'' + esc(l.name).replace(/'/g, '') + '\\', \\'' + webhookUrl + '\\')">🤖 設定 Bot</button>' +
       '<button class="action-btn" onclick="openMenuEditor(\\'' + l.id + '\\')">📱 設定選單</button>' +
@@ -1199,7 +1219,78 @@ async function applyMenu() {
 
 function viewLandlordSite(id) {
   var base = (DATA && DATA.siteUrl) ? DATA.siteUrl : 'https://xiaowo-rental.vercel.app'
-  window.open(base + '/listings?landlord=' + id, '_blank')
+  window.open(base + '/landlord/' + id, '_blank')
+}
+
+function openSiteEditor(id) {
+  var l = (DATA.landlords || []).find(function(x){ return x.id === id })
+  if (!l) return
+  siteEditState = { id: id, siteName: l.siteName || '', siteLogo: l.siteLogo || '' }
+  renderSiteEditor()
+}
+
+var siteEditState = { id: null, siteName: '', siteLogo: '' }
+
+function renderSiteEditor() {
+  var logoPreview = siteEditState.siteLogo
+    ? '<img src="' + siteEditState.siteLogo + '" style="width:72px;height:72px;object-fit:cover;border-radius:12px;border:1px solid #E5E0D5;">'
+    : '<div style="width:72px;height:72px;border-radius:12px;background:#F0EDE6;display:flex;align-items:center;justify-content:center;font-size:28px;">🏠</div>'
+
+  var html = '<div id="siteModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:white;border-radius:18px;padding:24px;max-width:440px;width:100%;margin:auto;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+    '<h3 style="margin:0;">⚙️ 官網設定</h3>' +
+    '<button onclick="closeSiteEditor()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button></div>' +
+    '<label style="font-size:13px;color:var(--gray-mid);display:block;margin-bottom:6px;">官網名稱</label>' +
+    '<input id="site_name" value="' + esc(siteEditState.siteName) + '" placeholder="例：小宇優質套房" style="width:100%;padding:10px 14px;border:1px solid #E5E0D5;border-radius:10px;margin-bottom:16px;">' +
+    '<label style="font-size:13px;color:var(--gray-mid);display:block;margin-bottom:6px;">官網 LOGO</label>' +
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">' +
+    '<div id="logo_preview">' + logoPreview + '</div>' +
+    '<input type="file" id="logo_upload" accept="image/*" onchange="uploadLogo(this)" style="font-size:13px;">' +
+    '</div>' +
+    '<div id="logo_status" style="font-size:12px;color:var(--sage);"></div>' +
+    '<div style="display:flex;gap:8px;margin-top:20px;">' +
+    '<button class="btn" style="flex:1;background:var(--deep-sage);" onclick="saveSite()">儲存</button>' +
+    '</div></div></div>'
+
+  var existing = document.getElementById('siteModal')
+  if (existing) existing.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
+function closeSiteEditor() {
+  var m = document.getElementById('siteModal')
+  if (m) m.remove()
+}
+
+async function uploadLogo(input) {
+  if (!input.files || !input.files[0]) return
+  var status = document.getElementById('logo_status')
+  status.textContent = '上傳中...'
+  var fd = new FormData()
+  fd.append('file', input.files[0])
+  try {
+    var res = await fetch('/admin/api/upload?key=' + encodeURIComponent(KEY), { method: 'POST', body: fd })
+    if (!res.ok) { status.textContent = '❌ 上傳失敗'; return }
+    var data = await res.json()
+    siteEditState.siteLogo = data.url
+    document.getElementById('logo_preview').innerHTML = '<img src="' + data.url + '" style="width:72px;height:72px;object-fit:cover;border-radius:12px;border:1px solid #E5E0D5;">'
+    status.textContent = '✅ 上傳完成'
+  } catch (e) {
+    status.textContent = '❌ 上傳失敗'
+  }
+}
+
+async function saveSite() {
+  var name = document.getElementById('site_name').value.trim()
+  var res = await fetch('/admin/api/landlord/' + siteEditState.id + '/site?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ siteName: name, siteLogo: siteEditState.siteLogo })
+  })
+  if (!res.ok) { showToast('❌ 儲存失敗'); return }
+  showToast('✅ 官網設定已儲存')
+  closeSiteEditor()
+  reload()
 }
 
 async function toggleMenu(id, enable) {
