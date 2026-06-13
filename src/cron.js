@@ -45,10 +45,10 @@ async function sendRentReminders(client) {
           spacing: 'sm',
           contents: [
             { type: 'text', text: `${tenant.property.title}`, weight: 'bold', size: 'md' },
-            { type: 'text', text: `本月租金：NT$ ${tenant.property.price.toLocaleString()}`, size: 'sm', color: '#555' },
-            { type: 'text', text: `繳納期限：本月 ${tenant.rentDue} 號前`, size: 'sm', color: '#555' },
+            { type: 'text', text: `本月租金：NT$ ${tenant.property.price.toLocaleString()}`, size: 'sm', color: '#555555' },
+            { type: 'text', text: `繳納期限：本月 ${tenant.rentDue} 號前`, size: 'sm', color: '#555555' },
             { type: 'separator', margin: 'md' },
-            { type: 'text', text: '請記得準時繳納，謝謝！🙏', size: 'xs', color: '#888', wrap: true }
+            { type: 'text', text: '請記得準時繳納，謝謝！🙏', size: 'xs', color: '#888888', wrap: true }
           ]
         }
       }

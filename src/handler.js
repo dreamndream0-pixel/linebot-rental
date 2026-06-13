@@ -28,8 +28,8 @@ function mainMenu() {
           menuButton('🔧 維修回報', 'ACTION_REPORT_REPAIR'),
           menuButton('📋 我的預約', 'ACTION_MY_BOOKINGS'),
           { type: 'separator', margin: 'md' },
-          { type: 'text', text: '💡 也可直接輸入條件搜尋', size: 'xs', color: '#888', margin: 'md', wrap: true },
-          { type: 'text', text: '例如：台中市 沙鹿區 5000-8000', size: 'xs', color: '#aaa', wrap: true },
+          { type: 'text', text: '💡 也可直接輸入條件搜尋', size: 'xs', color: '#888888', margin: 'md', wrap: true },
+          { type: 'text', text: '例如：台中市 沙鹿區 5000-8000', size: 'xs', color: '#aaaaaa', wrap: true },
         ]
       }
     }
@@ -71,11 +71,11 @@ function roomsToCarousel(rooms, altText) {
         spacing: 'sm',
         contents: [
           { type: 'text', text: room.title, weight: 'bold', size: 'lg', wrap: true },
-          { type: 'text', text: `${room.city}${room.district} · ${TYPE_LABEL[room.type] || ''}`, size: 'xs', color: '#aaa' },
+          { type: 'text', text: `${room.city}${room.district} · ${TYPE_LABEL[room.type] || ''}`, size: 'xs', color: '#aaaaaa' },
           {
             type: 'box', layout: 'horizontal', contents: [
               { type: 'text', text: `💰 NT$ ${room.price.toLocaleString()} / 月`, size: 'sm', color: '#7A9E7E', flex: 1 },
-              room.size ? { type: 'text', text: `📐 ${room.size} 坪`, size: 'sm', color: '#888', flex: 1 } : null
+              room.size ? { type: 'text', text: `📐 ${room.size} 坪`, size: 'sm', color: '#888888', flex: 1 } : null
             ].filter(Boolean)
           },
         ].filter(Boolean)
