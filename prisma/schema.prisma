@@ -79,6 +79,8 @@ model Landlord {
   lineChannelToken       String?
   lineBotName            String?
   notifyLineUserId       String?   // 房東接收預約/維修通知的 LINE User ID
+  richMenuConfig         String?   @db.Text   // 圖文選單設定（JSON）
+  richMenuId             String?   // 已套用的 LINE Rich Menu ID
   source                 String    @unique @default(cuid())  // 該房東用戶的來源標記
 
   isActive      Boolean   @default(true)

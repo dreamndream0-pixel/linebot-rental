@@ -69,7 +69,7 @@ router.get('/admin/api/data', async (req, res) => {
     auth.role === 'super'
       ? prisma.landlord.findMany({
           orderBy: { createdAt: 'desc' },
-          select: { id: true, name: true, email: true, phone: true, adminKey: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true }
+          select: { id: true, name: true, email: true, phone: true, adminKey: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, richMenuConfig: true, richMenuId: true }
         })
       : Promise.resolve([]),
   ])
@@ -80,6 +80,8 @@ router.get('/admin/api/data', async (req, res) => {
     adminKey: l.adminKey, isActive: l.isActive, createdAt: l.createdAt,
     lineBotName: l.lineBotName,
     botConfigured: !!(l.lineChannelSecret && l.lineChannelToken),
+    richMenuConfig: l.richMenuConfig || null,
+    hasRichMenu: !!l.richMenuId,
   }))
 
   res.json({ tenants, bookings, repairs, properties, landlords: safeLandlords, account: auth.label, role: auth.role })
@@ -326,6 +328,56 @@ router.post('/admin/api/upload', upload.single('file'), async (req, res) => {
   } catch (e) {
     console.error('上傳失敗:', e.message)
     res.status(500).json({ error: '上傳失敗' })
+  }
+})
+
+// ── API：圖文選單（Rich Menu） ─────────────────────────────────
+// 儲存選單設定
+router.post('/admin/api/landlord/:id/richmenu', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  // 房東只能設自己的
+  if (auth.role === 'landlord' && auth.landlordId !== req.params.id) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  const { template, cells, chatBarText } = req.body
+  const config = JSON.stringify({ template, cells, chatBarText: chatBarText || '選單' })
+  await prisma.landlord.update({ where: { id: req.params.id }, data: { richMenuConfig: config } })
+  res.json({ ok: true })
+})
+
+// 預覽選單圖（回傳 PNG）
+router.post('/admin/api/landlord/:id/richmenu/preview', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  try {
+    const { previewRichMenu } = require('./richMenu')
+    const { template, cells } = req.body
+    const png = await previewRichMenu(template, cells)
+    res.set('Content-Type', 'image/png')
+    res.send(png)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// 套用選單到 LINE Bot
+router.post('/admin/api/landlord/:id/richmenu/apply', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  if (auth.role === 'landlord' && auth.landlordId !== req.params.id) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  try {
+    const { applyRichMenu } = require('./richMenu')
+    const result = await applyRichMenu(req.params.id)
+    res.json({ ok: true, richMenuId: result.richMenuId })
+  } catch (e) {
+    console.error('套用選單失敗:', e.message)
+    res.status(500).json({ error: e.message })
   }
 })
 
@@ -911,6 +963,7 @@ function renderLandlords() {
       '</div></div>' +
       '<div class="actions">' +
       '<button class="action-btn" onclick="setupBot(\\'' + l.id + '\\', \\'' + esc(l.name).replace(/'/g, '') + '\\', \\'' + webhookUrl + '\\')">🤖 設定 Bot</button>' +
+      '<button class="action-btn" onclick="openMenuEditor(\\'' + l.id + '\\')">📱 設定選單</button>' +
       '<button class="action-btn" onclick="regenerateKey(\\'' + l.id + '\\')">🔑 重發金鑰</button>' +
       '<button class="action-btn ' + (l.isActive ? 'danger' : '') + '" onclick="toggleLandlord(\\'' + l.id + '\\', ' + (!l.isActive) + ')">' + (l.isActive ? '停用' : '啟用') + '</button>' +
       '</div></div>'
@@ -958,6 +1011,147 @@ async function createLandlord() {
   alert('✅ 房東「' + data.name + '」已建立！\\n\\n登入金鑰（請交給房東，用來登入後台）：\\n' + data._adminKey + '\\n\\n這組金鑰就是房東登入後台的密碼。')
   reload()
 }
+
+// ── 圖文選單編輯器 ──────────────────────────────────────────────
+var MENU_TEMPLATES = {
+  '2': { label: '左右兩格', count: 2 },
+  '3': { label: '橫向三格', count: 3 },
+  '4': { label: '田字四格', count: 4 },
+  '6': { label: '六格 (2×3)', count: 6 },
+}
+var DEFAULT_ICONS = ['🏠','📅','🔧','📋','💬','📞']
+var DEFAULT_LABELS = ['查詢空房','預約看房','維修回報','我的預約','聯絡我們','其他']
+var DEFAULT_TEXTS = ['查詢空房','預約看房','維修回報','我的預約','聯絡','選單']
+var menuEditState = { landlordId: null, template: '4', cells: [] }
+
+function openMenuEditor(landlordId) {
+  var l = (DATA.landlords || []).find(function(x){ return x.id === landlordId })
+  menuEditState.landlordId = landlordId
+
+  // 載入既有設定，或用預設
+  if (l && l.richMenuConfig) {
+    try {
+      var cfg = JSON.parse(l.richMenuConfig)
+      menuEditState.template = cfg.template || '4'
+      menuEditState.cells = cfg.cells || []
+      menuEditState.chatBarText = cfg.chatBarText || '選單'
+    } catch (e) { resetMenuCells() }
+  } else {
+    resetMenuCells()
+  }
+  renderMenuEditor()
+}
+
+function resetMenuCells() {
+  menuEditState.template = '4'
+  menuEditState.chatBarText = '選單'
+  menuEditState.cells = []
+  for (var i = 0; i < 4; i++) {
+    menuEditState.cells.push({ icon: DEFAULT_ICONS[i], label: DEFAULT_LABELS[i], text: DEFAULT_TEXTS[i] })
+  }
+}
+
+function changeTemplate(t) {
+  menuEditState.template = t
+  var count = MENU_TEMPLATES[t].count
+  var cells = []
+  for (var i = 0; i < count; i++) {
+    cells.push(menuEditState.cells[i] || { icon: DEFAULT_ICONS[i] || '', label: DEFAULT_LABELS[i] || '按鈕', text: DEFAULT_TEXTS[i] || '' })
+  }
+  menuEditState.cells = cells
+  renderMenuEditor()
+}
+
+function updateCell(i, field, val) {
+  menuEditState.cells[i][field] = val
+}
+
+function renderMenuEditor() {
+  var tplBtns = Object.keys(MENU_TEMPLATES).map(function(t) {
+    return '<button onclick="changeTemplate(\\'' + t + '\\')" style="padding:8px 14px;border-radius:8px;border:1.5px solid ' +
+      (menuEditState.template === t ? 'var(--sage);background:var(--sage);color:white;' : '#E5E0D5;background:white;color:var(--charcoal);') +
+      'font-size:13px;cursor:pointer;margin-right:6px;margin-bottom:6px;">' + MENU_TEMPLATES[t].label + '</button>'
+  }).join('')
+
+  var cellInputs = menuEditState.cells.map(function(c, i) {
+    return '<div style="border:1px solid #E5E0D5;border-radius:10px;padding:12px;margin-bottom:8px;">' +
+      '<div style="font-size:12px;color:var(--gray-mid);margin-bottom:6px;">格子 ' + (i+1) + '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+      '<input value="' + esc(c.icon || '') + '" onchange="updateCell(' + i + ',\\'icon\\',this.value)" placeholder="圖示" style="width:60px;padding:8px;border:1px solid #E5E0D5;border-radius:8px;text-align:center;">' +
+      '<input value="' + esc(c.label || '') + '" onchange="updateCell(' + i + ',\\'label\\',this.value)" placeholder="顯示文字" style="flex:1;min-width:100px;padding:8px;border:1px solid #E5E0D5;border-radius:8px;">' +
+      '</div>' +
+      '<input value="' + esc(c.text || '') + '" onchange="updateCell(' + i + ',\\'text\\',this.value)" placeholder="點擊後送出的文字（例：查詢空房）" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;margin-top:6px;">' +
+      '</div>'
+  }).join('')
+
+  var html = '<div id="menuModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:white;border-radius:18px;padding:24px;max-width:520px;width:100%;margin:auto;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+    '<h3 style="margin:0;">📱 設定圖文選單</h3>' +
+    '<button onclick="closeMenuEditor()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button></div>' +
+    '<div style="font-size:13px;color:var(--gray-mid);margin-bottom:8px;">選擇版型</div>' +
+    '<div style="margin-bottom:16px;">' + tplBtns + '</div>' +
+    '<div style="font-size:13px;color:var(--gray-mid);margin-bottom:8px;">選單列文字（聊天室底部顯示）</div>' +
+    '<input value="' + esc(menuEditState.chatBarText || '選單') + '" onchange="menuEditState.chatBarText=this.value" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:16px;">' +
+    '<div style="font-size:13px;color:var(--gray-mid);margin-bottom:8px;">每格設定</div>' +
+    cellInputs +
+    '<div id="menuPreview" style="margin:16px 0;text-align:center;"></div>' +
+    '<div style="display:flex;gap:8px;margin-top:16px;">' +
+    '<button class="btn" style="flex:1;" onclick="previewMenu()">預覽圖片</button>' +
+    '<button class="btn" style="flex:1;background:var(--deep-sage);" onclick="applyMenu()">儲存並套用</button>' +
+    '</div>' +
+    '<p style="font-size:11px;color:var(--gray-light);margin-top:12px;line-height:1.6;">套用後選單會出現在該房東 Bot 的聊天室底部。租客點按鈕＝送出你設定的文字，例如「查詢空房」就會觸發查空房功能。</p>' +
+    '</div></div>'
+
+  var existing = document.getElementById('menuModal')
+  if (existing) existing.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
+function closeMenuEditor() {
+  var m = document.getElementById('menuModal')
+  if (m) m.remove()
+}
+
+async function previewMenu() {
+  var box = document.getElementById('menuPreview')
+  box.innerHTML = '預覽生成中...'
+  try {
+    var res = await fetch('/admin/api/landlord/' + menuEditState.landlordId + '/richmenu/preview?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ template: menuEditState.template, cells: menuEditState.cells })
+    })
+    if (!res.ok) { box.innerHTML = '❌ 預覽失敗'; return }
+    var blob = await res.blob()
+    var url = URL.createObjectURL(blob)
+    box.innerHTML = '<img src="' + url + '" style="width:100%;border-radius:10px;border:1px solid #E5E0D5;">'
+  } catch (e) {
+    box.innerHTML = '❌ 預覽失敗'
+  }
+}
+
+async function applyMenu() {
+  // 先存設定
+  var saveRes = await fetch('/admin/api/landlord/' + menuEditState.landlordId + '/richmenu?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ template: menuEditState.template, cells: menuEditState.cells, chatBarText: menuEditState.chatBarText })
+  })
+  if (!saveRes.ok) { showToast('❌ 儲存失敗'); return }
+
+  showToast('套用中，請稍候...')
+  var res = await fetch('/admin/api/landlord/' + menuEditState.landlordId + '/richmenu/apply?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}'
+  })
+  if (!res.ok) {
+    var err = await res.json()
+    alert('❌ 套用失敗：' + (err.error || '未知錯誤') + '\\n\\n請確認該房東的 Bot 已設定 Channel Token。')
+    return
+  }
+  showToast('✅ 選單已套用')
+  closeMenuEditor()
+  reload()
+}
+
 
 async function regenerateKey(id) {
   if (!confirm('重發金鑰後，舊金鑰立刻失效，房東要用新金鑰登入。確定？')) return
