@@ -73,8 +73,8 @@ function roomsToCarousel(rooms, altText) {
           {
             type: 'box', layout: 'horizontal', contents: [
               { type: 'text', text: `💰 NT$ ${room.price.toLocaleString()} / 月`, size: 'sm', color: '#7A9E7E', flex: 1 },
-              { type: 'text', text: room.size ? `📐 ${room.size} 坪` : '', size: 'sm', color: '#888', flex: 1 }
-            ]
+              room.size ? { type: 'text', text: `📐 ${room.size} 坪`, size: 'sm', color: '#888', flex: 1 } : null
+            ].filter(Boolean)
           },
         ].filter(Boolean)
       },

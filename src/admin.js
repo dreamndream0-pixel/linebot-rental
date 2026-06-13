@@ -3,6 +3,16 @@ const prisma = require('./db')
 
 const router = express.Router()
 
+// ── Cloudinary 圖片上傳設定 ──────────────────────────────────────
+const cloudinary = require('cloudinary').v2
+const multer = require('multer')
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+})
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
+
 // 不再提供預設密碼：沒設定環境變數就拒絕所有登入
 const ADMIN_KEY = process.env.ADMIN_KEY
 
@@ -259,6 +269,29 @@ router.post('/admin/api/landlord/:id/regenerate-key', express.json(), async (req
   const adminKey = 'LL-' + crypto.randomBytes(9).toString('base64url')
   const landlord = await prisma.landlord.update({ where: { id: req.params.id }, data: { adminKey } })
   res.json({ ...landlord, _adminKey: adminKey })
+})
+
+// ── API：上傳照片到 Cloudinary ─────────────────────────────────
+router.post('/admin/api/upload', upload.single('file'), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  if (!process.env.CLOUDINARY_CLOUD_NAME) {
+    return res.status(500).json({ error: 'Cloudinary 未設定' })
+  }
+  if (!req.file) return res.status(400).json({ error: '未選擇檔案' })
+
+  try {
+    const base64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`
+    const result = await cloudinary.uploader.upload(base64, {
+      folder: 'xiaowo-rental/properties',
+      transformation: [{ width: 1200, height: 900, crop: 'limit', quality: 'auto:good' }],
+    })
+    res.json({ url: result.secure_url, cloudinaryId: result.public_id })
+  } catch (e) {
+    console.error('上傳失敗:', e.message)
+    res.status(500).json({ error: '上傳失敗' })
+  }
 })
 
 // ── 後台頁面 ─────────────────────────────────────────────────────
@@ -548,7 +581,7 @@ function renderTab() {
   if (currentTab === 'tenants') el.innerHTML = renderTenants()
   if (currentTab === 'bookings') el.innerHTML = renderBookings()
   if (currentTab === 'repairs') el.innerHTML = renderRepairs()
-  if (currentTab === 'properties') el.innerHTML = renderProperties()
+  if (currentTab === 'properties') { el.innerHTML = renderProperties(); setTimeout(renderImgPreview, 50) }
   if (currentTab === 'landlords') el.innerHTML = renderLandlords()
 }
 
@@ -684,7 +717,11 @@ function propertyForm() {
     '<div><label>押金</label><input id="f_deposit" value="' + esc(p ? p.deposit : '兩個月') + '"></div>' +
     '<div class="full"><label>地址（不公開，僅自己看）</label><input id="f_address" value="' + esc(p ? p.address : '') + '"></div>' +
     '<div class="full"><label>描述</label><textarea id="f_desc" rows="2" placeholder="採光良好，含冷氣熱水器...">' + esc(p ? p.description : '') + '</textarea></div>' +
-    '<div class="full"><label>照片網址（多張用逗號分隔，第一張為封面）</label><input id="f_images" value="' + esc(imageUrls) + '" placeholder="https://... , https://..."></div>' +
+    '<div class="full"><label>照片</label>' +
+    '<div id="img_preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>' +
+    '<input type="file" id="f_upload" accept="image/*" multiple onchange="uploadImages(this)" style="font-size:13px;margin-bottom:8px;">' +
+    '<div id="upload_status" style="font-size:12px;color:var(--sage);"></div>' +
+    '<input type="hidden" id="f_images" value="' + esc(imageUrls) + '">' +
     '</div>' +
     '<div class="actions" style="margin-top:14px;">' +
     '<button class="btn" style="width:auto;padding:10px 24px;" onclick="saveProperty()">' + (p ? '儲存修改' : '新增房源') + '</button>' +
@@ -695,7 +732,57 @@ function propertyForm() {
 function startEditProperty(id) {
   editingPropertyId = id
   renderTab()
+  setTimeout(renderImgPreview, 50)
   window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+// 渲染目前已有的照片預覽（可刪除）
+function renderImgPreview() {
+  var box = document.getElementById('img_preview')
+  var hidden = document.getElementById('f_images')
+  if (!box || !hidden) return
+  var urls = hidden.value.split(',').map(function(s){ return s.trim() }).filter(Boolean)
+  box.innerHTML = urls.map(function(u, i) {
+    return '<div style="position:relative;">' +
+      '<img src="' + u + '" style="width:72px;height:54px;object-fit:cover;border-radius:8px;">' +
+      '<button onclick="removeImg(' + i + ')" style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:1;">×</button>' +
+      (i === 0 ? '<span style="position:absolute;bottom:2px;left:2px;background:var(--sage-dark,#4E7153);color:white;font-size:9px;padding:1px 4px;border-radius:3px;">封面</span>' : '') +
+      '</div>'
+  }).join('')
+}
+
+function removeImg(idx) {
+  var hidden = document.getElementById('f_images')
+  var urls = hidden.value.split(',').map(function(s){ return s.trim() }).filter(Boolean)
+  urls.splice(idx, 1)
+  hidden.value = urls.join(', ')
+  renderImgPreview()
+}
+
+async function uploadImages(input) {
+  var files = input.files
+  if (!files.length) return
+  var status = document.getElementById('upload_status')
+  var hidden = document.getElementById('f_images')
+
+  for (var i = 0; i < files.length; i++) {
+    status.textContent = '上傳中... (' + (i + 1) + '/' + files.length + ')'
+    var fd = new FormData()
+    fd.append('file', files[i])
+    try {
+      var res = await fetch('/admin/api/upload?key=' + encodeURIComponent(KEY), { method: 'POST', body: fd })
+      if (!res.ok) { status.textContent = '❌ 上傳失敗'; continue }
+      var data = await res.json()
+      var cur = hidden.value.split(',').map(function(s){ return s.trim() }).filter(Boolean)
+      cur.push(data.url)
+      hidden.value = cur.join(', ')
+      renderImgPreview()
+    } catch (e) {
+      status.textContent = '❌ 上傳失敗'
+    }
+  }
+  status.textContent = '✅ 上傳完成'
+  input.value = ''
 }
 
 function cancelEdit() {
