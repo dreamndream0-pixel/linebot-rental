@@ -85,7 +85,7 @@ router.get('/admin/api/data', async (req, res) => {
     richMenuEnabled: !!l.richMenuEnabled,
   }))
 
-  res.json({ tenants, bookings, repairs, properties, landlords: safeLandlords, account: auth.label, role: auth.role, siteUrl: process.env.SITE_URL || 'https://xiaowo-rental.vercel.app' })
+  res.json({ tenants, bookings, repairs, properties, landlords: safeLandlords, account: auth.label, role: auth.role, landlordId: auth.landlordId || null, siteUrl: process.env.SITE_URL || 'https://xiaowo-rental.vercel.app' })
 })
 
 // 共用：確認某筆資料屬於該 auth（房東只能動自己的）
@@ -574,7 +574,8 @@ const ADMIN_HTML = `<!DOCTYPE html>
         <p id="accountLabel">用戶、預約、維修一覽</p>
       </div>
       <div style="display:flex;gap:8px;">
-        <a id="siteLink" href="#" target="_blank" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;">🌐 前往網站</a>
+        <a id="siteLink" href="#" target="_blank" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;">🌐 網站</a>
+        <a id="mainSiteLink" href="#" target="_blank" style="display:none;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;text-decoration:none;align-items:center;">🐌 小蝸主站</a>
         <button onclick="logout()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;">登出</button>
       </div>
     </div>
@@ -629,7 +630,20 @@ async function login(savedKey) {
     }
     if (DATA.siteUrl) {
       var sl = document.getElementById('siteLink')
-      if (sl) sl.href = DATA.siteUrl
+      var msl = document.getElementById('mainSiteLink')
+      if (sl) {
+        if (DATA.role === 'landlord' && DATA.landlordId) {
+          // 房東：第一顆＝個人官網，第二顆＝小蝸主站
+          sl.href = DATA.siteUrl + '/listings?landlord=' + DATA.landlordId
+          sl.textContent = '🌐 個人官網'
+          if (msl) { msl.href = DATA.siteUrl; msl.style.display = 'inline-flex' }
+        } else {
+          // 總管理員：只需要主站
+          sl.href = DATA.siteUrl
+          sl.textContent = '🐌 小蝸主站'
+          if (msl) msl.style.display = 'none'
+        }
+      }
     }
     renderTabBar()
     renderStats()
@@ -991,7 +1005,7 @@ function renderLandlords() {
       '<span class="uid" onclick="copyText(\\'' + webhookUrl + '\\')" title="點擊複製" style="font-size:11px;">' + webhookUrl + '</span></div>' +
       '</div></div>' +
       '<div class="actions">' +
-      '<button class="action-btn" onclick="viewLandlordSite(\\'' + l.id + '\\')">🌐 看房源頁</button>' +
+      '<button class="action-btn" onclick="viewLandlordSite(\\'' + l.id + '\\')">🌐 個人官網</button>' +
       '<button class="action-btn" onclick="setupBot(\\'' + l.id + '\\', \\'' + esc(l.name).replace(/'/g, '') + '\\', \\'' + webhookUrl + '\\')">🤖 設定 Bot</button>' +
       '<button class="action-btn" onclick="openMenuEditor(\\'' + l.id + '\\')">📱 設定選單</button>' +
       (l.hasRichMenu ? '<button class="action-btn ' + (l.richMenuEnabled ? 'danger' : '') + '" onclick="toggleMenu(\\'' + l.id + '\\', ' + (!l.richMenuEnabled) + ')">' + (l.richMenuEnabled ? '🔕 關閉選單' : '🔔 開啟選單') + '</button>' : '') +
