@@ -6,6 +6,7 @@ const { startCronJobs } = require('./cron')
 const prisma = require('./db')
 const adminRouter = require('./admin')
 const { registerExtraChannels } = require('./extraChannels')
+const { registerLandlordWebhooks } = require('./landlordWebhook')
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -20,6 +21,9 @@ app.use(adminRouter)
 
 // ── 其他官方帳號的輕量 Webhook（只抓 userId） ─────────────────
 registerExtraChannels(app)
+
+// ── 房東動態 Webhook（B-1：多房東各自的 Bot） ─────────────────
+registerLandlordWebhooks(app)
 
 // ── 主帳號 Webhook ─────────────────────────────────────────────
 app.post('/webhook', middleware(config), (req, res) => {
