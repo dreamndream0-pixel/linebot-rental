@@ -1,5 +1,40 @@
 const prisma = require('./db')
 
+// ── 通知房東（依房源歸屬，找不到則退回主帳號 OWNER） ────────────
+// landlordId: 房源的歸屬房東；client: 該房東 Bot 的 client（可推給該房東）
+async function notifyLandlord(landlordId, message, fallbackClient) {
+  // 找房東的接收 ID
+  let landlord = null
+  if (landlordId) {
+    try {
+      landlord = await prisma.landlord.findUnique({
+        where: { id: landlordId },
+        select: { notifyLineUserId: true, lineChannelToken: true, lineChannelSecret: true }
+      })
+    } catch (e) { console.error('查房東通知設定失敗:', e.message) }
+  }
+
+  // 優先：房東有設定接收 ID + 自己的 Bot → 用房東自己的 Bot 推給房東
+  if (landlord && landlord.notifyLineUserId && landlord.lineChannelToken) {
+    try {
+      const { Client } = require('@line/bot-sdk')
+      const llClient = new Client({
+        channelAccessToken: landlord.lineChannelToken,
+        channelSecret: landlord.lineChannelSecret || '',
+      })
+      await llClient.pushMessage(landlord.notifyLineUserId, { type: 'text', text: message })
+      return
+    } catch (e) { console.error('通知房東失敗（房東 Bot）:', e.message) }
+  }
+
+  // 退回：推給主帳號 OWNER（你）
+  if (process.env.OWNER_LINE_USER_ID && fallbackClient) {
+    try {
+      await fallbackClient.pushMessage(process.env.OWNER_LINE_USER_ID, { type: 'text', text: message })
+    } catch (e) { console.error('通知房東失敗（fallback）:', e.message) }
+  }
+}
+
 // ── 主選單 Flex Message ──────────────────────────────────────────
 function mainMenu() {
   return {
@@ -101,9 +136,11 @@ function roomsToCarousel(rooms, altText) {
   }
 }
 
-async function listAvailableRooms() {
+async function listAvailableRooms(landlordId = null) {
+  const where = { status: 'AVAILABLE', deletedAt: null }
+  if (landlordId) where.ownerId = landlordId
   const rooms = await prisma.property.findMany({
-    where: { status: 'AVAILABLE', deletedAt: null },
+    where,
     include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] } },
     orderBy: { price: 'asc' },
     take: 10
@@ -169,8 +206,9 @@ function parseSearchQuery(text) {
 }
 
 // ── 關鍵字搜尋房源 ────────────────────────────────────────────────
-async function searchRooms(parsed) {
+async function searchRooms(parsed, landlordId = null) {
   const where = { status: 'AVAILABLE', deletedAt: null }
+  if (landlordId) where.ownerId = landlordId
   if (parsed.city) where.city = parsed.city
   if (parsed.district) where.district = { contains: parsed.district.replace(/(區|鄉|鎮)$/, '') }
   if (parsed.minPrice || parsed.maxPrice) {
@@ -265,7 +303,7 @@ async function myBookings(lineUserId) {
 // ── 用戶狀態（多步驟流程） ──────────────────────────────────────
 const userState = new Map()
 
-async function handleMessage(event, client) {
+async function handleMessage(event, client, landlordId = null) {
   const userId = event.source.userId
   const text = event.message?.text?.trim() || ''
   const state = userState.get(userId) || {}
@@ -283,10 +321,12 @@ async function handleMessage(event, client) {
     console.log('無法取得用戶名稱:', e.message)
   }
 
+  // 若來自某房東的 Bot，將用戶歸屬到該房東
+  const tenantData = landlordId ? { ...profileData, landlordId } : profileData
   await prisma.tenant.upsert({
     where: { lineUserId: userId },
-    update: profileData,
-    create: { lineUserId: userId, ...profileData }
+    update: tenantData,
+    create: { lineUserId: userId, ...tenantData }
   })
 
   let reply
@@ -299,9 +339,9 @@ async function handleMessage(event, client) {
   }
   // ── 主要指令 ──
   else if (text === 'ACTION_LIST_ROOMS' || text === '查詢空房') {
-    reply = await listAvailableRooms()
+    reply = await listAvailableRooms(landlordId)
   } else if (text === 'ACTION_BOOK_VISIT' || text === '預約看房') {
-    reply = await listAvailableRooms()
+    reply = await listAvailableRooms(landlordId)
   } else if (text === 'ACTION_REPORT_REPAIR' || text === '維修回報') {
     reply = repairMenu()
   } else if (text === 'ACTION_MY_BOOKINGS' || text === '我的預約') {
@@ -321,7 +361,7 @@ async function handleMessage(event, client) {
     // 嘗試把訊息當作搜尋關鍵字解析
     const parsed = parseSearchQuery(text)
     if (parsed) {
-      reply = await searchRooms(parsed)
+      reply = await searchRooms(parsed, landlordId)
     } else {
       reply = mainMenu()
     }
@@ -399,9 +439,7 @@ async function handleBookingFlow(userId, text, state, client) {
     userState.delete(userId)
 
     const ownerMsg = `📅 新看房預約！\n房源：${booking.property.title}\n時間：${visitDate} ${timeslot}\n用戶：${tenant.name || tenant.lineUserId}\n請至後台確認`
-    if (process.env.OWNER_LINE_USER_ID) {
-      try { await client.pushMessage(process.env.OWNER_LINE_USER_ID, { type: 'text', text: ownerMsg }) } catch (e) { console.error('通知房東失敗:', e.message) }
-    }
+    await notifyLandlord(prop?.ownerId, ownerMsg, client)
 
     return {
       type: 'text',
@@ -442,9 +480,7 @@ async function handleRepairFlow(userId, text, state, client) {
     userState.delete(userId)
 
     const ownerMsg = `🔧 維修回報！\n房源：${property.title}\n類型：${category}\n描述：${text}\n回報人：${tenant.name || tenant.lineUserId}`
-    if (process.env.OWNER_LINE_USER_ID) {
-      try { await client.pushMessage(process.env.OWNER_LINE_USER_ID, { type: 'text', text: ownerMsg }) } catch (e) { console.error('通知房東失敗:', e.message) }
-    }
+    await notifyLandlord(property.ownerId, ownerMsg, client)
 
     return {
       type: 'text',

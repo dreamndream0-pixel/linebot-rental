@@ -67,11 +67,22 @@ router.get('/admin/api/data', async (req, res) => {
     }),
     // 只有總管理員需要房東清單
     auth.role === 'super'
-      ? prisma.landlord.findMany({ orderBy: { createdAt: 'desc' } })
+      ? prisma.landlord.findMany({
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, name: true, email: true, phone: true, adminKey: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true }
+        })
       : Promise.resolve([]),
   ])
 
-  res.json({ tenants, bookings, repairs, properties, landlords, account: auth.label, role: auth.role })
+  // 房東的 Bot 機密不外洩到前端，只標示是否已設定
+  const safeLandlords = landlords.map(l => ({
+    id: l.id, name: l.name, email: l.email, phone: l.phone,
+    adminKey: l.adminKey, isActive: l.isActive, createdAt: l.createdAt,
+    lineBotName: l.lineBotName,
+    botConfigured: !!(l.lineChannelSecret && l.lineChannelToken),
+  }))
+
+  res.json({ tenants, bookings, repairs, properties, landlords: safeLandlords, account: auth.label, role: auth.role })
 })
 
 // 共用：確認某筆資料屬於該 auth（房東只能動自己的）
@@ -269,6 +280,30 @@ router.post('/admin/api/landlord/:id/regenerate-key', express.json(), async (req
   const adminKey = 'LL-' + crypto.randomBytes(9).toString('base64url')
   const landlord = await prisma.landlord.update({ where: { id: req.params.id }, data: { adminKey } })
   res.json({ ...landlord, _adminKey: adminKey })
+})
+
+// 設定房東的 LINE Bot（Channel Secret / Token）
+router.post('/admin/api/landlord/:id/bot', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+
+  const { lineChannelSecret, lineChannelToken, lineBotName, notifyLineUserId } = req.body
+  const landlord = await prisma.landlord.update({
+    where: { id: req.params.id },
+    data: {
+      lineChannelSecret: lineChannelSecret || null,
+      lineChannelToken: lineChannelToken || null,
+      lineBotName: lineBotName || null,
+      notifyLineUserId: notifyLineUserId || null,
+    }
+  })
+  // 清除 webhook 設定快取，讓新設定立即生效
+  try {
+    const { clearConfigCache } = require('./landlordWebhook')
+    clearConfigCache(req.params.id)
+  } catch (e) {}
+
+  res.json({ ok: true, id: landlord.id })
 })
 
 // ── API：上傳照片到 Cloudinary ─────────────────────────────────
@@ -861,19 +896,44 @@ function renderLandlords() {
 
   var listHtml = list.map(function(l) {
     var propCount = DATA.properties.filter(function(p){ return p.ownerId === l.id }).length
+    var botStatus = l.botConfigured
+      ? '<span style="color:var(--deep-sage);font-size:12px;">🤖 Bot 已設定' + (l.lineBotName ? '：' + esc(l.lineBotName) : '') + '</span>'
+      : '<span style="color:var(--warn,#C9913A);font-size:12px;">🤖 Bot 未設定</span>'
+    var webhookUrl = location.origin + '/webhook/landlord/' + l.id
     return '<div class="card"><div class="card-row"><div>' +
       '<h3>' + esc(l.name) + (l.isActive ? '' : ' <span style="font-size:12px;color:var(--danger);">(已停用)</span>') + '</h3>' +
       '<div class="meta">📧 ' + esc(l.email) + (l.phone ? ' · 📞 ' + esc(l.phone) : '') +
-      '<br>🏠 ' + propCount + ' 間房源 · 加入：' + fmtDate(l.createdAt) + '</div>' +
+      '<br>🏠 ' + propCount + ' 間房源 · 加入：' + fmtDate(l.createdAt) + '<br>' + botStatus + '</div>' +
       '<div style="margin-top:6px;"><span style="font-size:12px;color:var(--gray-mid);">登入金鑰：</span>' +
       '<span class="uid" onclick="copyText(\\'' + l.adminKey + '\\')" title="點擊複製">' + l.adminKey + '</span></div>' +
       '</div></div>' +
       '<div class="actions">' +
+      '<button class="action-btn" onclick="setupBot(\\'' + l.id + '\\', \\'' + esc(l.name).replace(/'/g, '') + '\\', \\'' + webhookUrl + '\\')">🤖 設定 Bot</button>' +
       '<button class="action-btn" onclick="regenerateKey(\\'' + l.id + '\\')">🔑 重發金鑰</button>' +
       '<button class="action-btn ' + (l.isActive ? 'danger' : '') + '" onclick="toggleLandlord(\\'' + l.id + '\\', ' + (!l.isActive) + ')">' + (l.isActive ? '停用' : '啟用') + '</button>' +
       '</div></div>'
   }).join('')
   return formHtml + listHtml
+}
+
+// 設定房東的 LINE Bot
+async function setupBot(id, name, webhookUrl) {
+  var secret = prompt('【' + name + '】的 LINE Bot 設定\\n\\n步驟1/2：貼上 Channel Secret\\n（從房東的 LINE Developers Console → Basic settings）')
+  if (secret === null) return
+  var token = prompt('步驟2/2：貼上 Channel Access Token\\n（Messaging API 頁籤最下方 Issue）')
+  if (token === null) return
+  var botName = prompt('（選填）這個 Bot 的名稱，方便你辨識：', name) || ''
+  var notifyId = prompt('（選填）房東要接收「預約/維修通知」的 LINE User ID\\n\\n留空的話，通知會發給你（總管理員）。\\n房東的 User ID 可在他的 LINE Developers Console → Basic settings → Your user ID 取得。') || ''
+
+  var res = await fetch('/admin/api/landlord/' + id + '/bot?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ lineChannelSecret: secret.trim(), lineChannelToken: token.trim(), lineBotName: botName.trim(), notifyLineUserId: notifyId.trim() })
+  })
+  if (!res.ok) { showToast('❌ 設定失敗'); return }
+
+  // 顯示要填到 LINE 後台的 Webhook URL
+  alert('✅ Bot 設定完成！\\n\\n最後一步：到這個房東的 LINE Developers Console → Messaging API → Webhook URL，填入：\\n\\n' + webhookUrl + '\\n\\n並開啟「Use webhook」。\\n\\n（這串網址已幫你準備好，也會顯示在房東卡片上）')
+  reload()
 }
 
 async function createLandlord() {
