@@ -69,7 +69,7 @@ router.get('/admin/api/data', async (req, res) => {
     auth.role === 'super'
       ? prisma.landlord.findMany({
           orderBy: { createdAt: 'desc' },
-          select: { id: true, name: true, email: true, phone: true, adminKey: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, richMenuConfig: true, richMenuId: true }
+          select: { id: true, name: true, email: true, phone: true, adminKey: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, richMenuConfig: true, richMenuId: true, richMenuEnabled: true }
         })
       : Promise.resolve([]),
   ])
@@ -82,6 +82,7 @@ router.get('/admin/api/data', async (req, res) => {
     botConfigured: !!(l.lineChannelSecret && l.lineChannelToken),
     richMenuConfig: l.richMenuConfig || null,
     hasRichMenu: !!l.richMenuId,
+    richMenuEnabled: !!l.richMenuEnabled,
   }))
 
   res.json({ tenants, bookings, repairs, properties, landlords: safeLandlords, account: auth.label, role: auth.role })
@@ -377,6 +378,27 @@ router.post('/admin/api/landlord/:id/richmenu/apply', express.json(), async (req
     res.json({ ok: true, richMenuId: result.richMenuId })
   } catch (e) {
     console.error('套用選單失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// 開關選單
+router.post('/admin/api/landlord/:id/richmenu/toggle', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  if (auth.role === 'landlord' && auth.landlordId !== req.params.id) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  try {
+    const { enableRichMenu, disableRichMenu } = require('./richMenu')
+    if (req.body.enabled) {
+      await enableRichMenu(req.params.id)
+    } else {
+      await disableRichMenu(req.params.id)
+    }
+    res.json({ ok: true, enabled: !!req.body.enabled })
+  } catch (e) {
     res.status(500).json({ error: e.message })
   }
 })
@@ -964,6 +986,7 @@ function renderLandlords() {
       '<div class="actions">' +
       '<button class="action-btn" onclick="setupBot(\\'' + l.id + '\\', \\'' + esc(l.name).replace(/'/g, '') + '\\', \\'' + webhookUrl + '\\')">🤖 設定 Bot</button>' +
       '<button class="action-btn" onclick="openMenuEditor(\\'' + l.id + '\\')">📱 設定選單</button>' +
+      (l.hasRichMenu ? '<button class="action-btn ' + (l.richMenuEnabled ? 'danger' : '') + '" onclick="toggleMenu(\\'' + l.id + '\\', ' + (!l.richMenuEnabled) + ')">' + (l.richMenuEnabled ? '🔕 關閉選單' : '🔔 開啟選單') + '</button>' : '') +
       '<button class="action-btn" onclick="regenerateKey(\\'' + l.id + '\\')">🔑 重發金鑰</button>' +
       '<button class="action-btn ' + (l.isActive ? 'danger' : '') + '" onclick="toggleLandlord(\\'' + l.id + '\\', ' + (!l.isActive) + ')">' + (l.isActive ? '停用' : '啟用') + '</button>' +
       '</div></div>'
@@ -1149,6 +1172,21 @@ async function applyMenu() {
   }
   showToast('✅ 選單已套用')
   closeMenuEditor()
+  reload()
+}
+
+async function toggleMenu(id, enable) {
+  showToast(enable ? '開啟中...' : '關閉中...')
+  var res = await fetch('/admin/api/landlord/' + id + '/richmenu/toggle?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ enabled: enable })
+  })
+  if (!res.ok) {
+    var err = await res.json()
+    alert('❌ 操作失敗：' + (err.error || '未知錯誤'))
+    return
+  }
+  showToast(enable ? '🔔 選單已開啟' : '🔕 選單已關閉')
   reload()
 }
 

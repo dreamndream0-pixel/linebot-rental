@@ -158,10 +158,10 @@ async function applyRichMenu(landlordId) {
     throw new Error('套用選單失敗: ' + err)
   }
 
-  // 6. 記錄新的 richMenuId
+  // 6. 記錄新的 richMenuId 並標記啟用
   await prisma.landlord.update({
     where: { id: landlordId },
-    data: { richMenuId },
+    data: { richMenuId, richMenuEnabled: true },
   })
 
   return { richMenuId }
@@ -173,4 +173,52 @@ async function previewRichMenu(template, cells) {
   return sharp(Buffer.from(svg)).png().toBuffer()
 }
 
-module.exports = { applyRichMenu, previewRichMenu, TEMPLATES }
+// 關閉選單（取消預設，聊天室底部不再顯示）
+async function disableRichMenu(landlordId) {
+  const landlord = await prisma.landlord.findUnique({
+    where: { id: landlordId },
+    select: { lineChannelToken: true }
+  })
+  if (!landlord || !landlord.lineChannelToken) throw new Error('房東未設定 Bot')
+
+  const headers = { Authorization: `Bearer ${landlord.lineChannelToken}` }
+  // 取消預設選單（所有用戶）
+  const res = await fetch('https://api.line.me/v2/bot/user/all/richmenu', {
+    method: 'DELETE', headers,
+  })
+  if (!res.ok && res.status !== 404) {
+    const err = await res.text()
+    throw new Error('關閉選單失敗: ' + err)
+  }
+  await prisma.landlord.update({
+    where: { id: landlordId },
+    data: { richMenuEnabled: false },
+  })
+  return { ok: true }
+}
+
+// 重新開啟已存在的選單（不重新生成，直接設為預設）
+async function enableRichMenu(landlordId) {
+  const landlord = await prisma.landlord.findUnique({
+    where: { id: landlordId },
+    select: { lineChannelToken: true, richMenuId: true }
+  })
+  if (!landlord || !landlord.lineChannelToken) throw new Error('房東未設定 Bot')
+  if (!landlord.richMenuId) throw new Error('尚未生成選單，請先設定並套用')
+
+  const headers = { Authorization: `Bearer ${landlord.lineChannelToken}` }
+  const res = await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${landlord.richMenuId}`, {
+    method: 'POST', headers,
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error('開啟選單失敗: ' + err)
+  }
+  await prisma.landlord.update({
+    where: { id: landlordId },
+    data: { richMenuEnabled: true },
+  })
+  return { ok: true }
+}
+
+module.exports = { applyRichMenu, previewRichMenu, disableRichMenu, enableRichMenu, TEMPLATES }
