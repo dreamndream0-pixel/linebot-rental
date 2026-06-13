@@ -906,6 +906,8 @@ function renderLandlords() {
       '<br>🏠 ' + propCount + ' 間房源 · 加入：' + fmtDate(l.createdAt) + '<br>' + botStatus + '</div>' +
       '<div style="margin-top:6px;"><span style="font-size:12px;color:var(--gray-mid);">登入金鑰：</span>' +
       '<span class="uid" onclick="copyText(\\'' + l.adminKey + '\\')" title="點擊複製">' + l.adminKey + '</span></div>' +
+      '<div style="margin-top:6px;"><span style="font-size:12px;color:var(--gray-mid);">Webhook URL（填到房東 LINE 後台）：</span><br>' +
+      '<span class="uid" onclick="copyText(\\'' + webhookUrl + '\\')" title="點擊複製" style="font-size:11px;">' + webhookUrl + '</span></div>' +
       '</div></div>' +
       '<div class="actions">' +
       '<button class="action-btn" onclick="setupBot(\\'' + l.id + '\\', \\'' + esc(l.name).replace(/'/g, '') + '\\', \\'' + webhookUrl + '\\')">🤖 設定 Bot</button>' +
