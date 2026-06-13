@@ -52,7 +52,9 @@ const TYPE_LABEL = { SUITE: '套房', ROOM: '雅房', WHOLE_FLOOR: '整層住家
 // ── 把房源陣列轉成 Flex 卡片輪播（list 與 search 共用） ──────────
 function roomsToCarousel(rooms, altText) {
   const bubbles = rooms.map(room => {
-    const coverUrl = room.images[0]?.url
+    // 只接受有效的 https 圖片網址，否則不放 hero（避免 LINE 400 錯誤）
+    const firstUrl = room.images && room.images[0] ? room.images[0].url : null
+    const coverUrl = (firstUrl && typeof firstUrl === 'string' && firstUrl.startsWith('https://')) ? firstUrl : null
     return {
       type: 'bubble',
       size: 'kilo',
@@ -326,7 +328,20 @@ async function handleMessage(event, client) {
   }
 
   if (reply) {
-    await client.replyMessage(event.replyToken, reply)
+    try {
+      await client.replyMessage(event.replyToken, reply)
+    } catch (err) {
+      console.error('回覆訊息失敗:', err.statusCode, JSON.stringify(err.originalError?.response?.data || err.message))
+      // Flex 訊息可能格式有誤，改回純文字確保使用者收得到回覆
+      try {
+        await client.replyMessage(event.replyToken, {
+          type: 'text',
+          text: '抱歉，顯示房源時發生問題😢\n請輸入「選單」重試，或直接聯絡房東。'
+        })
+      } catch (e2) {
+        console.error('連純文字也回覆失敗:', e2.message)
+      }
+    }
   }
 }
 
