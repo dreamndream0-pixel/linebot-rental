@@ -6,138 +6,132 @@ const router = express.Router()
 // 不再提供預設密碼：沒設定環境變數就拒絕所有登入
 const ADMIN_KEY = process.env.ADMIN_KEY
 
-// ── 權限解析 ─────────────────────────────────────────────────────
-function resolveRole(key) {
+// ── 權限解析（async，支援房東登入） ─────────────────────────────
+// 回傳 { role, landlordId, label }
+//   role='super'    → 總管理員（你），看全部
+//   role='landlord' → 房東，只看自己 landlordId 的資料
+async function resolveRole(key) {
   if (!key || !ADMIN_KEY) return null
-  if (key === ADMIN_KEY) return { role: 'super', source: null, label: '總管理員' }
-  if (process.env.MAIN_ADMIN_KEY && key === process.env.MAIN_ADMIN_KEY) {
-    return { role: 'limited', source: 'main', label: '主帳號' }
-  }
-  for (const envKey of Object.keys(process.env)) {
-    const m = envKey.match(/^LINE(\d+)_ADMIN_KEY$/)
-    if (m && process.env[envKey] === key) {
-      const source = process.env[`LINE${m[1]}_NAME`] || `channel${m[1]}`
-      return { role: 'limited', source, label: source }
+  if (key === ADMIN_KEY) return { role: 'super', landlordId: null, label: '總管理員' }
+
+  // 查 Landlord 表（用 adminKey 比對）
+  try {
+    const landlord = await prisma.landlord.findUnique({ where: { adminKey: key } })
+    if (landlord && landlord.isActive) {
+      return { role: 'landlord', landlordId: landlord.id, label: landlord.name, source: landlord.source }
     }
+  } catch (e) {
+    console.error('resolveRole 查詢房東失敗:', e.message)
   }
   return null
 }
 
-function sourceFilter(auth) {
-  return auth.role === 'super' ? {} : { source: auth.source }
+// 房東資料過濾條件
+function landlordFilter(auth) {
+  return auth.role === 'super' ? {} : { landlordId: auth.landlordId }
 }
 
-// 確保有一個預設房東帳號（後台新增房源時使用）
-async function getDefaultLandlord() {
-  return prisma.user.upsert({
-    where: { email: 'admin@xiaowo.tw' },
-    update: {},
-    create: {
-      email: 'admin@xiaowo.tw',
-      name: '小蝸出租',
-      handle: 'xiaowo',
-      role: 'LANDLORD',
-      verified: true,
-    }
-  })
-}
-
-// ── API：取得所有資料 ───────────────────────────────────────────
+// ── API：取得所有資料（依房東隔離） ────────────────────────────
 router.get('/admin/api/data', async (req, res) => {
-  const auth = resolveRole(req.query.key)
+  const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  const tenantWhere = sourceFilter(auth)
+  const f = landlordFilter(auth)  // {} 或 { landlordId }
 
-  const [tenants, bookings, repairs, properties] = await Promise.all([
-    prisma.tenant.findMany({ where: tenantWhere, include: { property: true }, orderBy: { createdAt: 'desc' } }),
+  const [tenants, bookings, repairs, properties, landlords] = await Promise.all([
+    prisma.tenant.findMany({ where: f, include: { property: true }, orderBy: { createdAt: 'desc' } }),
     prisma.booking.findMany({
-      where: auth.role === 'super' ? {} : { lineUser: tenantWhere },
+      where: f,
       include: { lineUser: true, tenant: true, property: true },
       orderBy: { createdAt: 'desc' }
     }),
     prisma.repair.findMany({
-      where: auth.role === 'super' ? {} : { lineUser: tenantWhere },
+      where: f,
       include: { lineUser: true, property: true },
       orderBy: { createdAt: 'desc' }
     }),
     prisma.property.findMany({
-      where: { deletedAt: null },
-      include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] } },
+      where: auth.role === 'super' ? { deletedAt: null } : { deletedAt: null, ownerId: auth.landlordId },
+      include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] }, owner: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }
     }),
+    // 只有總管理員需要房東清單
+    auth.role === 'super'
+      ? prisma.landlord.findMany({ orderBy: { createdAt: 'desc' } })
+      : Promise.resolve([]),
   ])
 
-  res.json({ tenants, bookings, repairs, properties, account: auth.label, role: auth.role })
+  res.json({ tenants, bookings, repairs, properties, landlords, account: auth.label, role: auth.role })
 })
+
+// 共用：確認某筆資料屬於該 auth（房東只能動自己的）
+function ownsRecord(auth, record) {
+  if (auth.role === 'super') return true
+  return record && record.landlordId === auth.landlordId
+}
 
 // ── API：更新預約狀態 ───────────────────────────────────────────
 router.post('/admin/api/booking/:id/status', express.json(), async (req, res) => {
-  const auth = resolveRole(req.query.key)
+  const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  if (auth.role === 'limited') {
-    const existing = await prisma.booking.findUnique({ where: { id: req.params.id }, include: { lineUser: true } })
-    if (!existing || existing.lineUser?.source !== auth.source) {
-      return res.status(403).json({ error: 'forbidden' })
-    }
-  }
+  const existing = await prisma.booking.findUnique({ where: { id: req.params.id } })
+  if (!ownsRecord(auth, existing)) return res.status(403).json({ error: 'forbidden' })
 
-  const { status } = req.body
-  const booking = await prisma.booking.update({ where: { id: req.params.id }, data: { status } })
+  const booking = await prisma.booking.update({ where: { id: req.params.id }, data: { status: req.body.status } })
   res.json(booking)
 })
 
 // ── API：更新維修狀態 ───────────────────────────────────────────
 router.post('/admin/api/repair/:id/status', express.json(), async (req, res) => {
-  const auth = resolveRole(req.query.key)
+  const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  if (auth.role === 'limited') {
-    const existing = await prisma.repair.findUnique({ where: { id: req.params.id }, include: { lineUser: true } })
-    if (!existing || existing.lineUser?.source !== auth.source) {
-      return res.status(403).json({ error: 'forbidden' })
-    }
-  }
+  const existing = await prisma.repair.findUnique({ where: { id: req.params.id } })
+  if (!ownsRecord(auth, existing)) return res.status(403).json({ error: 'forbidden' })
 
-  const { status } = req.body
-  const repair = await prisma.repair.update({ where: { id: req.params.id }, data: { status } })
+  const repair = await prisma.repair.update({ where: { id: req.params.id }, data: { status: req.body.status } })
   res.json(repair)
 })
 
 // ── API：更新租客備註名稱 ───────────────────────────────────────
 router.post('/admin/api/tenant/:id/name', express.json(), async (req, res) => {
-  const auth = resolveRole(req.query.key)
+  const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  if (auth.role === 'limited') {
-    const existing = await prisma.tenant.findUnique({ where: { id: req.params.id } })
-    if (!existing || existing.source !== auth.source) {
-      return res.status(403).json({ error: 'forbidden' })
-    }
-  }
+  const existing = await prisma.tenant.findUnique({ where: { id: req.params.id } })
+  if (!ownsRecord(auth, existing)) return res.status(403).json({ error: 'forbidden' })
 
-  const { customName } = req.body
   const tenant = await prisma.tenant.update({
     where: { id: req.params.id },
-    data: { customName: customName || null }
+    data: { customName: req.body.customName || null }
   })
   res.json(tenant)
 })
 
-// ── API：新增房源（僅總管理員） ─────────────────────────────────
+// ── API：新增房源（總管理員可指定房東；房東則綁自己） ───────────
 router.post('/admin/api/property', express.json(), async (req, res) => {
-  const auth = resolveRole(req.query.key)
-  if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status } = req.body
+  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status, ownerId } = req.body
   if (!title || !price) return res.status(400).json({ error: 'title 和 price 為必填' })
 
-  const landlord = await getDefaultLandlord()
+  // 決定歸屬房東：房東登入→自己；總管理員→表單指定的 ownerId
+  const targetOwnerId = auth.role === 'landlord' ? auth.landlordId : (ownerId || null)
+  if (!targetOwnerId) return res.status(400).json({ error: '請指定房東' })
+
+  // Property.landlordId 指向 User 表（網站相容），這裡沿用既有預設房東 User
+  const landlordUser = await prisma.user.upsert({
+    where: { email: 'admin@xiaowo.tw' },
+    update: {},
+    create: { email: 'admin@xiaowo.tw', name: '小蝸出租', handle: 'xiaowo', role: 'LANDLORD', verified: true }
+  })
 
   const property = await prisma.property.create({
     data: {
-      landlordId: landlord.id,
+      landlordId: landlordUser.id,
+      ownerId: targetOwnerId,
       title,
       type: type || 'SUITE',
       status: status || 'AVAILABLE',
@@ -148,22 +142,24 @@ router.post('/admin/api/property', express.json(), async (req, res) => {
       price: parseInt(price),
       deposit: deposit || '兩個月',
       description: description || '',
-      images: {
-        create: (imageUrls || []).map((url, i) => ({ url, order: i, isCover: i === 0 }))
-      }
+      images: { create: (imageUrls || []).map((url, i) => ({ url, order: i, isCover: i === 0 })) }
     }
   })
-
   res.json(property)
 })
 
-// ── API：編輯房源（僅總管理員） ─────────────────────────────────
+// ── API：編輯房源 ───────────────────────────────────────────────
 router.post('/admin/api/property/:id', express.json(), async (req, res) => {
-  const auth = resolveRole(req.query.key)
-  if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  const existing = await prisma.property.findUnique({ where: { id: req.params.id } })
+  if (!existing) return res.status(404).json({ error: 'not found' })
+  if (auth.role === 'landlord' && existing.ownerId !== auth.landlordId) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
 
   const { title, type, city, district, address, size, price, deposit, description, imageUrls, status } = req.body
-
   const data = {}
   if (title !== undefined) data.title = title
   if (type !== undefined) data.type = type
@@ -178,7 +174,6 @@ router.post('/admin/api/property/:id', express.json(), async (req, res) => {
 
   const property = await prisma.property.update({ where: { id: req.params.id }, data })
 
-  // 若有提供照片清單，整批重建
   if (Array.isArray(imageUrls)) {
     await prisma.propertyImage.deleteMany({ where: { propertyId: req.params.id } })
     if (imageUrls.length) {
@@ -187,20 +182,83 @@ router.post('/admin/api/property/:id', express.json(), async (req, res) => {
       })
     }
   }
-
   res.json(property)
 })
 
-// ── API：刪除房源（軟刪除，僅總管理員） ─────────────────────────
+// ── API：刪除房源（軟刪除） ─────────────────────────────────────
 router.post('/admin/api/property/:id/delete', express.json(), async (req, res) => {
-  const auth = resolveRole(req.query.key)
-  if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  const existing = await prisma.property.findUnique({ where: { id: req.params.id } })
+  if (!existing) return res.status(404).json({ error: 'not found' })
+  if (auth.role === 'landlord' && existing.ownerId !== auth.landlordId) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
 
   const property = await prisma.property.update({
     where: { id: req.params.id },
     data: { deletedAt: new Date(), status: 'PAUSED' }
   })
   res.json(property)
+})
+
+// ── API：房東管理（僅總管理員） ─────────────────────────────────
+const crypto = require('crypto')
+
+router.get('/admin/api/landlords', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+  const landlords = await prisma.landlord.findMany({ orderBy: { createdAt: 'desc' } })
+  res.json(landlords)
+})
+
+router.post('/admin/api/landlord', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+
+  const { name, email, phone } = req.body
+  if (!name || !email) return res.status(400).json({ error: 'name 和 email 為必填' })
+
+  // 自動產生該房東的後台金鑰（房東用這個登入）
+  const adminKey = 'LL-' + crypto.randomBytes(9).toString('base64url')
+  const tempPassword = crypto.randomBytes(6).toString('base64url')
+  const passwordHash = crypto.createHash('sha256').update(tempPassword).digest('hex')
+
+  try {
+    const landlord = await prisma.landlord.create({
+      data: { name, email, phone: phone || null, adminKey, passwordHash }
+    })
+    // 回傳金鑰和臨時密碼（只顯示這一次）
+    res.json({ ...landlord, _adminKey: adminKey, _tempPassword: tempPassword })
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(400).json({ error: 'email 已存在' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/admin/api/landlord/:id', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+
+  const { name, phone, isActive } = req.body
+  const data = {}
+  if (name !== undefined) data.name = name
+  if (phone !== undefined) data.phone = phone
+  if (isActive !== undefined) data.isActive = isActive
+
+  const landlord = await prisma.landlord.update({ where: { id: req.params.id }, data })
+  res.json(landlord)
+})
+
+// 重新產生房東金鑰
+router.post('/admin/api/landlord/:id/regenerate-key', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+
+  const adminKey = 'LL-' + crypto.randomBytes(9).toString('base64url')
+  const landlord = await prisma.landlord.update({ where: { id: req.params.id }, data: { adminKey } })
+  res.json({ ...landlord, _adminKey: adminKey })
 })
 
 // ── 後台頁面 ─────────────────────────────────────────────────────
@@ -456,9 +514,10 @@ function renderTabBar() {
     { id: 'tenants', label: '👥 用戶' },
     { id: 'bookings', label: '📅 預約' },
     { id: 'repairs', label: '🔧 維修' },
+    { id: 'properties', label: '🏠 房源管理' },
   ]
   if (DATA.role === 'super') {
-    tabs.push({ id: 'properties', label: '🏠 房源管理' })
+    tabs.push({ id: 'landlords', label: '🏢 房東管理' })
   }
   document.getElementById('tabBar').innerHTML = tabs.map(function(t) {
     return '<button class="tab' + (currentTab === t.id ? ' active' : '') + '" data-tab="' + t.id + '" onclick="switchTab(\\'' + t.id + '\\')">' + t.label + '</button>'
@@ -490,6 +549,7 @@ function renderTab() {
   if (currentTab === 'bookings') el.innerHTML = renderBookings()
   if (currentTab === 'repairs') el.innerHTML = renderRepairs()
   if (currentTab === 'properties') el.innerHTML = renderProperties()
+  if (currentTab === 'landlords') el.innerHTML = renderLandlords()
 }
 
 function esc(s) {
@@ -600,8 +660,21 @@ function propertyForm() {
     return '<option value="' + t + '"' + (p && p.type === t ? ' selected' : '') + '>' + TYPE_LABEL[t] + '</option>'
   }).join('')
   var imageUrls = p && p.images ? p.images.map(function(i){ return i.url }).join(', ') : ''
+  // 總管理員新增房源時可選房東
+  var ownerPicker = ''
+  if (DATA.role === 'super' && !p) {
+    var opts = (DATA.landlords || []).filter(function(l){ return l.isActive }).map(function(l){
+      return '<option value="' + l.id + '">' + esc(l.name) + '</option>'
+    }).join('')
+    if (opts) {
+      ownerPicker = '<div class="full"><label>歸屬房東 *</label><select id="f_owner">' + opts + '</select></div>'
+    } else {
+      ownerPicker = '<div class="full" style="color:var(--danger);font-size:13px;">⚠️ 尚無房東，請先到「房東管理」新增房東</div>'
+    }
+  }
   return '<div class="form-box"><h3>' + (p ? '✏️ 編輯房源：' + esc(p.title) : '➕ 新增房源') + '</h3>' +
     '<div class="form-grid">' +
+    ownerPicker +
     '<div class="full"><label>房源名稱 *</label><input id="f_title" value="' + esc(p ? p.title : '') + '" placeholder="例：紅寶石11號 201室 採光套房"></div>' +
     '<div><label>類型</label><select id="f_type">' + typeOptions + '</select></div>' +
     '<div><label>月租金 *</label><input id="f_price" type="number" value="' + (p ? p.price : '') + '" placeholder="8000"></div>' +
@@ -645,6 +718,13 @@ async function saveProperty() {
   }
   if (!body.title || !body.price) { showToast('❌ 名稱和租金必填'); return }
 
+  // 總管理員新增時帶上選的房東
+  var ownerSel = document.getElementById('f_owner')
+  if (ownerSel) {
+    if (!ownerSel.value) { showToast('❌ 請選擇房東'); return }
+    body.ownerId = ownerSel.value
+  }
+
   var url = editingPropertyId
     ? '/admin/api/property/' + editingPropertyId + '?key=' + encodeURIComponent(KEY)
     : '/admin/api/property?key=' + encodeURIComponent(KEY)
@@ -674,6 +754,78 @@ async function deleteProperty(id) {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}'
   })
   showToast('🗑️ 已刪除')
+  reload()
+}
+
+// ── 房東管理（僅總管理員） ──────────────────────────────────────
+function renderLandlords() {
+  var formHtml = '<div class="form-box"><h3>➕ 新增房東</h3>' +
+    '<div class="form-grid">' +
+    '<div><label>房東名稱 *</label><input id="l_name" placeholder="王先生 / 紅寶石建設"></div>' +
+    '<div><label>Email（登入帳號）*</label><input id="l_email" placeholder="landlord@example.com"></div>' +
+    '<div><label>電話</label><input id="l_phone" placeholder="0912..."></div>' +
+    '</div>' +
+    '<div class="actions" style="margin-top:14px;">' +
+    '<button class="btn" style="width:auto;padding:10px 24px;" onclick="createLandlord()">新增房東</button>' +
+    '</div></div>'
+
+  var list = DATA.landlords || []
+  if (!list.length) return formHtml + '<div class="empty">還沒有房東，用上方表單新增第一位！</div>'
+
+  var listHtml = list.map(function(l) {
+    var propCount = DATA.properties.filter(function(p){ return p.ownerId === l.id }).length
+    return '<div class="card"><div class="card-row"><div>' +
+      '<h3>' + esc(l.name) + (l.isActive ? '' : ' <span style="font-size:12px;color:var(--danger);">(已停用)</span>') + '</h3>' +
+      '<div class="meta">📧 ' + esc(l.email) + (l.phone ? ' · 📞 ' + esc(l.phone) : '') +
+      '<br>🏠 ' + propCount + ' 間房源 · 加入：' + fmtDate(l.createdAt) + '</div>' +
+      '<div style="margin-top:6px;"><span style="font-size:12px;color:var(--gray-mid);">登入金鑰：</span>' +
+      '<span class="uid" onclick="copyText(\\'' + l.adminKey + '\\')" title="點擊複製">' + l.adminKey + '</span></div>' +
+      '</div></div>' +
+      '<div class="actions">' +
+      '<button class="action-btn" onclick="regenerateKey(\\'' + l.id + '\\')">🔑 重發金鑰</button>' +
+      '<button class="action-btn ' + (l.isActive ? 'danger' : '') + '" onclick="toggleLandlord(\\'' + l.id + '\\', ' + (!l.isActive) + ')">' + (l.isActive ? '停用' : '啟用') + '</button>' +
+      '</div></div>'
+  }).join('')
+  return formHtml + listHtml
+}
+
+async function createLandlord() {
+  var name = document.getElementById('l_name').value.trim()
+  var email = document.getElementById('l_email').value.trim()
+  var phone = document.getElementById('l_phone').value.trim()
+  if (!name || !email) { showToast('❌ 名稱和 Email 必填'); return }
+
+  var res = await fetch('/admin/api/landlord?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name: name, email: email, phone: phone })
+  })
+  if (!res.ok) {
+    var err = await res.json()
+    showToast('❌ ' + (err.error === 'email 已存在' ? 'Email 已存在' : '新增失敗'))
+    return
+  }
+  var data = await res.json()
+  // 顯示金鑰給管理員複製（只此一次完整顯示）
+  alert('✅ 房東「' + data.name + '」已建立！\\n\\n登入金鑰（請交給房東，用來登入後台）：\\n' + data._adminKey + '\\n\\n這組金鑰就是房東登入後台的密碼。')
+  reload()
+}
+
+async function regenerateKey(id) {
+  if (!confirm('重發金鑰後，舊金鑰立刻失效，房東要用新金鑰登入。確定？')) return
+  var res = await fetch('/admin/api/landlord/' + id + '/regenerate-key?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}'
+  })
+  var data = await res.json()
+  alert('🔑 新金鑰：\\n' + data._adminKey + '\\n\\n請交給房東。')
+  reload()
+}
+
+async function toggleLandlord(id, isActive) {
+  await fetch('/admin/api/landlord/' + id + '?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ isActive: isActive })
+  })
+  showToast(isActive ? '✅ 已啟用' : '⏸️ 已停用')
   reload()
 }
 

@@ -27,6 +27,9 @@ function mainMenu() {
           menuButton('📅 預約看房', 'ACTION_BOOK_VISIT'),
           menuButton('🔧 維修回報', 'ACTION_REPORT_REPAIR'),
           menuButton('📋 我的預約', 'ACTION_MY_BOOKINGS'),
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: '💡 也可直接輸入條件搜尋', size: 'xs', color: '#888', margin: 'md', wrap: true },
+          { type: 'text', text: '例如：台中市 沙鹿區 5000-8000', size: 'xs', color: '#aaa', wrap: true },
         ]
       }
     }
@@ -44,20 +47,10 @@ function menuButton(label, action) {
 }
 
 // ── 空房列表（讀取統一資料庫的 AVAILABLE 房源） ──────────────────
-async function listAvailableRooms() {
-  const rooms = await prisma.property.findMany({
-    where: { status: 'AVAILABLE', deletedAt: null },
-    include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] } },
-    orderBy: { price: 'asc' },
-    take: 10
-  })
+const TYPE_LABEL = { SUITE: '套房', ROOM: '雅房', WHOLE_FLOOR: '整層住家', SHARED_SUITE: '分租套房' }
 
-  if (rooms.length === 0) {
-    return { type: 'text', text: '😔 目前沒有空房，歡迎留下聯絡方式，有空房第一時間通知您！' }
-  }
-
-  const typeLabel = { SUITE: '套房', ROOM: '雅房', WHOLE_FLOOR: '整層住家', SHARED_SUITE: '分租套房' }
-
+// ── 把房源陣列轉成 Flex 卡片輪播（list 與 search 共用） ──────────
+function roomsToCarousel(rooms, altText) {
   const bubbles = rooms.map(room => {
     const coverUrl = room.images[0]?.url
     return {
@@ -76,7 +69,7 @@ async function listAvailableRooms() {
         spacing: 'sm',
         contents: [
           { type: 'text', text: room.title, weight: 'bold', size: 'lg', wrap: true },
-          { type: 'text', text: `${room.city}${room.district} · ${typeLabel[room.type] || ''}`, size: 'xs', color: '#aaa' },
+          { type: 'text', text: `${room.city}${room.district} · ${TYPE_LABEL[room.type] || ''}`, size: 'xs', color: '#aaa' },
           {
             type: 'box', layout: 'horizontal', contents: [
               { type: 'text', text: `💰 NT$ ${room.price.toLocaleString()} / 月`, size: 'sm', color: '#7A9E7E', flex: 1 },
@@ -101,9 +94,110 @@ async function listAvailableRooms() {
 
   return {
     type: 'flex',
-    altText: `目前有 ${rooms.length} 間空房`,
+    altText,
     contents: { type: 'carousel', contents: bubbles }
   }
+}
+
+async function listAvailableRooms() {
+  const rooms = await prisma.property.findMany({
+    where: { status: 'AVAILABLE', deletedAt: null },
+    include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] } },
+    orderBy: { price: 'asc' },
+    take: 10
+  })
+
+  if (rooms.length === 0) {
+    return { type: 'text', text: '😔 目前沒有空房，歡迎留下聯絡方式，有空房第一時間通知您！' }
+  }
+
+  return roomsToCarousel(rooms, `目前有 ${rooms.length} 間空房`)
+}
+
+// ── 關鍵字解析 ────────────────────────────────────────────────────
+// 支援：「台中市 沙鹿區 5000-8000」「沙鹿 8000以下」「5000-8000」「沙鹿區」
+function parseSearchQuery(text) {
+  const result = { city: null, district: null, minPrice: null, maxPrice: null }
+  let rest = text
+
+  // 城市（台中市 / 台中）
+  const cityMatch = rest.match(/(台北|新北|桃園|台中|臺中|台南|臺南|高雄|基隆|新竹|苗栗|彰化|南投|雲林|嘉義|屏東|宜蘭|花蓮|台東|臺東|澎湖|金門|連江)市?/)
+  if (cityMatch) {
+    result.city = cityMatch[1].replace('臺', '台') + '市'
+    rest = rest.replace(cityMatch[0], ' ')
+  }
+
+  // 區域（XX區 / XX鄉 / XX鎮 / XX市）
+  const distMatch = rest.match(/([\u4e00-\u9fa5]{1,4})(區|鄉|鎮)/)
+  if (distMatch) {
+    result.district = distMatch[1] + distMatch[2]
+    rest = rest.replace(distMatch[0], ' ')
+  }
+
+  // 租金範圍：5000-8000 / 5000~8000 / 5000到8000
+  const rangeMatch = rest.match(/(\d{3,6})\s*[-~到至]\s*(\d{3,6})/)
+  if (rangeMatch) {
+    result.minPrice = parseInt(rangeMatch[1])
+    result.maxPrice = parseInt(rangeMatch[2])
+    rest = rest.replace(rangeMatch[0], ' ')
+  } else {
+    // XX以下 / XX以內
+    const underMatch = rest.match(/(\d{3,6})\s*(元)?\s*(以下|以內|內)/)
+    if (underMatch) {
+      result.maxPrice = parseInt(underMatch[1])
+      rest = rest.replace(underMatch[0], ' ')
+    }
+    // XX以上
+    const overMatch = rest.match(/(\d{3,6})\s*(元)?\s*(以上)/)
+    if (overMatch) {
+      result.minPrice = parseInt(overMatch[1])
+      rest = rest.replace(overMatch[0], ' ')
+    }
+  }
+
+  // 若已抓到價格但還沒抓到區域，把剩下的中文詞當區域（如「沙鹿 8000以下」）
+  if (!result.district && (result.minPrice || result.maxPrice)) {
+    const loose = rest.match(/[\u4e00-\u9fa5]{2,4}/)
+    if (loose) result.district = loose[0]
+  }
+
+  // 完全沒有任何可辨識條件（城市/區域/價格）→ 不當搜尋，避免閒聊誤判
+  const hasAny = result.city || result.district || result.minPrice || result.maxPrice
+  return hasAny ? result : null
+}
+
+// ── 關鍵字搜尋房源 ────────────────────────────────────────────────
+async function searchRooms(parsed) {
+  const where = { status: 'AVAILABLE', deletedAt: null }
+  if (parsed.city) where.city = parsed.city
+  if (parsed.district) where.district = { contains: parsed.district.replace(/(區|鄉|鎮)$/, '') }
+  if (parsed.minPrice || parsed.maxPrice) {
+    where.price = {}
+    if (parsed.minPrice) where.price.gte = parsed.minPrice
+    if (parsed.maxPrice) where.price.lte = parsed.maxPrice
+  }
+
+  const rooms = await prisma.property.findMany({
+    where,
+    include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] } },
+    orderBy: { price: 'asc' },
+    take: 10
+  })
+
+  // 組合搜尋條件描述
+  const parts = []
+  if (parsed.city) parts.push(parsed.city)
+  if (parsed.district) parts.push(parsed.district)
+  if (parsed.minPrice && parsed.maxPrice) parts.push(`${parsed.minPrice}-${parsed.maxPrice}元`)
+  else if (parsed.maxPrice) parts.push(`${parsed.maxPrice}元以下`)
+  else if (parsed.minPrice) parts.push(`${parsed.minPrice}元以上`)
+  const condText = parts.join(' ')
+
+  if (rooms.length === 0) {
+    return { type: 'text', text: `🔍 找不到符合「${condText}」的空房。\n\n可以試試放寬條件，或輸入「查詢空房」看全部房源。` }
+  }
+
+  return roomsToCarousel(rooms, `找到 ${rooms.length} 間符合「${condText}」的房源`)
 }
 
 // ── 維修回報選單 ──────────────────────────────────────────────────
@@ -222,7 +316,13 @@ async function handleMessage(event, client) {
     reply = { type: 'text', text: `🔧 ${category}\n\n請描述問題詳情（例如：浴室天花板漏水，已持續3天）` }
   }
   else {
-    reply = mainMenu()
+    // 嘗試把訊息當作搜尋關鍵字解析
+    const parsed = parseSearchQuery(text)
+    if (parsed) {
+      reply = await searchRooms(parsed)
+    } else {
+      reply = mainMenu()
+    }
   }
 
   if (reply) {
@@ -267,13 +367,16 @@ async function handleBookingFlow(userId, text, state, client) {
     const { visitDate } = state
 
     const tenant = await prisma.tenant.findUnique({ where: { lineUserId: userId } })
+    // 取得房源的歸屬房東
+    const prop = await prisma.property.findUnique({ where: { id: propertyId }, select: { ownerId: true } })
     const booking = await prisma.booking.create({
       data: {
         lineUserId: tenant.id,
         propertyId,
         date: new Date(visitDate),
         timeslot,
-        status: 'PENDING'
+        status: 'PENDING',
+        landlordId: prop?.ownerId || null
       },
       include: { property: true }
     })
@@ -316,7 +419,8 @@ async function handleRepairFlow(userId, text, state, client) {
         propertyId: property.id,
         title: category,
         description: text,
-        status: 'PENDING'
+        status: 'PENDING',
+        landlordId: property.ownerId || null
       }
     })
 

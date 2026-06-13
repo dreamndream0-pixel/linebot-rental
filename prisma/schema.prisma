@@ -59,6 +59,41 @@ enum UserRole {
 }
 
 // ─────────────────────────────────────────────
+// 房東（獨立租戶，多房東架構核心）
+// 每個房東有自己的後台、房源、用戶、未來綁自己的 LINE Bot
+// ─────────────────────────────────────────────
+model Landlord {
+  id            String    @id @default(cuid())
+  name          String                          // 房東名稱（後台顯示）
+  email         String    @unique               // 登入帳號
+  passwordHash  String                          // 登入密碼（bcrypt）
+  phone         String?
+  avatar        String?
+
+  // 後台存取金鑰（給 LINE Bot 後台用，類似之前的 ADMIN_KEY）
+  adminKey      String    @unique
+
+  // 階段 B 預留：房東自己的 LINE Bot 設定
+  lineChannelSecret      String?
+  lineChannelToken       String?
+  lineBotName            String?
+  source                 String    @unique @default(cuid())  // 該房東用戶的來源標記
+
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  properties    Property[]
+  tenants       Tenant[]
+  bookings      Booking[]
+  repairs       Repair[]
+
+  @@index([email])
+  @@index([adminKey])
+  @@map("landlords")
+}
+
+// ─────────────────────────────────────────────
 // LINE Bot 用戶（從 LINE 官方帳號來的用戶）
 // ─────────────────────────────────────────────
 model Tenant {
@@ -74,11 +109,15 @@ model Tenant {
   rentDue       Int       @default(5)        // 每月幾號繳租
   isActive      Boolean   @default(true)
   source        String    @default("main")   // 來源官方帳號
+  landlordId    String?                       // 歸屬房東
   createdAt     DateTime  @default(now())
 
+  landlord   Landlord? @relation(fields: [landlordId], references: [id])
   property   Property? @relation("TenantResidence", fields: [propertyId], references: [id])
   bookings   Booking[]
   repairs    Repair[]
+
+  @@index([landlordId])
 }
 
 // ─────────────────────────────────────────────
@@ -120,6 +159,9 @@ model Property {
   id          String         @id @default(cuid())
   landlordId  String
   landlord    User           @relation(fields: [landlordId], references: [id])
+
+  ownerId     String?                          // 多房東架構：歸屬的 Landlord
+  owner       Landlord?      @relation(fields: [ownerId], references: [id])
 
   title       String
   type        PropertyType
@@ -170,6 +212,7 @@ model Property {
   repairs     Repair[]
 
   @@index([landlordId])
+  @@index([ownerId])
   @@index([city, district])
   @@index([status])
   @@index([price])
@@ -271,6 +314,8 @@ model Booking {
   status     BookingStatus @default(PENDING)
   note       String?
   rejectReason String?
+  landlordId String?                       // 歸屬房東
+  landlord   Landlord?     @relation(fields: [landlordId], references: [id])
 
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
@@ -278,6 +323,7 @@ model Booking {
   @@index([propertyId])
   @@index([tenantId])
   @@index([lineUserId])
+  @@index([landlordId])
   @@index([status])
   @@map("bookings")
 }
@@ -301,14 +347,17 @@ model Repair {
   description String
   status      RepairStatus @default(PENDING)
   photoUrl    String?
+  landlordId  String?                      // 歸屬房東
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
   lineUser    Tenant   @relation(fields: [lineUserId], references: [id])
   property    Property @relation(fields: [propertyId], references: [id])
+  landlord    Landlord? @relation(fields: [landlordId], references: [id])
 
   @@index([lineUserId])
   @@index([propertyId])
+  @@index([landlordId])
   @@map("repairs")
 }
 
