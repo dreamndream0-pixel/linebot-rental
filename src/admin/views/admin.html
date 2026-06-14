@@ -564,13 +564,23 @@ function propertyFormHtml(p, isModal) {
       (function() {
         var ALL_AMENITIES = ['冷氣','熱水器','洗衣機','冰箱','電視','網路/Wifi','床架','衣櫥','書桌','椅子','沙發','微波爐','電磁爐','抽油煙機','陽台','車位']
         var curAmenities = p && p.amenities ? p.amenities.map(function(a){ return a.name }) : []
-        return '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
+        return '<div id="amenity_chips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">' +
           ALL_AMENITIES.map(function(name) {
             var checked = curAmenities.indexOf(name) !== -1
             return '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 12px;border:1.5px solid ' + (checked ? '#5B8FA8' : 'var(--oat-mid,#ddd)') + ';border-radius:8px;font-size:13px;background:' + (checked ? '#EBF3F7' : 'white') + ';font-weight:' + (checked ? '700' : '400') + ';" onclick="toggleAmenityStyle(this)">' +
               '<input type="checkbox" name="f_amenities" value="' + name + '"' + (checked ? ' checked' : '') + ' style="display:none;"> ' + name +
             '</label>'
           }).join('') +
+          curAmenities.filter(function(n){ return ALL_AMENITIES.indexOf(n) === -1 }).map(function(name) {
+            return '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 12px;border:1.5px solid #5B8FA8;border-radius:8px;font-size:13px;background:#EBF3F7;font-weight:700;" onclick="toggleAmenityStyle(this)">' +
+              '<input type="checkbox" name="f_amenities" value="' + name + '" checked style="display:none;"> ' + name +
+              '<span onclick="event.stopPropagation();removeCustomAmenity(this)" style="margin-left:4px;color:#aaa;font-size:11px;cursor:pointer;">✕</span>' +
+            '</label>'
+          }).join('') +
+        '</div>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<input id="f_amenity_input" type="text" placeholder="自訂設備（按 Enter 新增）" style="flex:1;padding:8px 12px;border:1.5px solid var(--oat-mid,#ddd);border-radius:8px;font-size:13px;" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addCustomAmenity()}">' +
+          '<button type="button" onclick="addCustomAmenity()" style="padding:8px 16px;border-radius:8px;border:1.5px solid #5B8FA8;background:#EBF3F7;font-size:13px;cursor:pointer;">新增</button>' +
         '</div>'
       })() +
     '</div>' +
@@ -730,6 +740,25 @@ function onElecTypeChange() {
 }
 
 // ── 標籤樣式切換 ─────────────────────────────────────────────────
+function addCustomAmenity() {
+  var input = document.getElementById('f_amenity_input')
+  var val = input.value.trim()
+  if (!val) return
+  var existing = Array.from(document.querySelectorAll('input[name="f_amenities"]')).map(function(cb){ return cb.value })
+  if (existing.indexOf(val) !== -1) { showToast('設備已存在'); input.value = ''; return }
+  var label = document.createElement('label')
+  label.style.cssText = 'display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 12px;border:1.5px solid #5B8FA8;border-radius:8px;font-size:13px;background:#EBF3F7;font-weight:700;'
+  label.onclick = function() { toggleAmenityStyle(label) }
+  label.innerHTML = '<input type="checkbox" name="f_amenities" value="' + esc(val) + '" checked style="display:none;"> ' + esc(val) +
+    '<span onclick="event.stopPropagation();removeCustomAmenity(this)" style="margin-left:4px;color:#aaa;font-size:11px;cursor:pointer;">✕</span>'
+  document.getElementById('amenity_chips').appendChild(label)
+  input.value = ''
+}
+
+function removeCustomAmenity(span) {
+  span.closest('label').remove()
+}
+
 function toggleAmenityStyle(label) {
   var cb = label.querySelector('input[type=checkbox]')
   var checked = cb.checked
@@ -852,6 +881,10 @@ function cancelEdit() {
 }
 
 async function saveProperty() {
+  var saveBtn = document.querySelector('#propModal .btn[onclick="saveProperty()"]')
+  var origText = saveBtn ? saveBtn.textContent : ''
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '儲存中…' }
+
   var elecTypeEl = document.getElementById('f_elec_type')
   var elecType = elecTypeEl ? elecTypeEl.value : 'meter'
   var tags = Array.from(document.querySelectorAll('input[name="f_tags"]:checked')).map(function(cb){ return cb.value })
@@ -898,9 +931,11 @@ async function saveProperty() {
     })
     if (!res.ok) {
       var err = await res.json().catch(function(){ return {} })
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = origText }
       showToast('❌ 儲存失敗：' + (err.error || res.status)); return
     }
   } catch(e) {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = origText }
     showToast('❌ 連線失敗：' + e.message); return
   }
   showToast(editingPropertyId ? '✅ 已更新房源' : '✅ 已新增房源')
