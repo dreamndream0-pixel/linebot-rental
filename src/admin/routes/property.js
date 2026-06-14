@@ -27,11 +27,23 @@ async function syncTags(propertyId, tags) {
   }
 }
 
+// 共用：更新設備（先全刪再寫入）
+async function syncAmenities(propertyId, amenities) {
+  if (!Array.isArray(amenities)) return
+  await prisma.propertyAmenity.deleteMany({ where: { propertyId } })
+  if (amenities.length) {
+    await prisma.propertyAmenity.createMany({
+      data: amenities.map(name => ({ propertyId, name })),
+      skipDuplicates: true,
+    })
+  }
+}
+
 router.post('/admin/api/property', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status, ownerId, tags } = req.body
+  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status, ownerId, tags, amenities } = req.body
   if (!title || !price) return res.status(400).json({ error: 'title 和 price 為必填' })
 
   const targetOwnerId = auth.role === 'landlord' ? auth.landlordId : (ownerId || null)
@@ -63,6 +75,7 @@ router.post('/admin/api/property', express.json(), async (req, res) => {
   })
 
   await syncTags(property.id, tags)
+  await syncAmenities(property.id, amenities)
   await revalidateSite(['/listings', `/site/${targetOwnerId}`, `/property/${property.id}`])
   res.json(property)
 })
@@ -77,7 +90,7 @@ router.post('/admin/api/property/:id', express.json(), async (req, res) => {
     return res.status(403).json({ error: 'forbidden' })
   }
 
-  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status, tags } = req.body
+  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status, tags, amenities } = req.body
   const data = { ...extractFeeFields(req.body) }
   if (title       !== undefined) data.title       = title
   if (type        !== undefined) data.type        = type
@@ -107,6 +120,7 @@ router.post('/admin/api/property/:id', express.json(), async (req, res) => {
   }
 
   await syncTags(req.params.id, tags)
+  await syncAmenities(req.params.id, amenities)
   await revalidateSite(['/listings', `/site/${existing.ownerId}`, `/property/${req.params.id}`])
   res.json(property)
 })

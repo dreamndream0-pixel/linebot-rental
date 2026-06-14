@@ -563,6 +563,21 @@ function propertyFormHtml(p, isModal) {
       '</div>' +
     '</div>' +
     '<div class="prop-form-section">' +
+      '<h4>設備</h4>' +
+      (function() {
+        var ALL_AMENITIES = ['冷氣','熱水器','洗衣機','冰箱','電視','網路/Wifi','床架','衣櫥','書桌','椅子','沙發','微波爐','電磁爐','抽油煙機','陽台','車位']
+        var curAmenities = p && p.amenities ? p.amenities.map(function(a){ return a.name }) : []
+        return '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
+          ALL_AMENITIES.map(function(name) {
+            var checked = curAmenities.indexOf(name) !== -1
+            return '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 12px;border:1.5px solid ' + (checked ? '#5B8FA8' : 'var(--oat-mid,#ddd)') + ';border-radius:8px;font-size:13px;background:' + (checked ? '#EBF3F7' : 'white') + ';font-weight:' + (checked ? '700' : '400') + ';" onclick="toggleAmenityStyle(this)">' +
+              '<input type="checkbox" name="f_amenities" value="' + name + '"' + (checked ? ' checked' : '') + ' style="display:none;"> ' + name +
+            '</label>'
+          }).join('') +
+        '</div>'
+      })() +
+    '</div>' +
+    '<div class="prop-form-section">' +
       '<h4>房源標籤</h4>' +
       (function() {
         var PRESET_TAGS = ['可租補','免仲介費','獨立衛浴','獨洗曬','可開伙','可養寵物','垃圾代收','機車位','腳踏車位','近捷運','近學校','近超商','電梯大樓']
@@ -718,6 +733,14 @@ function onElecTypeChange() {
 }
 
 // ── 標籤樣式切換 ─────────────────────────────────────────────────
+function toggleAmenityStyle(label) {
+  var cb = label.querySelector('input[type=checkbox]')
+  var checked = cb.checked
+  label.style.border = '1.5px solid ' + (checked ? '#5B8FA8' : 'var(--oat-mid,#ddd)')
+  label.style.background = checked ? '#EBF3F7' : 'white'
+  label.style.fontWeight = checked ? '700' : '400'
+}
+
 function toggleTagStyle(label) {
   var cb = label.querySelector('input[type=checkbox]')
   var checked = cb.checked
@@ -832,8 +855,13 @@ function cancelEdit() {
 }
 
 async function saveProperty() {
-  var elecType = (document.getElementById('f_elec_type')||{}).value || 'meter'
+  var elecTypeEl = document.getElementById('f_elec_type')
+  var elecType = elecTypeEl ? elecTypeEl.value : 'meter'
   var tags = Array.from(document.querySelectorAll('input[name="f_tags"]:checked')).map(function(cb){ return cb.value })
+  var amenities = Array.from(document.querySelectorAll('input[name="f_amenities"]:checked')).map(function(cb){ return cb.value })
+
+  var elecRateEl = document.getElementById('f_elec_rate')
+  var elecFlatEl = document.getElementById('f_elec_flat')
 
   var body = {
     title:       document.getElementById('f_title').value.trim(),
@@ -849,9 +877,10 @@ async function saveProperty() {
     mgmtFee:     parseInt(document.getElementById('f_mgmt').value) || 0,
     cleaningFee: parseInt(document.getElementById('f_cleaning').value) || 0,
     electricType: elecType,
-    electricRate: elecType === 'meter' ? (parseFloat(document.getElementById('f_elec_rate').value) || null) : null,
-    electricFlat: elecType === 'flat'  ? (parseInt(document.getElementById('f_elec_flat').value) || null) : null,
+    electricRate: (elecType === 'meter' && elecRateEl && elecRateEl.value !== '') ? parseFloat(elecRateEl.value) : null,
+    electricFlat: (elecType === 'flat' && elecFlatEl && elecFlatEl.value !== '') ? parseInt(elecFlatEl.value) : null,
     tags: tags,
+    amenities: amenities,
   }
   if (!body.title || !body.price) { showToast('❌ 名稱和租金必填'); return }
 
@@ -865,11 +894,18 @@ async function saveProperty() {
     ? '/admin/api/property/' + editingPropertyId + '?key=' + encodeURIComponent(KEY)
     : '/admin/api/property?key=' + encodeURIComponent(KEY)
 
-  var res = await fetch(url, {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(body)
-  })
-  if (!res.ok) { showToast('❌ 儲存失敗'); return }
+  try {
+    var res = await fetch(url, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    })
+    if (!res.ok) {
+      var err = await res.json().catch(function(){ return {} })
+      showToast('❌ 儲存失敗：' + (err.error || res.status)); return
+    }
+  } catch(e) {
+    showToast('❌ 連線失敗：' + e.message); return
+  }
   showToast(editingPropertyId ? '✅ 已更新房源' : '✅ 已新增房源')
   if (!editingPropertyId) { try { localStorage.removeItem(PROP_DRAFT_KEY) } catch(e){} }
   editingPropertyId = null

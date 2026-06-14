@@ -28,7 +28,7 @@ router.get('/admin/api/data', async (req, res) => {
     }),
     prisma.property.findMany({
       where: auth.role === 'super' ? { deletedAt: null } : { deletedAt: null, ownerId: auth.landlordId },
-      include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] }, owner: { select: { name: true } }, tags: true },
+      include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] }, owner: { select: { name: true } }, tags: true, amenities: true },
       orderBy: { createdAt: 'desc' }
     }),
     auth.role === 'super'
