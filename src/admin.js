@@ -341,14 +341,26 @@ router.post('/admin/api/landlord/:id', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
 
-  const { name, phone, isActive } = req.body
+  const { name, email, phone, isActive } = req.body
   const data = {}
-  if (name !== undefined) data.name = name
-  if (phone !== undefined) data.phone = phone
+  if (name !== undefined) {
+    if (!name.trim()) return res.status(400).json({ error: '房東名稱不可空白' })
+    data.name = name.trim()
+  }
+  if (email !== undefined) {
+    if (!email.trim()) return res.status(400).json({ error: 'Email 不可空白' })
+    data.email = email.trim().toLowerCase()
+  }
+  if (phone !== undefined) data.phone = phone.trim() || null
   if (isActive !== undefined) data.isActive = isActive
 
-  const landlord = await prisma.landlord.update({ where: { id: req.params.id }, data })
-  res.json(landlord)
+  try {
+    const landlord = await prisma.landlord.update({ where: { id: req.params.id }, data })
+    res.json(landlord)
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(400).json({ error: 'Email 已被其他房東使用' })
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // 重新產生房東金鑰
@@ -1322,6 +1334,7 @@ function renderLandlords() {
       '<span class="uid" onclick="copyText(\\'' + webhookUrl + '\\')" title="點擊複製" style="font-size:11px;">' + webhookUrl + '</span></div>' +
       '</div></div>' +
       '<div class="actions">' +
+      '<button class="action-btn" onclick="editLandlord(\\'' + l.id + '\\')">✏️ 編輯資料</button>' +
       '<button class="action-btn" onclick="openSiteEditor(\\'' + l.id + '\\')">⚙️ 官網設定</button>' +
       '<button class="action-btn" onclick="viewLandlordSite(\\'' + l.id + '\\')">🌐 個人官網</button>' +
       '<button class="action-btn" onclick="setupBot(\\'' + l.id + '\\', \\'' + esc(l.name).replace(/'/g, '') + '\\', \\'' + webhookUrl + '\\')">🤖 設定 Bot</button>' +
@@ -1777,6 +1790,33 @@ async function regenerateKey(id) {
   })
   var data = await res.json()
   alert('🔑 新金鑰：\\n' + data._adminKey + '\\n\\n請交給房東。')
+  reload()
+}
+
+async function editLandlord(id) {
+  var landlord = (DATA.landlords || []).find(function(l){ return l.id === id })
+  if (!landlord) return
+
+  var name = prompt('編輯房東名稱', landlord.name || '')
+  if (name === null) return
+  name = name.trim()
+  if (!name) { showToast('❌ 房東名稱不可空白'); return }
+
+  var email = prompt('編輯 Email（登入帳號）', landlord.email || '')
+  if (email === null) return
+  email = email.trim()
+  if (!email) { showToast('❌ Email 不可空白'); return }
+
+  var phone = prompt('編輯電話（可留空）', landlord.phone || '')
+  if (phone === null) return
+
+  var res = await fetch('/admin/api/landlord/' + id + '?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name: name, email: email, phone: phone.trim() })
+  })
+  var data = await res.json()
+  if (!res.ok) { showToast('❌ ' + (data.error || '更新失敗')); return }
+  showToast('✅ 房東資料已更新')
   reload()
 }
 
