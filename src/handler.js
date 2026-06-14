@@ -120,7 +120,7 @@ function roomsToCarousel(rooms, altText, t = {}) {
         layout: 'vertical',
         contents: [{
           type: 'button',
-          action: { type: 'message', label: t.bookButtonLabel || '預約看這間', text: `BOOK_ROOM_${room.id}` },
+          action: { type: 'message', label: t.bookButtonLabel || '預約看這間', text: `預約_${room.id}` },
           style: 'primary',
           color: '#7A9E7E',
           height: 'sm'
@@ -254,12 +254,12 @@ function repairMenu(t = {}) {
         spacing: 'sm',
         contents: [
           { type: 'text', text: t.repairTitle || '🔧 請選擇問題類型', weight: 'bold', size: 'md' },
-          repairButton('💧 漏水問題', 'REPAIR_漏水問題'),
-          repairButton('💡 電氣問題', 'REPAIR_電氣問題'),
-          repairButton('🚿 衛浴設備', 'REPAIR_衛浴設備'),
-          repairButton('🔒 門鎖問題', 'REPAIR_門鎖問題'),
-          repairButton('❄️ 冷氣問題', 'REPAIR_冷氣問題'),
-          repairButton('📝 其他問題', 'REPAIR_其他問題'),
+          repairButton('💧 漏水問題', '漏水問題'),
+          repairButton('💡 電氣問題', '電氣問題'),
+          repairButton('🚿 衛浴設備', '衛浴設備'),
+          repairButton('🔒 門鎖問題', '門鎖問題'),
+          repairButton('❄️ 冷氣問題', '冷氣問題'),
+          repairButton('📝 其他問題', '其他問題'),
         ]
       }
     }
@@ -362,18 +362,18 @@ async function handleMessage(event, client, landlordId = null) {
   } else if (text === 'ACTION_MY_BOOKINGS' || text === '我的預約') {
     reply = t.showMyBookings !== false ? await myBookings(userId, t) : mainMenu(t)
   }
-  else if (text.startsWith('BOOK_ROOM_')) {
+  else if (text.startsWith('預約_')) {
     if (t.showBookVisit === false) { reply = mainMenu(t) }
     else {
-      const propertyId = text.replace('BOOK_ROOM_', '')
+      const propertyId = text.replace('預約_', '')
       userState.set(userId, { flow: 'booking', step: 'select_date', propertyId })
       reply = { type: 'text', text: t.askDate }
     }
   }
-  else if (text.startsWith('REPAIR_')) {
+  else if (['漏水問題','電氣問題','衛浴設備','門鎖問題','冷氣問題','其他問題'].includes(text)) {
     if (t.showReportRepair === false) { reply = mainMenu(t) }
     else {
-      const category = text.replace('REPAIR_', '')
+      const category = text
       userState.set(userId, { flow: 'repair', step: 'describe', category })
       reply = { type: 'text', text: `🔧 ${category}\n\n${t.askRepairDesc}` }
     }
@@ -428,7 +428,7 @@ async function handleBookingFlow(userId, text, state, client, landlordId = null,
             { type: 'text', text: t.askTime || '⏰ 請選擇看房時間', weight: 'bold' },
             ...['10:00', '11:00', '14:00', '15:00', '16:00'].map(slot => ({
               type: 'button',
-              action: { type: 'message', label: slot, text: `TIME_${slot}` },
+              action: { type: 'message', label: slot, text: slot },
               style: 'secondary', height: 'sm', margin: 'xs'
             }))
           ]
@@ -437,8 +437,8 @@ async function handleBookingFlow(userId, text, state, client, landlordId = null,
     }
   }
 
-  if (step === 'select_time' && text.startsWith('TIME_')) {
-    const timeslot = text.replace('TIME_', '')
+  if (step === 'select_time' && text) {
+    const timeslot = text
     const { visitDate } = state
 
     const tenant = await prisma.tenant.findUnique({ where: { lineUserId: userId } })
