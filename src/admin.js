@@ -435,20 +435,6 @@ router.post('/admin/api/landlord/:id/site', express.json(), async (req, res) => 
   res.json({ ok: true })
 })
 
-// 儲存 Bot 自訂文字
-router.post('/admin/api/landlord/:id/bottext', express.json(), async (req, res) => {
-  const auth = await resolveRole(req.query.key)
-  if (!auth) return res.status(401).json({ error: 'unauthorized' })
-  if (auth.role === 'landlord' && auth.landlordId !== req.params.id) {
-    return res.status(403).json({ error: 'forbidden' })
-  }
-
-  const config = JSON.stringify(req.body.botText || {})
-  await prisma.landlord.update({ where: { id: req.params.id }, data: { botTextConfig: config } })
-  try { require('./botText').clearTextCache(req.params.id) } catch (e) {}
-  res.json({ ok: true })
-})
-
 // 開關 Bot
 router.post('/admin/api/landlord/:id/bot-toggle', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
@@ -630,6 +616,22 @@ const ADMIN_HTML = `<!DOCTYPE html>
     .stats { grid-template-columns: repeat(2, 1fr); }
     .form-grid { grid-template-columns: 1fr; }
   }
+  details.acc { border:1.5px solid #E5E0D5; border-radius:12px; margin-bottom:10px; overflow:hidden; }
+  details.acc summary {
+    padding:12px 16px; font-size:14px; font-weight:700; cursor:pointer;
+    background:#F8F6F1; list-style:none; display:flex; justify-content:space-between; align-items:center;
+    user-select:none;
+  }
+  details.acc summary::-webkit-details-marker { display:none; }
+  details.acc summary::after { content:'＋'; font-size:16px; color:var(--sage); }
+  details.acc[open] summary::after { content:'－'; }
+  details.acc .acc-body { padding:14px 16px; }
+  .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px; }
+  .modal-box { background:white;border-radius:18px;padding:24px;max-width:560px;width:100%;margin:auto; }
+  .modal-header { display:flex;justify-content:space-between;align-items:center;margin-bottom:16px; }
+  .modal-header h3 { margin:0; }
+  .modal-close { border:none;background:none;font-size:22px;cursor:pointer; }
+  .draft-indicator { font-size:11px;color:var(--sage);margin-left:8px; }
 </style>
 </head>
 <body>
@@ -876,9 +878,9 @@ function renderRepairs() {
 
 // ── 房源管理 ──────────────────────────────────────────────────────
 function renderProperties() {
-  var formHtml = propertyForm()
+  var addBtn = '<div style="margin-bottom:14px;"><button class="btn" style="width:auto;padding:10px 24px;" onclick="openAddPropertyModal()">➕ 新增房源</button></div>'
   if (!DATA.properties.length) {
-    return formHtml + '<div class="empty">還沒有房源，用上方表單新增第一間！</div>'
+    return addBtn + '<div class="empty">還沒有房源，按上方按鈕新增第一間！</div>'
   }
   var listHtml = DATA.properties.map(function(p) {
     var thumb = (p.images && p.images[0])
@@ -900,18 +902,18 @@ function renderProperties() {
       '<button class="action-btn danger" onclick="deleteProperty(\\'' + p.id + '\\')">🗑️ 刪除</button>' +
       '</div></div>'
   }).join('')
-  return formHtml + listHtml
+  return addBtn + listHtml
 }
 
-function propertyForm() {
-  var p = editingPropertyId ? DATA.properties.find(function(x){ return x.id === editingPropertyId }) : null
+var PROP_DRAFT_KEY = 'xiaowo_property_draft'
+
+function propertyFormHtml(p, isModal) {
   var typeOptions = Object.keys(TYPE_LABEL).map(function(t) {
     return '<option value="' + t + '"' + (p && p.type === t ? ' selected' : '') + '>' + TYPE_LABEL[t] + '</option>'
   }).join('')
   var imageUrls = p && p.images ? p.images.map(function(i){ return i.url }).join(', ') : ''
-  // 總管理員新增房源時可選房東
   var ownerPicker = ''
-  if (DATA.role === 'super' && !p) {
+  if (DATA.role === 'super' && !editingPropertyId) {
     var opts = (DATA.landlords || []).filter(function(l){ return l.isActive }).map(function(l){
       return '<option value="' + l.id + '">' + esc(l.name) + '</option>'
     }).join('')
@@ -921,35 +923,106 @@ function propertyForm() {
       ownerPicker = '<div class="full" style="color:var(--danger);font-size:13px;">⚠️ 尚無房東，請先到「房東管理」新增房東</div>'
     }
   }
-  return '<div class="form-box"><h3>' + (p ? '✏️ 編輯房源：' + esc(p.title) : '➕ 新增房源') + '</h3>' +
-    '<div class="form-grid">' +
+  var grid = '<div class="form-grid">' +
     ownerPicker +
-    '<div class="full"><label>房源名稱 *</label><input id="f_title" value="' + esc(p ? p.title : '') + '" placeholder="例：紅寶石11號 201室 採光套房"></div>' +
-    '<div><label>類型</label><select id="f_type">' + typeOptions + '</select></div>' +
-    '<div><label>月租金 *</label><input id="f_price" type="number" value="' + (p ? p.price : '') + '" placeholder="8000"></div>' +
-    '<div><label>城市</label><input id="f_city" value="' + esc(p ? p.city : '台中市') + '"></div>' +
-    '<div><label>區域</label><input id="f_district" value="' + esc(p ? p.district : '') + '" placeholder="北區"></div>' +
-    '<div><label>坪數</label><input id="f_size" type="number" step="0.1" value="' + (p ? p.size : '') + '" placeholder="5.5"></div>' +
-    '<div><label>押金</label><input id="f_deposit" value="' + esc(p ? p.deposit : '兩個月') + '"></div>' +
-    '<div class="full"><label>地址（不公開，僅自己看）</label><input id="f_address" value="' + esc(p ? p.address : '') + '"></div>' +
-    '<div class="full"><label>描述</label><textarea id="f_desc" rows="2" placeholder="採光良好，含冷氣熱水器...">' + esc(p ? p.description : '') + '</textarea></div>' +
+    '<div class="full"><label>房源名稱 *</label><input id="f_title" value="' + esc(p ? p.title : '') + '" placeholder="例：紅寶石11號 201室 採光套房" oninput="savePropDraft()"></div>' +
+    '<div><label>類型</label><select id="f_type" onchange="savePropDraft()">' + typeOptions + '</select></div>' +
+    '<div><label>月租金 *</label><input id="f_price" type="number" value="' + (p ? p.price : '') + '" placeholder="8000" oninput="savePropDraft()"></div>' +
+    '<div><label>城市</label><input id="f_city" value="' + esc(p ? p.city : '台中市') + '" oninput="savePropDraft()"></div>' +
+    '<div><label>區域</label><input id="f_district" value="' + esc(p ? p.district : '') + '" placeholder="北區" oninput="savePropDraft()"></div>' +
+    '<div><label>坪數</label><input id="f_size" type="number" step="0.1" value="' + (p ? p.size : '') + '" placeholder="5.5" oninput="savePropDraft()"></div>' +
+    '<div><label>押金</label><input id="f_deposit" value="' + esc(p ? p.deposit : '兩個月') + '" oninput="savePropDraft()"></div>' +
+    '<div class="full"><label>地址（不公開，僅自己看）</label><input id="f_address" value="' + esc(p ? p.address : '') + '" oninput="savePropDraft()"></div>' +
+    '<div class="full"><label>描述</label><textarea id="f_desc" rows="2" placeholder="採光良好，含冷氣熱水器..." oninput="savePropDraft()">' + esc(p ? p.description : '') + '</textarea></div>' +
     '<div class="full"><label>照片</label>' +
     '<div id="img_preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>' +
     '<input type="file" id="f_upload" accept="image/*" multiple onchange="uploadImages(this)" style="font-size:13px;margin-bottom:8px;">' +
     '<div id="upload_status" style="font-size:12px;color:var(--sage);"></div>' +
     '<input type="hidden" id="f_images" value="' + esc(imageUrls) + '">' +
     '</div>' +
-    '<div class="actions" style="margin-top:14px;">' +
-    '<button class="btn" style="width:auto;padding:10px 24px;" onclick="saveProperty()">' + (p ? '儲存修改' : '新增房源') + '</button>' +
-    (p ? '<button class="action-btn" onclick="cancelEdit()">取消編輯</button>' : '') +
-    '</div></div>'
+    '</div>'
+  return grid
+}
+
+function openAddPropertyModal() {
+  var draft = null
+  try { draft = JSON.parse(localStorage.getItem(PROP_DRAFT_KEY) || 'null') } catch(e){}
+  var hasDraft = draft && (draft.title || draft.price)
+  var draftNote = hasDraft ? '<span class="draft-indicator">📝 已還原草稿</span>' : ''
+
+  var html = '<div id="propModal" class="modal-overlay">' +
+    '<div class="modal-box">' +
+    '<div class="modal-header"><h3>➕ 新增房源' + draftNote + '</h3>' +
+    '<button class="modal-close" onclick="closeAddPropertyModal()">×</button></div>' +
+    propertyFormHtml(null, true) +
+    '<div style="display:flex;gap:8px;margin-top:16px;position:sticky;bottom:0;background:white;padding-top:12px;">' +
+    '<button class="btn" style="flex:1;background:var(--deep-sage);" onclick="saveProperty()">新增房源</button>' +
+    '<button class="action-btn" style="flex:0 0 auto;" onclick="closeAddPropertyModal()">取消</button>' +
+    '</div></div></div>'
+
+  var existing = document.getElementById('propModal')
+  if (existing) existing.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+  setTimeout(function() {
+    renderImgPreview()
+    if (hasDraft) loadPropDraft(draft)
+  }, 30)
+}
+
+function closeAddPropertyModal() {
+  var m = document.getElementById('propModal')
+  if (m) m.remove()
+}
+
+function savePropDraft() {
+  if (editingPropertyId) return
+  try {
+    var d = {
+      title: (document.getElementById('f_title')||{}).value || '',
+      type: (document.getElementById('f_type')||{}).value || '',
+      price: (document.getElementById('f_price')||{}).value || '',
+      city: (document.getElementById('f_city')||{}).value || '',
+      district: (document.getElementById('f_district')||{}).value || '',
+      size: (document.getElementById('f_size')||{}).value || '',
+      deposit: (document.getElementById('f_deposit')||{}).value || '',
+      address: (document.getElementById('f_address')||{}).value || '',
+      description: (document.getElementById('f_desc')||{}).value || '',
+      images: (document.getElementById('f_images')||{}).value || '',
+    }
+    if (document.getElementById('f_owner')) d.ownerId = document.getElementById('f_owner').value
+    localStorage.setItem(PROP_DRAFT_KEY, JSON.stringify(d))
+  } catch(e){}
+}
+
+function loadPropDraft(d) {
+  if (!d) return
+  var set = function(id, val) { var el = document.getElementById(id); if (el && val) el.value = val }
+  set('f_title', d.title); set('f_type', d.type); set('f_price', d.price)
+  set('f_city', d.city); set('f_district', d.district); set('f_size', d.size)
+  set('f_deposit', d.deposit); set('f_address', d.address); set('f_desc', d.description)
+  if (d.images) { set('f_images', d.images); renderImgPreview() }
+  if (d.ownerId) set('f_owner', d.ownerId)
 }
 
 function startEditProperty(id) {
   editingPropertyId = id
-  renderTab()
-  setTimeout(renderImgPreview, 50)
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  var p = DATA.properties.find(function(x){ return x.id === id })
+  if (!p) return
+
+  var html = '<div id="propModal" class="modal-overlay">' +
+    '<div class="modal-box">' +
+    '<div class="modal-header"><h3>✏️ 編輯房源</h3>' +
+    '<button class="modal-close" onclick="closeAddPropertyModal()">×</button></div>' +
+    propertyFormHtml(p, true) +
+    '<div style="display:flex;gap:8px;margin-top:16px;position:sticky;bottom:0;background:white;padding-top:12px;">' +
+    '<button class="btn" style="flex:1;background:var(--deep-sage);" onclick="saveProperty()">儲存修改</button>' +
+    '<button class="action-btn" style="flex:0 0 auto;" onclick="cancelEdit()">取消</button>' +
+    '</div></div></div>'
+
+  var existing = document.getElementById('propModal')
+  if (existing) existing.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+  setTimeout(renderImgPreview, 30)
 }
 
 // 渲染目前已有的照片預覽（可刪除）
@@ -1003,7 +1076,7 @@ async function uploadImages(input) {
 
 function cancelEdit() {
   editingPropertyId = null
-  renderTab()
+  closeAddPropertyModal()
 }
 
 async function saveProperty() {
@@ -1038,7 +1111,9 @@ async function saveProperty() {
   })
   if (!res.ok) { showToast('❌ 儲存失敗'); return }
   showToast(editingPropertyId ? '✅ 已更新房源' : '✅ 已新增房源')
+  if (!editingPropertyId) { try { localStorage.removeItem(PROP_DRAFT_KEY) } catch(e){} }
   editingPropertyId = null
+  closeAddPropertyModal()
   reload()
 }
 
@@ -1370,24 +1445,54 @@ var SHOW_TOGGLES = [
   { key: 'showMyBookings', label: '顯示「我的預約」按鈕' },
 ]
 
-var BOT_TEXT_FIELDS = [
-  { key: 'menuTitle', label: '主選單標題', ph: '🐌 小蝸出租' },
-  { key: 'menuSubtitle', label: '主選單副標', ph: '請選擇服務項目' },
-  { key: 'btnListRooms', label: '按鈕：查詢空房', ph: '🏠 查詢空房' },
-  { key: 'btnBookVisit', label: '按鈕：預約看房', ph: '📅 預約看房' },
-  { key: 'btnReportRepair', label: '按鈕：維修回報', ph: '🔧 維修回報' },
-  { key: 'btnMyBookings', label: '按鈕：我的預約', ph: '📋 我的預約' },
-  { key: 'welcome', label: '加好友歡迎語', ph: '👋 歡迎加入！...', multi: true },
-  { key: 'noRooms', label: '沒有空房時', ph: '😔 目前沒有空房...', multi: true },
-  { key: 'searchNoResult', label: '搜尋無結果時', ph: '🔍 找不到符合條件...', multi: true },
-  { key: 'bookButtonLabel', label: '房源卡按鈕', ph: '預約看這間' },
-  { key: 'askDate', label: '預約：問日期', ph: '📅 請輸入想看房的日期...', multi: true },
-  { key: 'askTime', label: '預約：問時段', ph: '⏰ 請選擇看房時間' },
-  { key: 'bookSuccess', label: '預約成功訊息', ph: '✅ 預約成功！...', multi: true },
-  { key: 'repairTitle', label: '維修：選類型標題', ph: '🔧 請選擇問題類型' },
-  { key: 'askRepairDesc', label: '維修：問描述', ph: '請描述問題詳情...', multi: true },
-  { key: 'repairSuccess', label: '維修成功訊息', ph: '✅ 維修申請已送出！...', multi: true },
-  { key: 'botDisabledMsg', label: 'Bot 停用時訊息', ph: '目前暫停服務...', multi: true },
+var BOT_TEXT_GROUPS = [
+  {
+    label: '📱 主選單文字',
+    open: true,
+    fields: [
+      { key: 'menuTitle', label: '主選單標題', ph: '🐌 小蝸出租' },
+      { key: 'menuSubtitle', label: '主選單副標', ph: '請選擇服務項目' },
+      { key: 'btnListRooms', label: '按鈕：查詢空房', ph: '🏠 查詢空房' },
+      { key: 'btnBookVisit', label: '按鈕：預約看房', ph: '📅 預約看房' },
+      { key: 'btnReportRepair', label: '按鈕：維修回報', ph: '🔧 維修回報' },
+      { key: 'btnMyBookings', label: '按鈕：我的預約', ph: '📋 我的預約' },
+    ]
+  },
+  {
+    label: '💬 歡迎與空房訊息',
+    open: false,
+    fields: [
+      { key: 'welcome', label: '加好友歡迎語', ph: '👋 歡迎加入！...', multi: true },
+      { key: 'noRooms', label: '沒有空房時', ph: '😔 目前沒有空房...', multi: true },
+      { key: 'searchNoResult', label: '搜尋無結果時', ph: '🔍 找不到符合條件...', multi: true },
+      { key: 'bookButtonLabel', label: '房源卡「預約」按鈕文字', ph: '預約看這間' },
+    ]
+  },
+  {
+    label: '📅 預約看房訊息',
+    open: false,
+    fields: [
+      { key: 'askDate', label: '詢問看房日期', ph: '📅 請輸入想看房的日期...', multi: true },
+      { key: 'askTime', label: '詢問看房時段', ph: '⏰ 請選擇看房時間' },
+      { key: 'bookSuccess', label: '預約成功訊息', ph: '✅ 預約成功！...', multi: true },
+    ]
+  },
+  {
+    label: '🔧 維修回報訊息',
+    open: false,
+    fields: [
+      { key: 'repairTitle', label: '選擇問題類型標題', ph: '🔧 請選擇問題類型' },
+      { key: 'askRepairDesc', label: '詢問問題描述', ph: '請描述問題詳情...', multi: true },
+      { key: 'repairSuccess', label: '回報成功訊息', ph: '✅ 維修申請已送出！...', multi: true },
+    ]
+  },
+  {
+    label: '⚙️ 其他設定',
+    open: false,
+    fields: [
+      { key: 'botDisabledMsg', label: 'Bot 停用時顯示訊息', ph: '目前暫停服務...', multi: true },
+    ]
+  },
 ]
 var botTextState = { id: null, values: {} }
 
@@ -1402,24 +1507,26 @@ function openBotTextEditor(id) {
 }
 
 function buildBotFormContent(values) {
-  var showChecks = '<div style="background:#F5F3ED;border-radius:12px;padding:14px 16px;margin-bottom:18px;">' +
-    '<div style="font-size:13px;font-weight:700;color:var(--charcoal);margin-bottom:10px;">📱 主選單按鈕顯示</div>' +
+  var togglesSection = '<details class="acc" open><summary>📱 主選單按鈕顯示</summary><div class="acc-body">' +
     SHOW_TOGGLES.map(function(s) {
       var checked = values[s.key] !== false
       return '<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;">' +
         '<input type="checkbox" id="bt_' + s.key + '"' + (checked ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer;accent-color:var(--sage);">' +
         '<span style="font-size:14px;">' + s.label + '</span></label>'
-    }).join('') + '</div>'
+    }).join('') + '</div></details>'
 
-  var fields = BOT_TEXT_FIELDS.map(function(f) {
-    var val = values[f.key] || ''
-    var input = f.multi
-      ? '<textarea id="bt_' + f.key + '" rows="2" placeholder="' + esc(f.ph) + '" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;font-size:13px;font-family:inherit;">' + esc(val) + '</textarea>'
-      : '<input id="bt_' + f.key + '" value="' + esc(val) + '" placeholder="' + esc(f.ph) + '" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;font-size:13px;">'
-    return '<div style="margin-bottom:12px;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">' + f.label + '</label>' + input + '</div>'
+  var groupSections = BOT_TEXT_GROUPS.map(function(g) {
+    var fieldsHtml = g.fields.map(function(f) {
+      var val = values[f.key] || ''
+      var input = f.multi
+        ? '<textarea id="bt_' + f.key + '" rows="2" placeholder="' + esc(f.ph) + '" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;font-size:13px;font-family:inherit;">' + esc(val) + '</textarea>'
+        : '<input id="bt_' + f.key + '" value="' + esc(val) + '" placeholder="' + esc(f.ph) + '" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;font-size:13px;">'
+      return '<div style="margin-bottom:12px;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">' + f.label + '</label>' + input + '</div>'
+    }).join('')
+    return '<details class="acc"' + (g.open ? ' open' : '') + '><summary>' + g.label + '</summary><div class="acc-body"><p style="font-size:12px;color:#aaa;margin:0 0 12px;">留空使用系統預設值</p>' + fieldsHtml + '</div></details>'
   }).join('')
 
-  return showChecks + '<p style="font-size:12px;color:#aaa;margin:0 0 14px;">↓ 留空的文字欄位會使用系統預設值</p>' + fields
+  return togglesSection + groupSections
 }
 
 function renderBotTextEditor() {
@@ -1465,9 +1572,11 @@ async function saveBotText() {
     if (el) values[s.key] = el.checked
   })
   // 收集文字欄位（留空 = 使用預設）
-  BOT_TEXT_FIELDS.forEach(function(f) {
-    var el = document.getElementById('bt_' + f.key)
-    if (el && el.value.trim()) values[f.key] = el.value.trim()
+  BOT_TEXT_GROUPS.forEach(function(g) {
+    g.fields.forEach(function(f) {
+      var el = document.getElementById('bt_' + f.key)
+      if (el && el.value.trim()) values[f.key] = el.value.trim()
+    })
   })
   var res = await fetch('/admin/api/landlord/' + botTextState.id + '/bottext?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'},
