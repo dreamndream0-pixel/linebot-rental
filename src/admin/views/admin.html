@@ -413,32 +413,50 @@ function renderRepairs() {
 }
 
 // ── 房源管理 ──────────────────────────────────────────────────────
+function renderPropCard(p) {
+  var thumb = (p.images && p.images[0])
+    ? '<img class="prop-thumb" src="' + esc(p.images[0].url) + '" onerror="this.style.display=\'none\'">'
+    : '<div class="prop-thumb" style="display:flex;align-items:center;justify-content:center;font-size:22px;">🏠</div>'
+  var statusOptions = Object.keys(PROP_STATUS_LABEL).map(function(s) {
+    return '<option value="' + s + '"' + (p.status === s ? ' selected' : '') + '>' + PROP_STATUS_LABEL[s] + '</option>'
+  }).join('')
+  return '<div class="card"><div class="card-row">' +
+    '<div style="display:flex;gap:14px;align-items:flex-start;">' + thumb +
+    '<div><h3>' + esc(p.title) + '</h3>' +
+    '<div class="meta">' + esc(p.city) + esc(p.district) + ' · ' + (TYPE_LABEL[p.type] || '') +
+    ' · NT$ ' + Number(p.price).toLocaleString() + '/月' +
+    (p.size ? ' · ' + p.size + '坪' : '') + '</div></div></div>' +
+    '<span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span></div>' +
+    '<div class="actions">' +
+    '<select onchange="changePropertyStatus(\'' + p.id + '\', this.value)" style="padding:6px 10px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;">' + statusOptions + '</select>' +
+    '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">✏️ 編輯</button>' +
+    '<button class="action-btn danger" onclick="deleteProperty(\'' + p.id + '\')">🗑️ 刪除</button>' +
+    '</div></div>'
+}
+
 function renderProperties() {
   var addBtn = '<div style="margin-bottom:14px;"><button class="btn" style="width:auto;padding:10px 24px;" onclick="openAddPropertyModal()">➕ 新增房源</button></div>'
   if (!DATA.properties.length) {
     return addBtn + '<div class="empty">還沒有房源，按上方按鈕新增第一間！</div>'
   }
-  var listHtml = DATA.properties.map(function(p) {
-    var thumb = (p.images && p.images[0])
-      ? '<img class="prop-thumb" src="' + esc(p.images[0].url) + '" onerror="this.style.display=\'none\'">'
-      : '<div class="prop-thumb" style="display:flex;align-items:center;justify-content:center;font-size:22px;">🏠</div>'
-    var statusOptions = Object.keys(PROP_STATUS_LABEL).map(function(s) {
-      return '<option value="' + s + '"' + (p.status === s ? ' selected' : '') + '>' + PROP_STATUS_LABEL[s] + '</option>'
-    }).join('')
-    return '<div class="card"><div class="card-row">' +
-      '<div style="display:flex;gap:14px;align-items:flex-start;">' + thumb +
-      '<div><h3>' + esc(p.title) + '</h3>' +
-      '<div class="meta">' + esc(p.city) + esc(p.district) + ' · ' + (TYPE_LABEL[p.type] || '') +
-      ' · NT$ ' + Number(p.price).toLocaleString() + '/月' +
-      (p.size ? ' · ' + p.size + '坪' : '') + '</div></div></div>' +
-      '<span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span></div>' +
-      '<div class="actions">' +
-      '<select onchange="changePropertyStatus(\'' + p.id + '\', this.value)" style="padding:6px 10px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;">' + statusOptions + '</select>' +
-      '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">✏️ 編輯</button>' +
-      '<button class="action-btn danger" onclick="deleteProperty(\'' + p.id + '\')">🗑️ 刪除</button>' +
-      '</div></div>'
+  if (DATA.role !== 'super') {
+    return addBtn + DATA.properties.map(renderPropCard).join('')
+  }
+  // 總管理員：依房東分組
+  var groups = {}
+  var order = []
+  DATA.properties.forEach(function(p) {
+    var key = (p.owner && p.owner.name) ? p.owner.name : '未分類'
+    if (!groups[key]) { groups[key] = []; order.push(key) }
+    groups[key].push(p)
+  })
+  var groupHtml = order.map(function(name) {
+    return '<div style="margin-bottom:24px;">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--deep-sage);padding:6px 10px;background:var(--sage-bg);border-radius:8px;margin-bottom:10px;">🏢 ' + esc(name) + '（' + groups[name].length + ' 間）</div>' +
+      groups[name].map(renderPropCard).join('') +
+    '</div>'
   }).join('')
-  return addBtn + listHtml
+  return addBtn + groupHtml
 }
 
 var PROP_DRAFT_KEY = 'xiaowo_property_draft'
@@ -546,16 +564,27 @@ function propertyFormHtml(p, isModal) {
     '<div class="prop-form-section">' +
       '<h4>房源標籤</h4>' +
       (function() {
-        var ALL_TAGS = ['可租補','免仲介費','獨立衛浴','獨洗曬','可開伙','可養寵物','垃圾代收','機車位','腳踏車位','近捷運','近學校','近超商','電梯大樓']
+        var PRESET_TAGS = ['可租補','免仲介費','獨立衛浴','獨洗曬','可開伙','可養寵物','垃圾代收','機車位','腳踏車位','近捷運','近學校','近超商','電梯大樓']
         var curTags = p && p.tags ? p.tags.map(function(t){ return t.name }) : []
-        return '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
-          ALL_TAGS.map(function(tag) {
+        var presetHtml = '<div id="tag_chips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">' +
+          PRESET_TAGS.map(function(tag) {
             var checked = curTags.indexOf(tag) !== -1
             return '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 12px;border:1.5px solid ' + (checked ? 'var(--sage)' : 'var(--oat-mid,#ddd)') + ';border-radius:8px;font-size:13px;background:' + (checked ? 'var(--sage-bg)' : 'white') + ';font-weight:' + (checked ? '700' : '400') + ';" onclick="toggleTagStyle(this)">' +
-              '<input type="checkbox" name="f_tags" value="' + tag + '"' + (checked ? ' checked' : '') + ' style="display:none;" onchange="savePropDraft()"> ' + tag +
+              '<input type="checkbox" name="f_tags" value="' + tag + '"' + (checked ? ' checked' : '') + ' style="display:none;"> ' + tag +
             '</label>'
           }).join('') +
+          curTags.filter(function(t){ return PRESET_TAGS.indexOf(t) === -1 }).map(function(tag) {
+            return '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 12px;border:1.5px solid var(--sage);border-radius:8px;font-size:13px;background:var(--sage-bg);font-weight:700;" onclick="toggleTagStyle(this)">' +
+              '<input type="checkbox" name="f_tags" value="' + tag + '" checked style="display:none;"> ' + tag +
+              '<span onclick="event.stopPropagation();removeCustomTag(this)" style="margin-left:4px;color:#aaa;font-size:11px;cursor:pointer;">✕</span>' +
+            '</label>'
+          }).join('') +
+        '</div>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<input id="f_tag_input" type="text" placeholder="自訂標籤（按 Enter 新增）" style="flex:1;padding:8px 12px;border:1.5px solid var(--oat-mid,#ddd);border-radius:8px;font-size:13px;" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addCustomTag()}">' +
+          '<button type="button" onclick="addCustomTag()" style="padding:8px 16px;border-radius:8px;border:1.5px solid var(--sage);background:var(--sage-bg);font-size:13px;cursor:pointer;">新增</button>' +
         '</div>'
+        return presetHtml
       })() +
     '</div>' +
     '<div class="prop-form-section">' +
@@ -694,6 +723,25 @@ function toggleTagStyle(label) {
   label.style.border = '1.5px solid ' + (checked ? 'var(--sage)' : 'var(--oat-mid,#ddd)')
   label.style.background = checked ? 'var(--sage-bg)' : 'white'
   label.style.fontWeight = checked ? '700' : '400'
+}
+
+function addCustomTag() {
+  var input = document.getElementById('f_tag_input')
+  var val = input.value.trim()
+  if (!val) return
+  var existing = Array.from(document.querySelectorAll('input[name="f_tags"]')).map(function(cb){ return cb.value })
+  if (existing.indexOf(val) !== -1) { showToast('標籤已存在'); input.value = ''; return }
+  var label = document.createElement('label')
+  label.style.cssText = 'display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 12px;border:1.5px solid var(--sage);border-radius:8px;font-size:13px;background:var(--sage-bg);font-weight:700;'
+  label.onclick = function() { toggleTagStyle(label) }
+  label.innerHTML = '<input type="checkbox" name="f_tags" value="' + esc(val) + '" checked style="display:none;"> ' + esc(val) +
+    '<span onclick="event.stopPropagation();removeCustomTag(this)" style="margin-left:4px;color:#aaa;font-size:11px;cursor:pointer;">✕</span>'
+  document.getElementById('tag_chips').appendChild(label)
+  input.value = ''
+}
+
+function removeCustomTag(span) {
+  span.closest('label').remove()
 }
 
 // ── 照片拖移排序 ─────────────────────────────────────────────────
