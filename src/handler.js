@@ -316,9 +316,69 @@ async function handlePostback(event, client, landlordId = null) {
       return
     }
     const propertyId = data.replace('BOOK_', '')
-    userState.set(userId, { flow: 'booking', step: 'select_date', propertyId })
-    const askDate = t.askDate || '📅 請輸入想看房的日期（格式：2026/06/15）'
-    await client.replyMessage(event.replyToken, { type: 'text', text: askDate })
+    userState.set(userId, { flow: 'booking', step: 'select_time_after_date', propertyId })
+
+    // 用 datetimepicker 讓用戶選日期
+    const today = new Date().toISOString().split('T')[0]
+    await client.replyMessage(event.replyToken, {
+      type: 'flex',
+      altText: '請選擇看房日期',
+      contents: {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          spacing: 'md',
+          contents: [
+            { type: 'text', text: t.askDate || '📅 請選擇想看房的日期', weight: 'bold', size: 'md' },
+            {
+              type: 'button',
+              action: {
+                type: 'datetimepicker',
+                label: '點此選擇日期',
+                data: `SELECT_DATE_${propertyId}`,
+                mode: 'date',
+                min: today,
+              },
+              style: 'primary',
+              color: '#7A9E7E',
+              height: 'sm',
+              margin: 'md'
+            }
+          ]
+        }
+      }
+    })
+  }
+
+  if (data.startsWith('SELECT_DATE_')) {
+    const propertyId = data.replace('SELECT_DATE_', '')
+    const visitDate = event.postback?.params?.date  // YYYY-MM-DD
+    if (!visitDate) return
+
+    userState.set(userId, { flow: 'booking', step: 'select_time', propertyId, visitDate })
+
+    await client.replyMessage(event.replyToken, {
+      type: 'flex',
+      altText: '請選擇看房時段',
+      contents: {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          spacing: 'sm',
+          contents: [
+            { type: 'text', text: t.askTime || '⏰ 請選擇看房時間', weight: 'bold' },
+            { type: 'text', text: `📅 ${visitDate}`, size: 'sm', color: '#888888' },
+            ...['10:00', '11:00', '14:00', '15:00', '16:00'].map(slot => ({
+              type: 'button',
+              action: { type: 'message', label: slot, text: slot },
+              style: 'secondary', height: 'sm', margin: 'xs'
+            }))
+          ]
+        }
+      }
+    })
   }
 }
 
@@ -371,7 +431,7 @@ async function handleMessage(event, client, landlordId = null) {
   }
 
   // ── 多步驟流程中 ──
-  if (!isExitKeyword && state.flow === 'booking' && (state.step === 'select_date' || text.startsWith('TIME_'))) {
+  if (!isExitKeyword && state.flow === 'booking' && state.step === 'select_time') {
     if (t.showBookVisit === false) { userState.delete(userId); reply = mainMenu(t) }
     else { reply = await handleBookingFlow(userId, text, state, client, landlordId, t) }
   } else if (!isExitKeyword && state.flow === 'repair') {
@@ -426,34 +486,6 @@ async function handleMessage(event, client, landlordId = null) {
 // ── 看房預約流程 ──────────────────────────────────────────────────
 async function handleBookingFlow(userId, text, state, client, landlordId = null, t = {}) {
   const { step, propertyId } = state
-
-  if (step === 'select_date') {
-    const dateRegex = /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/
-    if (!dateRegex.test(text)) {
-      return { type: 'text', text: t.dateError || '❌ 日期格式不對，請輸入如：2026/06/15' }
-    }
-    userState.set(userId, { ...state, step: 'select_time', visitDate: text })
-    return {
-      type: 'flex',
-      altText: '選擇看房時段',
-      contents: {
-        type: 'bubble',
-        body: {
-          type: 'box',
-          layout: 'vertical',
-          spacing: 'sm',
-          contents: [
-            { type: 'text', text: t.askTime || '⏰ 請選擇看房時間', weight: 'bold' },
-            ...['10:00', '11:00', '14:00', '15:00', '16:00'].map(slot => ({
-              type: 'button',
-              action: { type: 'message', label: slot, text: slot },
-              style: 'secondary', height: 'sm', margin: 'xs'
-            }))
-          ]
-        }
-      }
-    }
-  }
 
   if (step === 'select_time' && text) {
     const timeslot = text
