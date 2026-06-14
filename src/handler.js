@@ -58,14 +58,14 @@ function mainMenu(t = {}) {
         layout: 'vertical',
         spacing: 'sm',
         contents: [
-          menuButton(t.btnListRooms || '🏠 查詢空房', 'ACTION_LIST_ROOMS'),
-          menuButton(t.btnBookVisit || '📅 預約看房', 'ACTION_BOOK_VISIT'),
-          menuButton(t.btnReportRepair || '🔧 維修回報', 'ACTION_REPORT_REPAIR'),
-          menuButton(t.btnMyBookings || '📋 我的預約', 'ACTION_MY_BOOKINGS'),
+          t.showListRooms !== false ? menuButton(t.btnListRooms || '🏠 查詢空房', 'ACTION_LIST_ROOMS') : null,
+          t.showBookVisit !== false ? menuButton(t.btnBookVisit || '📅 預約看房', 'ACTION_BOOK_VISIT') : null,
+          t.showReportRepair !== false ? menuButton(t.btnReportRepair || '🔧 維修回報', 'ACTION_REPORT_REPAIR') : null,
+          t.showMyBookings !== false ? menuButton(t.btnMyBookings || '📋 我的預約', 'ACTION_MY_BOOKINGS') : null,
           { type: 'separator', margin: 'md' },
           { type: 'text', text: t.searchHint || '💡 也可直接輸入條件搜尋', size: 'xs', color: '#888888', margin: 'md', wrap: true },
           { type: 'text', text: t.searchExample || '例如：台中市 沙鹿區 5000-8000', size: 'xs', color: '#aaaaaa', wrap: true },
-        ]
+        ].filter(Boolean)
       }
     }
   }
@@ -346,29 +346,37 @@ async function handleMessage(event, client, landlordId = null) {
 
   // ── 多步驟流程中 ──
   if (state.flow === 'booking' && (state.step === 'select_date' || text.startsWith('TIME_'))) {
-    reply = await handleBookingFlow(userId, text, state, client, landlordId, t)
+    if (t.showBookVisit === false) { userState.delete(userId); reply = mainMenu(t) }
+    else { reply = await handleBookingFlow(userId, text, state, client, landlordId, t) }
   } else if (state.flow === 'repair') {
-    reply = await handleRepairFlow(userId, text, state, client, landlordId, t)
+    if (t.showReportRepair === false) { userState.delete(userId); reply = mainMenu(t) }
+    else { reply = await handleRepairFlow(userId, text, state, client, landlordId, t) }
   }
   // ── 主要指令 ──
   else if (text === 'ACTION_LIST_ROOMS' || text === '查詢空房') {
-    reply = await listAvailableRooms(landlordId, t)
+    reply = t.showListRooms !== false ? await listAvailableRooms(landlordId, t) : mainMenu(t)
   } else if (text === 'ACTION_BOOK_VISIT' || text === '預約看房') {
-    reply = await listAvailableRooms(landlordId, t)
+    reply = t.showBookVisit !== false ? await listAvailableRooms(landlordId, t) : mainMenu(t)
   } else if (text === 'ACTION_REPORT_REPAIR' || text === '維修回報') {
-    reply = repairMenu(t)
+    reply = t.showReportRepair !== false ? repairMenu(t) : mainMenu(t)
   } else if (text === 'ACTION_MY_BOOKINGS' || text === '我的預約') {
-    reply = await myBookings(userId, t)
+    reply = t.showMyBookings !== false ? await myBookings(userId, t) : mainMenu(t)
   }
   else if (text.startsWith('BOOK_ROOM_')) {
-    const propertyId = text.replace('BOOK_ROOM_', '')
-    userState.set(userId, { flow: 'booking', step: 'select_date', propertyId })
-    reply = { type: 'text', text: t.askDate }
+    if (t.showBookVisit === false) { reply = mainMenu(t) }
+    else {
+      const propertyId = text.replace('BOOK_ROOM_', '')
+      userState.set(userId, { flow: 'booking', step: 'select_date', propertyId })
+      reply = { type: 'text', text: t.askDate }
+    }
   }
   else if (text.startsWith('REPAIR_')) {
-    const category = text.replace('REPAIR_', '')
-    userState.set(userId, { flow: 'repair', step: 'describe', category })
-    reply = { type: 'text', text: `🔧 ${category}\n\n${t.askRepairDesc}` }
+    if (t.showReportRepair === false) { reply = mainMenu(t) }
+    else {
+      const category = text.replace('REPAIR_', '')
+      userState.set(userId, { flow: 'repair', step: 'describe', category })
+      reply = { type: 'text', text: `🔧 ${category}\n\n${t.askRepairDesc}` }
+    }
   }
   else {
     // 嘗試把訊息當作搜尋關鍵字解析

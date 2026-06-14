@@ -5,6 +5,12 @@ const prisma = require('./db')
 
 // 預設文字（房東沒自訂時使用）
 const DEFAULT_TEXT = {
+  // 主選單按鈕顯示開關（false = 隱藏）
+  showListRooms: true,
+  showBookVisit: true,
+  showReportRepair: true,
+  showMyBookings: true,
+
   // 主選單
   menuTitle: '🐌 小蝸出租',
   menuSubtitle: '請選擇服務項目',
