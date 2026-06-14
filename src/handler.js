@@ -362,11 +362,19 @@ async function handleMessage(event, client, landlordId = null) {
 
   let reply
 
+  // ── 中斷流程關鍵字（優先判斷，隨時可叫出選單或切換功能） ──
+  const EXIT_KEYWORDS = ['選單', '主選單', 'menu', '取消', '返回', '查詢空房', '預約看房', '維修回報', '我的預約']
+  const isExitKeyword = EXIT_KEYWORDS.some(k => text === k || text.toLowerCase() === k.toLowerCase())
+  if (isExitKeyword && state.flow) {
+    userState.delete(userId)
+    // 直接走下方主要指令，不進流程
+  }
+
   // ── 多步驟流程中 ──
-  if (state.flow === 'booking' && (state.step === 'select_date' || text.startsWith('TIME_'))) {
+  if (!isExitKeyword && state.flow === 'booking' && (state.step === 'select_date' || text.startsWith('TIME_'))) {
     if (t.showBookVisit === false) { userState.delete(userId); reply = mainMenu(t) }
     else { reply = await handleBookingFlow(userId, text, state, client, landlordId, t) }
-  } else if (state.flow === 'repair') {
+  } else if (!isExitKeyword && state.flow === 'repair') {
     if (t.showReportRepair === false) { userState.delete(userId); reply = mainMenu(t) }
     else { reply = await handleRepairFlow(userId, text, state, client, landlordId, t) }
   }
