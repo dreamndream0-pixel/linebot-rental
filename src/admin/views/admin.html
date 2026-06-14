@@ -305,7 +305,7 @@ function renderTabBar() {
     tabs.push({ id: 'botSettings', label: '⚙️ Bot 設定' })
   }
   document.getElementById('tabBar').innerHTML = tabs.map(function(t) {
-    return '<button class="tab' + (currentTab === t.id ? ' active' : '') + '" data-tab="' + t.id + '" onclick="switchTab(\\'' + t.id + '\\')">' + t.label + '</button>'
+    return '<button class="tab' + (currentTab === t.id ? ' active' : '') + '" data-tab="' + t.id + '" onclick="switchTab(this.dataset.tab)">' + t.label + '</button>'
   }).join('')
 }
 
