@@ -346,7 +346,7 @@ function renderTenants() {
   if (!DATA.tenants.length) return '<div class="empty">還沒有用戶，等人加 Bot 好友吧！</div>'
   return DATA.tenants.map(function(t) {
     var avatar = t.avatarUrl
-      ? '<img src="' + esc(t.avatarUrl) + '" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\\'none\\'">'
+      ? '<img src="' + esc(t.avatarUrl) + '" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'">'
       : '<div style="width:52px;height:52px;border-radius:50%;background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">👤</div>'
     var nameHtml = t.customName
       ? esc(t.customName) + ' <span style="font-weight:400;font-size:13px;color:#aaa;">(' + esc(t.name || '未命名') + ')</span>'
@@ -358,13 +358,13 @@ function renderTenants() {
     return '<div class="card"><div class="card-row">' +
       '<div style="display:flex;gap:14px;align-items:flex-start;">' + avatar +
       '<div><h3>' + nameHtml +
-      ' <button onclick="editName(\\'' + t.id + '\\', \\'' + esc(t.customName || '').replace(/'/g, '') + '\\')" style="border:none;background:none;cursor:pointer;font-size:14px;" title="編輯備註名稱">✏️</button></h3>' +
+      ' <button onclick="editName(\'' + t.id + '\', \'' + esc(t.customName || '').replace(/'/g, '') + '\')" style="border:none;background:none;cursor:pointer;font-size:14px;" title="編輯備註名稱">✏️</button></h3>' +
       (t.statusMessage ? '<div style="font-size:13px;color:var(--sage);margin-bottom:4px;">💬 ' + esc(t.statusMessage) + '</div>' : '') +
       '<div class="meta">' + sourceTag +
       (t.property ? '🏠 ' + esc(t.property.title) : '尚未入住') +
       (t.phone ? ' · 📞 ' + esc(t.phone) : '') +
       '<br>加入時間：' + fmtDate(t.createdAt) + '</div>' +
-      '<span class="uid" onclick="copyText(\\'' + t.lineUserId + '\\')" title="點擊複製">' + t.lineUserId + '</span>' +
+      '<span class="uid" onclick="copyText(\'' + t.lineUserId + '\')" title="點擊複製">' + t.lineUserId + '</span>' +
       '</div></div></div></div>'
   }).join('')
 }
@@ -381,11 +381,11 @@ function renderBookings() {
       '<span class="badge ' + b.status + '">' + (BOOKING_LABEL[b.status] || b.status) + '</span></div>'
     if (b.status === 'PENDING') {
       html += '<div class="actions">' +
-        '<button class="action-btn" onclick="updateBooking(\\'' + b.id + '\\',\\'CONFIRMED\\')">✅ 確認</button>' +
-        '<button class="action-btn" onclick="updateBooking(\\'' + b.id + '\\',\\'CANCELLED\\')">❌ 取消</button></div>'
+        '<button class="action-btn" onclick="updateBooking(\'' + b.id + '\',\'CONFIRMED\')">✅ 確認</button>' +
+        '<button class="action-btn" onclick="updateBooking(\'' + b.id + '\',\'CANCELLED\')">❌ 取消</button></div>'
     } else if (b.status === 'CONFIRMED') {
       html += '<div class="actions">' +
-        '<button class="action-btn" onclick="updateBooking(\\'' + b.id + '\\',\\'COMPLETED\\')">🏁 標記完成</button></div>'
+        '<button class="action-btn" onclick="updateBooking(\'' + b.id + '\',\'COMPLETED\')">🏁 標記完成</button></div>'
     }
     return html + '</div>'
   }).join('')
@@ -404,9 +404,9 @@ function renderRepairs() {
     if (r.status !== 'DONE') {
       html += '<div class="actions">'
       if (r.status === 'PENDING') {
-        html += '<button class="action-btn" onclick="updateRepair(\\'' + r.id + '\\',\\'IN_PROGRESS\\')">🔧 開始處理</button>'
+        html += '<button class="action-btn" onclick="updateRepair(\'' + r.id + '\',\'IN_PROGRESS\')">🔧 開始處理</button>'
       }
-      html += '<button class="action-btn" onclick="updateRepair(\\'' + r.id + '\\',\\'DONE\\')">✅ 完成</button></div>'
+      html += '<button class="action-btn" onclick="updateRepair(\'' + r.id + '\',\'DONE\')">✅ 完成</button></div>'
     }
     return html + '</div>'
   }).join('')
@@ -420,7 +420,7 @@ function renderProperties() {
   }
   var listHtml = DATA.properties.map(function(p) {
     var thumb = (p.images && p.images[0])
-      ? '<img class="prop-thumb" src="' + esc(p.images[0].url) + '" onerror="this.style.display=\\'none\\'">'
+      ? '<img class="prop-thumb" src="' + esc(p.images[0].url) + '" onerror="this.style.display=\'none\'">'
       : '<div class="prop-thumb" style="display:flex;align-items:center;justify-content:center;font-size:22px;">🏠</div>'
     var statusOptions = Object.keys(PROP_STATUS_LABEL).map(function(s) {
       return '<option value="' + s + '"' + (p.status === s ? ' selected' : '') + '>' + PROP_STATUS_LABEL[s] + '</option>'
@@ -433,9 +433,9 @@ function renderProperties() {
       (p.size ? ' · ' + p.size + '坪' : '') + '</div></div></div>' +
       '<span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span></div>' +
       '<div class="actions">' +
-      '<select onchange="changePropertyStatus(\\'' + p.id + '\\', this.value)" style="padding:6px 10px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;">' + statusOptions + '</select>' +
-      '<button class="action-btn" onclick="startEditProperty(\\'' + p.id + '\\')">✏️ 編輯</button>' +
-      '<button class="action-btn danger" onclick="deleteProperty(\\'' + p.id + '\\')">🗑️ 刪除</button>' +
+      '<select onchange="changePropertyStatus(\'' + p.id + '\', this.value)" style="padding:6px 10px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;">' + statusOptions + '</select>' +
+      '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">✏️ 編輯</button>' +
+      '<button class="action-btn danger" onclick="deleteProperty(\'' + p.id + '\')">🗑️ 刪除</button>' +
       '</div></div>'
   }).join('')
   return addBtn + listHtml
@@ -872,21 +872,21 @@ function renderLandlords() {
       '<div class="meta">📧 ' + esc(l.email) + (l.phone ? ' · 📞 ' + esc(l.phone) : '') +
       '<br>🏠 ' + propCount + ' 間房源 · 加入：' + fmtDate(l.createdAt) + '<br>' + botStatus + '</div>' +
       '<div style="margin-top:6px;"><span style="font-size:12px;color:var(--gray-mid);">登入金鑰：</span>' +
-      '<span class="uid" onclick="copyText(\\'' + l.adminKey + '\\')" title="點擊複製">' + l.adminKey + '</span></div>' +
+      '<span class="uid" onclick="copyText(\'' + l.adminKey + '\')" title="點擊複製">' + l.adminKey + '</span></div>' +
       '<div style="margin-top:6px;"><span style="font-size:12px;color:var(--gray-mid);">Webhook URL（填到房東 LINE 後台）：</span><br>' +
-      '<span class="uid" onclick="copyText(\\'' + webhookUrl + '\\')" title="點擊複製" style="font-size:11px;">' + webhookUrl + '</span></div>' +
+      '<span class="uid" onclick="copyText(\'' + webhookUrl + '\')" title="點擊複製" style="font-size:11px;">' + webhookUrl + '</span></div>' +
       '</div></div>' +
       '<div class="actions">' +
-      '<button class="action-btn" onclick="editLandlord(\\'' + l.id + '\\')">✏️ 編輯資料</button>' +
-      '<button class="action-btn" onclick="openSiteEditor(\\'' + l.id + '\\')">⚙️ 官網設定</button>' +
-      '<button class="action-btn" onclick="viewLandlordSite(\\'' + l.id + '\\')">🌐 個人官網</button>' +
-      '<button class="action-btn" onclick="setupBot(\\'' + l.id + '\\', \\'' + esc(l.name).replace(/'/g, '') + '\\', \\'' + webhookUrl + '\\')">🤖 設定 Bot</button>' +
-      '<button class="action-btn" onclick="openBotTextEditor(\\'' + l.id + '\\')">💬 Bot 文字</button>' +
-      '<button class="action-btn ' + (l.botEnabled ? 'danger' : '') + '" onclick="toggleBotEnabled(\\'' + l.id + '\\', ' + (!l.botEnabled) + ')">' + (l.botEnabled ? '⏸️ 停用 Bot' : '▶️ 啟用 Bot') + '</button>' +
-      '<button class="action-btn" onclick="openMenuEditor(\\'' + l.id + '\\')">📱 設定選單</button>' +
-      (l.hasRichMenu ? '<button class="action-btn ' + (l.richMenuEnabled ? 'danger' : '') + '" onclick="toggleMenu(\\'' + l.id + '\\', ' + (!l.richMenuEnabled) + ')">' + (l.richMenuEnabled ? '🔕 關閉選單' : '🔔 開啟選單') + '</button>' : '') +
-      '<button class="action-btn" onclick="regenerateKey(\\'' + l.id + '\\')">🔑 重發金鑰</button>' +
-      '<button class="action-btn ' + (l.isActive ? 'danger' : '') + '" onclick="toggleLandlord(\\'' + l.id + '\\', ' + (!l.isActive) + ')">' + (l.isActive ? '停用' : '啟用') + '</button>' +
+      '<button class="action-btn" onclick="editLandlord(\'' + l.id + '\')">✏️ 編輯資料</button>' +
+      '<button class="action-btn" onclick="openSiteEditor(\'' + l.id + '\')">⚙️ 官網設定</button>' +
+      '<button class="action-btn" onclick="viewLandlordSite(\'' + l.id + '\')">🌐 個人官網</button>' +
+      '<button class="action-btn" onclick="setupBot(\'' + l.id + '\', \'' + esc(l.name).replace(/'/g, '') + '\', \'' + webhookUrl + '\')">🤖 設定 Bot</button>' +
+      '<button class="action-btn" onclick="openBotTextEditor(\'' + l.id + '\')">💬 Bot 文字</button>' +
+      '<button class="action-btn ' + (l.botEnabled ? 'danger' : '') + '" onclick="toggleBotEnabled(\'' + l.id + '\', ' + (!l.botEnabled) + ')">' + (l.botEnabled ? '⏸️ 停用 Bot' : '▶️ 啟用 Bot') + '</button>' +
+      '<button class="action-btn" onclick="openMenuEditor(\'' + l.id + '\')">📱 設定選單</button>' +
+      (l.hasRichMenu ? '<button class="action-btn ' + (l.richMenuEnabled ? 'danger' : '') + '" onclick="toggleMenu(\'' + l.id + '\', ' + (!l.richMenuEnabled) + ')">' + (l.richMenuEnabled ? '🔕 關閉選單' : '🔔 開啟選單') + '</button>' : '') +
+      '<button class="action-btn" onclick="regenerateKey(\'' + l.id + '\')">🔑 重發金鑰</button>' +
+      '<button class="action-btn ' + (l.isActive ? 'danger' : '') + '" onclick="toggleLandlord(\'' + l.id + '\', ' + (!l.isActive) + ')">' + (l.isActive ? '停用' : '啟用') + '</button>' +
       '</div></div>'
   }).join('')
   return formHtml + listHtml
@@ -989,7 +989,7 @@ function updateCell(i, field, val) {
 
 function renderMenuEditor() {
   var tplBtns = Object.keys(MENU_TEMPLATES).map(function(t) {
-    return '<button onclick="changeTemplate(\\'' + t + '\\')" style="padding:8px 14px;border-radius:8px;border:1.5px solid ' +
+    return '<button onclick="changeTemplate(\'' + t + '\')" style="padding:8px 14px;border-radius:8px;border:1.5px solid ' +
       (menuEditState.template === t ? 'var(--sage);background:var(--sage);color:white;' : '#E5E0D5;background:white;color:var(--charcoal);') +
       'font-size:13px;cursor:pointer;margin-right:6px;margin-bottom:6px;">' + MENU_TEMPLATES[t].label + '</button>'
   }).join('')
@@ -998,10 +998,10 @@ function renderMenuEditor() {
     return '<div style="border:1px solid #E5E0D5;border-radius:10px;padding:12px;margin-bottom:8px;">' +
       '<div style="font-size:12px;color:var(--gray-mid);margin-bottom:6px;">格子 ' + (i+1) + '</div>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
-      '<input value="' + esc(c.icon || '') + '" onchange="updateCell(' + i + ',\\'icon\\',this.value)" placeholder="圖示" style="width:60px;padding:8px;border:1px solid #E5E0D5;border-radius:8px;text-align:center;">' +
-      '<input value="' + esc(c.label || '') + '" onchange="updateCell(' + i + ',\\'label\\',this.value)" placeholder="顯示文字" style="flex:1;min-width:100px;padding:8px;border:1px solid #E5E0D5;border-radius:8px;">' +
+      '<input value="' + esc(c.icon || '') + '" onchange="updateCell(' + i + ',\'icon\',this.value)" placeholder="圖示" style="width:60px;padding:8px;border:1px solid #E5E0D5;border-radius:8px;text-align:center;">' +
+      '<input value="' + esc(c.label || '') + '" onchange="updateCell(' + i + ',\'label\',this.value)" placeholder="顯示文字" style="flex:1;min-width:100px;padding:8px;border:1px solid #E5E0D5;border-radius:8px;">' +
       '</div>' +
-      '<input value="' + esc(c.text || '') + '" onchange="updateCell(' + i + ',\\'text\\',this.value)" placeholder="點擊後送出的文字（例：查詢空房）" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;margin-top:6px;">' +
+      '<input value="' + esc(c.text || '') + '" onchange="updateCell(' + i + ',\'text\',this.value)" placeholder="點擊後送出的文字（例：查詢空房）" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;margin-top:6px;">' +
       '</div>'
   }).join('')
 
