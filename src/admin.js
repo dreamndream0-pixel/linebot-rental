@@ -379,12 +379,27 @@ router.post('/admin/api/landlord/:id/bot', express.json(), async (req, res) => {
   if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
 
   const { lineChannelSecret, lineChannelToken, lineBotName, notifyLineUserId } = req.body
+  let lineOfficialId = null
+  if (lineChannelToken) {
+    try {
+      const botInfoRes = await fetch('https://api.line.me/v2/bot/info', {
+        headers: { Authorization: `Bearer ${lineChannelToken}` }
+      })
+      if (botInfoRes.ok) {
+        const botInfo = await botInfoRes.json()
+        lineOfficialId = botInfo.premiumId || botInfo.basicId || null
+      }
+    } catch (e) {
+      console.error('取得 LINE 官方帳號 ID 失敗:', e.message)
+    }
+  }
   const landlord = await prisma.landlord.update({
     where: { id: req.params.id },
     data: {
       lineChannelSecret: lineChannelSecret || null,
       lineChannelToken: lineChannelToken || null,
       lineBotName: lineBotName || null,
+      lineOfficialId,
       notifyLineUserId: notifyLineUserId || null,
     }
   })
