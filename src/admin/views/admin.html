@@ -550,15 +550,12 @@ function propertyFormHtml(p, isModal) {
           '<div class="prop-field"><label>清潔費（元，0=無）</label><input id="f_cleaning" type="number" value="' + (p ? (p.cleaningFee||0) : 0) + '" placeholder="0" oninput="savePropDraft()"></div>' +
         '</div>' +
         '<div class="prop-field"><label>電費計算方式</label>' +
-          '<select id="f_elec_type" onchange="onElecTypeChange();savePropDraft()">' +
-            '<option value="meter"' + (p && p.electricType === 'meter' ? ' selected' : '') + '>台電度數計費</option>' +
-            '<option value="flat"' + (p && p.electricType === 'flat' ? ' selected' : '') + '>固定金額/月</option>' +
+          '<select id="f_elec_type">' +
+            '<option value=""' + (!p || !p.electricType ? ' selected' : '') + '>請選擇</option>' +
+            '<option value="meter"' + (p && p.electricType === 'meter' ? ' selected' : '') + '>台水台電計費</option>' +
+            '<option value="flat"' + (p && p.electricType === 'flat' ? ' selected' : '') + '>固定平均電價</option>' +
             '<option value="included"' + (p && p.electricType === 'included' ? ' selected' : '') + '>含在租金內</option>' +
           '</select>' +
-        '</div>' +
-        '<div id="elec_meter_row" class="prop-grid-2" style="' + (p && p.electricType === 'included' ? 'display:none' : '') + '">' +
-          '<div class="prop-field" id="elec_rate_wrap"><label>每度電費（元）</label><input id="f_elec_rate" type="number" step="0.1" value="' + (p ? (p.electricRate||'') : '') + '" placeholder="5.5" oninput="savePropDraft()"></div>' +
-          '<div class="prop-field" id="elec_flat_wrap" style="' + (p && p.electricType !== 'flat' ? 'display:none' : '') + '"><label>固定電費（元/月）</label><input id="f_elec_flat" type="number" value="' + (p ? (p.electricFlat||'') : '') + '" placeholder="500" oninput="savePropDraft()"></div>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -860,14 +857,8 @@ async function saveProperty() {
   var tags = Array.from(document.querySelectorAll('input[name="f_tags"]:checked')).map(function(cb){ return cb.value })
   var amenities = Array.from(document.querySelectorAll('input[name="f_amenities"]:checked')).map(function(cb){ return cb.value })
 
-  var elecRateEl = document.getElementById('f_elec_rate')
-  var elecFlatEl = document.getElementById('f_elec_flat')
-
   var mgmtEl = document.getElementById('f_mgmt')
   var cleanEl = document.getElementById('f_cleaning')
-  console.log('[saveProperty] f_mgmt el:', mgmtEl, 'value:', mgmtEl ? mgmtEl.value : 'NOT FOUND')
-  console.log('[saveProperty] f_cleaning el:', cleanEl, 'value:', cleanEl ? cleanEl.value : 'NOT FOUND')
-  console.log('[saveProperty] elecType:', elecType, 'f_elec_rate:', elecRateEl ? elecRateEl.value : 'NOT FOUND', 'f_elec_flat:', elecFlatEl ? elecFlatEl.value : 'NOT FOUND')
 
   var body = {
     title:       document.getElementById('f_title').value.trim(),
@@ -882,9 +873,9 @@ async function saveProperty() {
     imageUrls:   document.getElementById('f_images').value.split(',').map(function(s){ return s.trim() }).filter(Boolean),
     mgmtFee:     mgmtEl ? (parseInt(mgmtEl.value) || 0) : 0,
     cleaningFee: cleanEl ? (parseInt(cleanEl.value) || 0) : 0,
-    electricType: elecType,
-    electricRate: (elecType === 'meter' && elecRateEl && elecRateEl.value !== '') ? parseFloat(elecRateEl.value) : null,
-    electricFlat: (elecType === 'flat' && elecFlatEl && elecFlatEl.value !== '') ? parseInt(elecFlatEl.value) : null,
+    electricType: elecType || null,
+    electricRate: null,
+    electricFlat: null,
     tags: tags,
     amenities: amenities,
   }
