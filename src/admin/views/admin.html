@@ -863,6 +863,12 @@ async function saveProperty() {
   var elecRateEl = document.getElementById('f_elec_rate')
   var elecFlatEl = document.getElementById('f_elec_flat')
 
+  var mgmtEl = document.getElementById('f_mgmt')
+  var cleanEl = document.getElementById('f_cleaning')
+  console.log('[saveProperty] f_mgmt el:', mgmtEl, 'value:', mgmtEl ? mgmtEl.value : 'NOT FOUND')
+  console.log('[saveProperty] f_cleaning el:', cleanEl, 'value:', cleanEl ? cleanEl.value : 'NOT FOUND')
+  console.log('[saveProperty] elecType:', elecType, 'f_elec_rate:', elecRateEl ? elecRateEl.value : 'NOT FOUND', 'f_elec_flat:', elecFlatEl ? elecFlatEl.value : 'NOT FOUND')
+
   var body = {
     title:       document.getElementById('f_title').value.trim(),
     type:        document.getElementById('f_type').value,
@@ -874,8 +880,8 @@ async function saveProperty() {
     address:     document.getElementById('f_address').value.trim(),
     description: document.getElementById('f_desc').value.trim(),
     imageUrls:   document.getElementById('f_images').value.split(',').map(function(s){ return s.trim() }).filter(Boolean),
-    mgmtFee:     parseInt(document.getElementById('f_mgmt').value) || 0,
-    cleaningFee: parseInt(document.getElementById('f_cleaning').value) || 0,
+    mgmtFee:     mgmtEl ? (parseInt(mgmtEl.value) || 0) : 0,
+    cleaningFee: cleanEl ? (parseInt(cleanEl.value) || 0) : 0,
     electricType: elecType,
     electricRate: (elecType === 'meter' && elecRateEl && elecRateEl.value !== '') ? parseFloat(elecRateEl.value) : null,
     electricFlat: (elecType === 'flat' && elecFlatEl && elecFlatEl.value !== '') ? parseInt(elecFlatEl.value) : null,
