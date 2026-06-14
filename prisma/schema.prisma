@@ -203,6 +203,8 @@ model Property {
   allowShortTerm Boolean     @default(false)
   welcomeStudent Boolean     @default(true)
 
+  availableFrom DateTime?    // 即將釋出日期（status=PAUSED 時使用）
+
   boostPlan   BoostPlan      @default(NONE)
   boostUntil  DateTime?
 
@@ -325,6 +327,11 @@ model Booking {
   status     BookingStatus @default(PENDING)
   note       String?
   rejectReason String?
+
+  // 網頁訪客預約（不需登入）
+  visitorName   String?
+  visitorPhone  String?
+  visitorLineId String?
   landlordId String?                       // 歸屬房東
   landlord   Landlord?     @relation(fields: [landlordId], references: [id])
 
