@@ -429,6 +429,7 @@ function renderPropCard(p) {
     '<span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span></div>' +
     '<div class="actions">' +
     '<select onchange="changePropertyStatus(\'' + p.id + '\', this.value)" style="padding:6px 10px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;">' + statusOptions + '</select>' +
+    '<a class="action-btn" href="' + (DATA.siteUrl || '') + '/property/' + p.id + '" target="_blank" style="text-decoration:none;">🔗 查看</a>' +
     '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">✏️ 編輯</button>' +
     '<button class="action-btn danger" onclick="deleteProperty(\'' + p.id + '\')">🗑️ 刪除</button>' +
     '</div></div>'
