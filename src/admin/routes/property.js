@@ -103,7 +103,9 @@ router.post('/admin/api/property/:id', express.json(), async (req, res) => {
   if (deposit     !== undefined) data.deposit     = deposit
   if (description !== undefined) data.description = description
 
+  console.log('[property update] data:', JSON.stringify(data))
   const property = await prisma.property.update({ where: { id: req.params.id }, data })
+  console.log('[property update] result mgmtFee:', property.mgmtFee, 'electricType:', property.electricType, 'electricRate:', property.electricRate, 'cleaningFee:', property.cleaningFee)
 
   if (Array.isArray(imageUrls)) {
     const oldImages = await prisma.propertyImage.findMany({ where: { propertyId: req.params.id }, select: { url: true } })
