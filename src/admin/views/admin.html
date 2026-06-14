@@ -524,16 +524,50 @@ function propertyFormHtml(p, isModal) {
       '</div>' +
     '</div>' +
     '<div class="prop-form-section">' +
-      '<h4>描述與照片</h4>' +
+      '<h4>費用明細</h4>' +
       '<div style="display:flex;flex-direction:column;gap:12px;">' +
-        '<div class="prop-field"><label>描述</label><textarea id="f_desc" rows="3" placeholder="採光良好，含冷氣熱水器，近捷運站..." oninput="savePropDraft()">' + esc(p ? p.description : '') + '</textarea></div>' +
-        '<div class="prop-field"><label>照片</label>' +
-          '<div id="img_preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>' +
-          '<input type="file" id="f_upload" accept="image/*" multiple onchange="uploadImages(this)" style="font-size:13px;">' +
-          '<div id="upload_status" style="font-size:12px;color:var(--sage);margin-top:4px;"></div>' +
-          '<input type="hidden" id="f_images" value="' + esc(imageUrls) + '">' +
+        '<div class="prop-grid-2">' +
+          '<div class="prop-field"><label>管理費（元/月，0=含在租金）</label><input id="f_mgmt" type="number" value="' + (p ? (p.mgmtFee||0) : 0) + '" placeholder="0" oninput="savePropDraft()"></div>' +
+          '<div class="prop-field"><label>清潔費（元，0=無）</label><input id="f_cleaning" type="number" value="' + (p ? (p.cleaningFee||0) : 0) + '" placeholder="0" oninput="savePropDraft()"></div>' +
+        '</div>' +
+        '<div class="prop-field"><label>電費計算方式</label>' +
+          '<select id="f_elec_type" onchange="onElecTypeChange();savePropDraft()">' +
+            '<option value="meter"' + (p && p.electricType === 'meter' ? ' selected' : '') + '>台電度數計費</option>' +
+            '<option value="flat"' + (p && p.electricType === 'flat' ? ' selected' : '') + '>固定金額/月</option>' +
+            '<option value="included"' + (p && p.electricType === 'included' ? ' selected' : '') + '>含在租金內</option>' +
+          '</select>' +
+        '</div>' +
+        '<div id="elec_meter_row" class="prop-grid-2" style="' + (p && p.electricType === 'included' ? 'display:none' : '') + '">' +
+          '<div class="prop-field" id="elec_rate_wrap"><label>每度電費（元）</label><input id="f_elec_rate" type="number" step="0.1" value="' + (p ? (p.electricRate||'') : '') + '" placeholder="5.5" oninput="savePropDraft()"></div>' +
+          '<div class="prop-field" id="elec_flat_wrap" style="' + (p && p.electricType !== 'flat' ? 'display:none' : '') + '"><label>固定電費（元/月）</label><input id="f_elec_flat" type="number" value="' + (p ? (p.electricFlat||'') : '') + '" placeholder="500" oninput="savePropDraft()"></div>' +
         '</div>' +
       '</div>' +
+    '</div>' +
+    '<div class="prop-form-section">' +
+      '<h4>房源標籤</h4>' +
+      (function() {
+        var ALL_TAGS = ['可租補','免仲介費','獨立衛浴','獨洗曬','可開伙','可養寵物','垃圾代收','機車位','腳踏車位','近捷運','近學校','近超商','電梯大樓']
+        var curTags = p && p.tags ? p.tags.map(function(t){ return t.name }) : []
+        return '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
+          ALL_TAGS.map(function(tag) {
+            var checked = curTags.indexOf(tag) !== -1
+            return '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 12px;border:1.5px solid ' + (checked ? 'var(--sage)' : 'var(--oat-mid,#ddd)') + ';border-radius:8px;font-size:13px;background:' + (checked ? 'var(--sage-bg)' : 'white') + ';font-weight:' + (checked ? '700' : '400') + ';" onclick="toggleTagStyle(this)">' +
+              '<input type="checkbox" name="f_tags" value="' + tag + '"' + (checked ? ' checked' : '') + ' style="display:none;" onchange="savePropDraft()"> ' + tag +
+            '</label>'
+          }).join('') +
+        '</div>'
+      })() +
+    '</div>' +
+    '<div class="prop-form-section">' +
+      '<h4>描述</h4>' +
+      '<div class="prop-field"><textarea id="f_desc" rows="4" placeholder="採光良好，含冷氣熱水器，近捷運站..." oninput="savePropDraft()">' + esc(p ? p.description : '') + '</textarea></div>' +
+    '</div>' +
+    '<div class="prop-form-section">' +
+      '<h4>照片 <span style="font-size:11px;font-weight:400;color:var(--gray-light)">（拖移排序・點擊星星設封面）</span></h4>' +
+      '<div id="img_preview" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;min-height:60px;padding:8px;border:2px dashed var(--oat-mid,#ddd);border-radius:10px;" ondragover="event.preventDefault()" ondrop="onImgDrop(event)"></div>' +
+      '<input type="file" id="f_upload" accept="image/*" multiple onchange="uploadImages(this)" style="font-size:13px;">' +
+      '<div id="upload_status" style="font-size:12px;color:var(--sage);margin-top:4px;"></div>' +
+      '<input type="hidden" id="f_images" value="' + esc(imageUrls) + '">' +
     '</div>'
   )
 }
@@ -641,19 +675,72 @@ function startEditProperty(id) {
   setTimeout(renderImgPreview, 30)
 }
 
-// 渲染目前已有的照片預覽（可刪除）
+// ── 電費類型切換 ──────────────────────────────────────────────────
+function onElecTypeChange() {
+  var type = document.getElementById('f_elec_type').value
+  var meterRow = document.getElementById('elec_meter_row')
+  var rateWrap = document.getElementById('elec_rate_wrap')
+  var flatWrap = document.getElementById('elec_flat_wrap')
+  if (!meterRow) return
+  meterRow.style.display = type === 'included' ? 'none' : ''
+  if (rateWrap) rateWrap.style.display = type === 'flat' ? 'none' : ''
+  if (flatWrap) flatWrap.style.display = type === 'flat' ? '' : 'none'
+}
+
+// ── 標籤樣式切換 ─────────────────────────────────────────────────
+function toggleTagStyle(label) {
+  var cb = label.querySelector('input[type=checkbox]')
+  var checked = cb.checked
+  label.style.border = '1.5px solid ' + (checked ? 'var(--sage)' : 'var(--oat-mid,#ddd)')
+  label.style.background = checked ? 'var(--sage-bg)' : 'white'
+  label.style.fontWeight = checked ? '700' : '400'
+}
+
+// ── 照片拖移排序 ─────────────────────────────────────────────────
+var _dragIdx = null
+
 function renderImgPreview() {
   var box = document.getElementById('img_preview')
   var hidden = document.getElementById('f_images')
   if (!box || !hidden) return
   var urls = hidden.value.split(',').map(function(s){ return s.trim() }).filter(Boolean)
   box.innerHTML = urls.map(function(u, i) {
-    return '<div style="position:relative;">' +
-      '<img src="' + u + '" style="width:72px;height:54px;object-fit:cover;border-radius:8px;">' +
-      '<button onclick="removeImg(' + i + ')" style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:1;">×</button>' +
+    return '<div draggable="true" data-idx="' + i + '" ondragstart="imgDragStart(event,' + i + ')" ondragover="imgDragOver(event,' + i + ')" ondrop="imgDropOn(event,' + i + ')" ondragend="renderImgPreview()" ' +
+      'style="position:relative;cursor:grab;user-select:none;">' +
+      '<img src="' + u + '" style="width:80px;height:60px;object-fit:cover;border-radius:8px;display:block;border:2px solid ' + (i===0?'var(--sage)':'transparent') + ';">' +
+      '<button onclick="removeImg(' + i + ')" title="刪除" style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:1;z-index:1;">×</button>' +
+      '<button onclick="setCover(' + i + ')" title="設為封面" style="position:absolute;top:-6px;left:-6px;background:' + (i===0?'var(--sage)':'#aaa') + ';color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;line-height:1;z-index:1;">★</button>' +
       (i === 0 ? '<span style="position:absolute;bottom:2px;left:2px;background:var(--sage-dark,#4E7153);color:white;font-size:9px;padding:1px 4px;border-radius:3px;">封面</span>' : '') +
       '</div>'
   }).join('')
+}
+
+function imgDragStart(e, idx) { _dragIdx = idx; e.dataTransfer.effectAllowed = 'move' }
+
+function imgDragOver(e, idx) {
+  e.preventDefault()
+  if (_dragIdx === null || _dragIdx === idx) return
+  var hidden = document.getElementById('f_images')
+  var urls = hidden.value.split(',').map(function(s){ return s.trim() }).filter(Boolean)
+  var moved = urls.splice(_dragIdx, 1)[0]
+  urls.splice(idx, 0, moved)
+  hidden.value = urls.join(', ')
+  _dragIdx = idx
+  renderImgPreview()
+}
+
+function imgDropOn(e, idx) { e.preventDefault() }
+
+function onImgDrop(e) { e.preventDefault() }
+
+function setCover(idx) {
+  var hidden = document.getElementById('f_images')
+  var urls = hidden.value.split(',').map(function(s){ return s.trim() }).filter(Boolean)
+  if (idx === 0 || !urls[idx]) return
+  var cover = urls.splice(idx, 1)[0]
+  urls.unshift(cover)
+  hidden.value = urls.join(', ')
+  renderImgPreview()
 }
 
 function removeImg(idx) {
@@ -696,21 +783,29 @@ function cancelEdit() {
 }
 
 async function saveProperty() {
+  var elecType = (document.getElementById('f_elec_type')||{}).value || 'meter'
+  var tags = Array.from(document.querySelectorAll('input[name="f_tags"]:checked')).map(function(cb){ return cb.value })
+
   var body = {
-    title: document.getElementById('f_title').value.trim(),
-    type: document.getElementById('f_type').value,
-    price: document.getElementById('f_price').value,
-    city: document.getElementById('f_city').value.trim(),
-    district: document.getElementById('f_district').value.trim(),
-    size: document.getElementById('f_size').value,
-    deposit: document.getElementById('f_deposit').value.trim(),
-    address: document.getElementById('f_address').value.trim(),
+    title:       document.getElementById('f_title').value.trim(),
+    type:        document.getElementById('f_type').value,
+    price:       document.getElementById('f_price').value,
+    city:        document.getElementById('f_city').value.trim(),
+    district:    document.getElementById('f_district').value.trim(),
+    size:        document.getElementById('f_size').value,
+    deposit:     document.getElementById('f_deposit').value.trim(),
+    address:     document.getElementById('f_address').value.trim(),
     description: document.getElementById('f_desc').value.trim(),
-    imageUrls: document.getElementById('f_images').value.split(',').map(function(s){ return s.trim() }).filter(Boolean),
+    imageUrls:   document.getElementById('f_images').value.split(',').map(function(s){ return s.trim() }).filter(Boolean),
+    mgmtFee:     parseInt(document.getElementById('f_mgmt').value) || 0,
+    cleaningFee: parseInt(document.getElementById('f_cleaning').value) || 0,
+    electricType: elecType,
+    electricRate: elecType === 'meter' ? (parseFloat(document.getElementById('f_elec_rate').value) || null) : null,
+    electricFlat: elecType === 'flat'  ? (parseInt(document.getElementById('f_elec_flat').value) || null) : null,
+    tags: tags,
   }
   if (!body.title || !body.price) { showToast('❌ 名稱和租金必填'); return }
 
-  // 總管理員新增時帶上選的房東
   var ownerSel = document.getElementById('f_owner')
   if (ownerSel) {
     if (!ownerSel.value) { showToast('❌ 請選擇房東'); return }

@@ -4,11 +4,34 @@ const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole, revalidateSite, deleteCloudinaryImages } = require('../helpers')
 
+// 共用：從 req.body 取出費用、電費、標籤欄位
+function extractFeeFields(body) {
+  const data = {}
+  if (body.mgmtFee     !== undefined) data.mgmtFee     = parseInt(body.mgmtFee)     || 0
+  if (body.cleaningFee !== undefined) data.cleaningFee = parseInt(body.cleaningFee) || 0
+  if (body.electricType !== undefined) data.electricType = body.electricType || null
+  if (body.electricRate !== undefined) data.electricRate = body.electricRate != null ? parseFloat(body.electricRate) : null
+  if (body.electricFlat !== undefined) data.electricFlat = body.electricFlat != null ? parseInt(body.electricFlat) : null
+  return data
+}
+
+// 共用：更新標籤（先全刪再寫入）
+async function syncTags(propertyId, tags) {
+  if (!Array.isArray(tags)) return
+  await prisma.propertyTag.deleteMany({ where: { propertyId } })
+  if (tags.length) {
+    await prisma.propertyTag.createMany({
+      data: tags.map(name => ({ propertyId, name })),
+      skipDuplicates: true,
+    })
+  }
+}
+
 router.post('/admin/api/property', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status, ownerId } = req.body
+  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status, ownerId, tags } = req.body
   if (!title || !price) return res.status(400).json({ error: 'title 和 price 為必填' })
 
   const targetOwnerId = auth.role === 'landlord' ? auth.landlordId : (ownerId || null)
@@ -34,9 +57,12 @@ router.post('/admin/api/property', express.json(), async (req, res) => {
       price: parseInt(price),
       deposit: deposit || '兩個月',
       description: description || '',
+      ...extractFeeFields(req.body),
       images: { create: (imageUrls || []).map((url, i) => ({ url, order: i, isCover: i === 0 })) }
     }
   })
+
+  await syncTags(property.id, tags)
   await revalidateSite(['/listings', `/site/${targetOwnerId}`, `/property/${property.id}`])
   res.json(property)
 })
@@ -51,17 +77,17 @@ router.post('/admin/api/property/:id', express.json(), async (req, res) => {
     return res.status(403).json({ error: 'forbidden' })
   }
 
-  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status } = req.body
-  const data = {}
-  if (title !== undefined) data.title = title
-  if (type !== undefined) data.type = type
-  if (status !== undefined) data.status = status
-  if (city !== undefined) data.city = city
-  if (district !== undefined) data.district = district
-  if (address !== undefined) data.address = address
-  if (size !== undefined) data.size = parseFloat(size) || 0
-  if (price !== undefined) data.price = parseInt(price)
-  if (deposit !== undefined) data.deposit = deposit
+  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status, tags } = req.body
+  const data = { ...extractFeeFields(req.body) }
+  if (title       !== undefined) data.title       = title
+  if (type        !== undefined) data.type        = type
+  if (status      !== undefined) data.status      = status
+  if (city        !== undefined) data.city        = city
+  if (district    !== undefined) data.district    = district
+  if (address     !== undefined) data.address     = address
+  if (size        !== undefined) data.size        = parseFloat(size) || 0
+  if (price       !== undefined) data.price       = parseInt(price)
+  if (deposit     !== undefined) data.deposit     = deposit
   if (description !== undefined) data.description = description
 
   const property = await prisma.property.update({ where: { id: req.params.id }, data })
@@ -79,6 +105,8 @@ router.post('/admin/api/property/:id', express.json(), async (req, res) => {
     }
     await deleteCloudinaryImages(toDelete)
   }
+
+  await syncTags(req.params.id, tags)
   await revalidateSite(['/listings', `/site/${existing.ownerId}`, `/property/${req.params.id}`])
   res.json(property)
 })

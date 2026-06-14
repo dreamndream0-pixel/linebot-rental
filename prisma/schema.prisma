@@ -198,6 +198,11 @@ model Property {
   inclWater   Boolean        @default(false)
   inclCable   Boolean        @default(false)
 
+  electricType  String?      // 電費計算方式：'meter'=台電度數, 'flat'=固定金額, 'included'=含在租金
+  electricRate  Float?       // 每度電費（electricType=meter 時使用）
+  electricFlat  Int?         // 固定電費金額（electricType=flat 時使用）
+  cleaningFee   Int?         // 清潔費
+
   allowPets   Boolean        @default(false)
   allowCook   Boolean        @default(false)
   allowShortTerm Boolean     @default(false)
@@ -217,6 +222,7 @@ model Property {
 
   images      PropertyImage[]
   amenities   PropertyAmenity[]
+  tags        PropertyTag[]
   favorites   Favorite[]
   bookings    Booking[]
   reviews     Review[]
@@ -288,6 +294,20 @@ model PropertyAmenity {
   @@unique([propertyId, name])
   @@index([propertyId])
   @@map("property_amenities")
+}
+
+// ─────────────────────────────────────────────
+// 房源標籤（可租補、免仲介費等行銷標籤）
+// ─────────────────────────────────────────────
+model PropertyTag {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name       String   // 例：'可租補', '免仲介費', '獨洗曬', '垃圾代收', '機車位'
+
+  @@unique([propertyId, name])
+  @@index([propertyId])
+  @@map("property_tags")
 }
 
 // ─────────────────────────────────────────────
