@@ -6,7 +6,7 @@ const crypto = require('crypto')
 const { Client } = require('@line/bot-sdk')
 const express = require('express')
 const prisma = require('./db')
-const { handleMessage } = require('./handler')
+const { handleMessage, handlePostback } = require('./handler')
 
 // 快取房東設定，減少 DB 查詢（每 60 秒過期）
 const configCache = new Map()
@@ -71,8 +71,9 @@ function registerLandlordWebhooks(app) {
       events.forEach(async (event) => {
         try {
           if (event.type === 'message' && event.message.type === 'text') {
-            // 帶入 landlordId，讓 handler 知道是哪個房東的 Bot
             await handleMessage(event, client, landlord.id)
+          } else if (event.type === 'postback') {
+            await handlePostback(event, client, landlord.id)
           } else if (event.type === 'follow') {
             const userId = event.source.userId
             let profileData = {}

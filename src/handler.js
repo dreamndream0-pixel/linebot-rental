@@ -120,7 +120,7 @@ function roomsToCarousel(rooms, altText, t = {}) {
         layout: 'vertical',
         contents: [{
           type: 'button',
-          action: { type: 'message', label: t.bookButtonLabel || '預約看這間', text: `預約_${room.id}` },
+          action: { type: 'postback', label: t.bookButtonLabel || '預約看這間', data: `BOOK_${room.id}`, displayText: `預約 ${room.title}` },
           style: 'primary',
           color: '#7A9E7E',
           height: 'sm'
@@ -304,6 +304,24 @@ async function myBookings(lineUserId, t = {}) {
 // ── 用戶狀態（多步驟流程） ──────────────────────────────────────
 const userState = new Map()
 
+async function handlePostback(event, client, landlordId = null) {
+  const userId = event.source.userId
+  const data = event.postback?.data || ''
+  const { getBotText } = require('./botText')
+  const t = await getBotText(landlordId)
+
+  if (data.startsWith('BOOK_')) {
+    if (t.showBookVisit === false) {
+      await client.replyMessage(event.replyToken, mainMenu(t))
+      return
+    }
+    const propertyId = data.replace('BOOK_', '')
+    userState.set(userId, { flow: 'booking', step: 'select_date', propertyId })
+    const askDate = t.askDate || '📅 請輸入想看房的日期（格式：2026/06/15）'
+    await client.replyMessage(event.replyToken, { type: 'text', text: askDate })
+  }
+}
+
 async function handleMessage(event, client, landlordId = null) {
   const userId = event.source.userId
   const text = event.message?.text?.trim() || ''
@@ -345,7 +363,7 @@ async function handleMessage(event, client, landlordId = null) {
   let reply
 
   // ── 多步驟流程中 ──
-  if (state.flow === 'booking' && (state.step === 'select_date' || text.startsWith('TIME_')) && !text.startsWith('預約_')) {
+  if (state.flow === 'booking' && (state.step === 'select_date' || text.startsWith('TIME_'))) {
     if (t.showBookVisit === false) { userState.delete(userId); reply = mainMenu(t) }
     else { reply = await handleBookingFlow(userId, text, state, client, landlordId, t) }
   } else if (state.flow === 'repair') {
@@ -361,14 +379,6 @@ async function handleMessage(event, client, landlordId = null) {
     reply = t.showReportRepair !== false ? repairMenu(t) : mainMenu(t)
   } else if (text === 'ACTION_MY_BOOKINGS' || text === '我的預約') {
     reply = t.showMyBookings !== false ? await myBookings(userId, t) : mainMenu(t)
-  }
-  else if (text.startsWith('預約_')) {
-    if (t.showBookVisit === false) { reply = mainMenu(t) }
-    else {
-      const propertyId = text.replace('預約_', '')
-      userState.set(userId, { flow: 'booking', step: 'select_date', propertyId })
-      reply = { type: 'text', text: t.askDate }
-    }
   }
   else if (['漏水問題','電氣問題','衛浴設備','門鎖問題','冷氣問題','其他問題'].includes(text)) {
     if (t.showReportRepair === false) { reply = mainMenu(t) }
@@ -513,4 +523,4 @@ async function handleRepairFlow(userId, text, state, client, landlordId = null, 
   return null
 }
 
-module.exports = { handleMessage }
+module.exports = { handleMessage, handlePostback }

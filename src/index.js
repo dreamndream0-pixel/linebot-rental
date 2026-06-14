@@ -1,7 +1,7 @@
 require('dotenv').config()
 const express = require('express')
 const { Client, middleware } = require('@line/bot-sdk')
-const { handleMessage } = require('./handler')
+const { handleMessage, handlePostback } = require('./handler')
 const { startCronJobs } = require('./cron')
 const prisma = require('./db')
 const adminRouter = require('./admin')
@@ -34,6 +34,8 @@ app.post('/webhook', middleware(config), (req, res) => {
     try {
       if (event.type === 'message' && event.message.type === 'text') {
         await handleMessage(event, client)
+      } else if (event.type === 'postback') {
+        await handlePostback(event, client)
       } else if (event.type === 'follow') {
         // 新好友加入：抓取資料並記錄
         const userId = event.source.userId
