@@ -1,4 +1,5 @@
 const prisma = require('./db')
+const { findLineTenant, upsertLineTenant } = require('./tenantStore')
 
 // ── 通知房東（依房源歸屬，找不到則退回主帳號 OWNER） ────────────
 // landlordId: 房源的歸屬房東；client: 該房東 Bot 的 client（可推給該房東）
@@ -277,8 +278,8 @@ function repairButton(label, action) {
 }
 
 // ── 我的預約 ──────────────────────────────────────────────────────
-async function myBookings(lineUserId, t = {}) {
-  const tenant = await prisma.tenant.findUnique({ where: { lineUserId } })
+async function myBookings(lineUserId, landlordId = null, t = {}) {
+  const tenant = await findLineTenant(lineUserId, landlordId)
   if (!tenant) {
     return { type: 'text', text: t.noBookingHistory || '您尚未有任何預約記錄。\n輸入「查詢空房」開始預約看房！' }
   }
@@ -403,7 +404,7 @@ async function handlePostback(event, client, landlordId = null) {
       return
     }
 
-    const tenant = await prisma.tenant.findUnique({ where: { lineUserId: userId } })
+    const tenant = await findLineTenant(userId, landlordId)
     const prop = await prisma.property.findUnique({ where: { id: propertyId }, select: { ownerId: true } })
     const booking = await prisma.booking.create({
       data: {
@@ -461,12 +462,7 @@ async function handleMessage(event, client, landlordId = null) {
   }
 
   // 若來自某房東的 Bot，將用戶歸屬到該房東
-  const tenantData = landlordId ? { ...profileData, landlordId } : profileData
-  await prisma.tenant.upsert({
-    where: { lineUserId: userId },
-    update: tenantData,
-    create: { lineUserId: userId, ...tenantData }
-  })
+  await upsertLineTenant({ lineUserId: userId, landlordId, data: profileData })
 
   let reply
 
@@ -491,7 +487,7 @@ async function handleMessage(event, client, landlordId = null) {
   } else if (text === 'ACTION_REPORT_REPAIR' || text === '維修回報') {
     reply = t.showReportRepair !== false ? repairMenu(t) : mainMenu(t)
   } else if (text === 'ACTION_MY_BOOKINGS' || text === '我的預約') {
-    reply = t.showMyBookings !== false ? await myBookings(userId, t) : mainMenu(t)
+    reply = t.showMyBookings !== false ? await myBookings(userId, landlordId, t) : mainMenu(t)
   }
   else if (['漏水問題','電氣問題','衛浴設備','門鎖問題','冷氣問題','其他問題'].includes(text)) {
     if (t.showReportRepair === false) { reply = mainMenu(t) }
@@ -533,7 +529,7 @@ async function handleRepairFlow(userId, text, state, client, landlordId = null, 
   const { step, category } = state
 
   if (step === 'describe') {
-    const tenant = await prisma.tenant.findUnique({ where: { lineUserId: userId } })
+    const tenant = await findLineTenant(userId, landlordId)
 
     const property = tenant?.propertyId
       ? await prisma.property.findUnique({ where: { id: tenant.propertyId } })

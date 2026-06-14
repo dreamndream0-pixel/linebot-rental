@@ -107,7 +107,7 @@ model Landlord {
 // ─────────────────────────────────────────────
 model Tenant {
   id            String    @id @default(cuid())
-  lineUserId    String    @unique
+  lineUserId    String
   name          String?
   customName    String?                      // 房東自訂備註名稱
   avatarUrl     String?
@@ -117,7 +117,7 @@ model Tenant {
   moveInDate    DateTime?
   rentDue       Int       @default(5)        // 每月幾號繳租
   isActive      Boolean   @default(true)
-  source        String    @default("main")   // 來源官方帳號
+  source        String    @default("main")   // Bot 來源鍵（主 Bot=main；房東 Bot=landlordId）
   landlordId    String?                       // 歸屬房東
   createdAt     DateTime  @default(now())
 
@@ -127,6 +127,7 @@ model Tenant {
   repairs    Repair[]
 
   @@index([landlordId])
+  @@unique([lineUserId, source])
 }
 
 // ─────────────────────────────────────────────

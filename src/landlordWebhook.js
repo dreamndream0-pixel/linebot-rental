@@ -6,6 +6,7 @@ const crypto = require('crypto')
 const { Client } = require('@line/bot-sdk')
 const express = require('express')
 const prisma = require('./db')
+const { upsertLineTenant } = require('./tenantStore')
 const { handleMessage, handlePostback } = require('./handler')
 
 // 快取房東設定，減少 DB 查詢（每 60 秒過期）
@@ -87,10 +88,10 @@ function registerLandlordWebhooks(app) {
             } catch (e) {
               console.log('無法取得新好友資料:', e.message)
             }
-            await prisma.tenant.upsert({
-              where: { lineUserId: userId },
-              update: { isActive: true, landlordId: landlord.id, ...profileData },
-              create: { lineUserId: userId, landlordId: landlord.id, ...profileData }
+            await upsertLineTenant({
+              lineUserId: userId,
+              landlordId: landlord.id,
+              data: { isActive: true, ...profileData }
             })
             const { getBotText } = require('./botText')
             const t = await getBotText(landlord.id)

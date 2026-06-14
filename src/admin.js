@@ -1,4 +1,5 @@
 const express = require('express')
+const { Client } = require('@line/bot-sdk')
 const prisma = require('./db')
 
 const router = express.Router()
@@ -41,6 +42,53 @@ function landlordFilter(auth) {
   return auth.role === 'super' ? {} : { landlordId: auth.landlordId }
 }
 
+async function notifyBookingTenant(booking, status) {
+  if (!booking.lineUser?.lineUserId) return { notified: false, reason: 'not-line-booking' }
+
+  let config
+  const landlordId = booking.landlordId || booking.property?.ownerId
+  try {
+    if (landlordId) {
+      const landlord = await prisma.landlord.findUnique({
+        where: { id: landlordId },
+        select: { lineChannelToken: true, lineChannelSecret: true }
+      })
+      if (landlord?.lineChannelToken) {
+        config = {
+          channelAccessToken: landlord.lineChannelToken,
+          channelSecret: landlord.lineChannelSecret || '',
+        }
+      }
+    } else if (process.env.LINE_CHANNEL_ACCESS_TOKEN) {
+      config = {
+        channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+        channelSecret: process.env.LINE_CHANNEL_SECRET || '',
+      }
+    }
+  } catch (e) {
+    console.error('讀取預約通知 Bot 設定失敗:', e.message)
+    return { notified: false, reason: 'bot-config-failed' }
+  }
+
+  if (!config) return { notified: false, reason: 'bot-not-configured' }
+
+  const date = new Date(booking.date).toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' })
+  const messages = {
+    CONFIRMED: `✅ 看房預約已確認\n\n🏠 ${booking.property.title}\n📅 ${date} ${booking.timeslot}\n\n請準時抵達，如需調整請直接聯絡房東。`,
+    CANCELLED: `❌ 看房預約已取消\n\n🏠 ${booking.property.title}\n📅 ${date} ${booking.timeslot}\n\n如需重新預約，請回到選單再次選擇。`,
+  }
+  if (!messages[status]) return { notified: false, reason: 'status-does-not-notify' }
+
+  try {
+    const client = new Client(config)
+    await client.pushMessage(booking.lineUser.lineUserId, { type: 'text', text: messages[status] })
+    return { notified: true }
+  } catch (e) {
+    console.error('預約狀態 LINE 通知失敗:', e.message)
+    return { notified: false, reason: 'push-failed' }
+  }
+}
+
 // ── API：取得所有資料（依房東隔離） ────────────────────────────
 router.get('/admin/api/data', async (req, res) => {
   const auth = await resolveRole(req.query.key)
@@ -49,7 +97,11 @@ router.get('/admin/api/data', async (req, res) => {
   const f = landlordFilter(auth)  // {} 或 { landlordId }
 
   const [tenants, bookings, repairs, properties, landlords] = await Promise.all([
-    prisma.tenant.findMany({ where: f, include: { property: true }, orderBy: { createdAt: 'desc' } }),
+    prisma.tenant.findMany({
+      where: f,
+      include: { property: true, landlord: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' }
+    }),
     prisma.booking.findMany({
       where: f,
       include: { lineUser: true, tenant: true, property: true },
@@ -114,11 +166,20 @@ router.post('/admin/api/booking/:id/status', express.json(), async (req, res) =>
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  const existing = await prisma.booking.findUnique({ where: { id: req.params.id } })
+  const allowedStatuses = ['CONFIRMED', 'CANCELLED', 'COMPLETED']
+  if (!allowedStatuses.includes(req.body.status)) {
+    return res.status(400).json({ error: 'invalid status' })
+  }
+
+  const existing = await prisma.booking.findUnique({
+    where: { id: req.params.id },
+    include: { lineUser: true, property: true }
+  })
   if (!ownsRecord(auth, existing)) return res.status(403).json({ error: 'forbidden' })
 
   const booking = await prisma.booking.update({ where: { id: req.params.id }, data: { status: req.body.status } })
-  res.json(booking)
+  const notification = await notifyBookingTenant(existing, req.body.status)
+  res.json({ booking, notification })
 })
 
 // ── API：更新維修狀態 ───────────────────────────────────────────
@@ -830,8 +891,9 @@ function renderTenants() {
     var nameHtml = t.customName
       ? esc(t.customName) + ' <span style="font-weight:400;font-size:13px;color:#aaa;">(' + esc(t.name || '未命名') + ')</span>'
       : esc(t.name || '未命名用戶')
-    var sourceTag = (t.source && t.source !== 'main')
-      ? '<span style="background:#E8F1E9;color:var(--deep-sage);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;">📍 ' + esc(t.source) + '</span> '
+    var sourceName = t.landlord ? t.landlord.name : (t.source !== 'main' ? t.source : '小蝸主站')
+    var sourceTag = sourceName
+      ? '<span style="background:#E8F1E9;color:var(--deep-sage);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;">📍 ' + esc(sourceName) + '</span> '
       : ''
     return '<div class="card"><div class="card-row">' +
       '<div style="display:flex;gap:14px;align-items:flex-start;">' + avatar +
@@ -1728,11 +1790,22 @@ async function toggleLandlord(id, isActive) {
 }
 
 async function updateBooking(id, status) {
-  await fetch('/admin/api/booking/' + id + '/status?key=' + encodeURIComponent(KEY), {
+  var res = await fetch('/admin/api/booking/' + id + '/status?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ status: status })
   })
-  showToast('✅ 已更新')
+  var data = await res.json()
+  if (!res.ok) {
+    showToast('❌ 更新失敗')
+    return
+  }
+  if ((status === 'CONFIRMED' || status === 'CANCELLED') && !data.notification.notified) {
+    showToast('⚠️ 狀態已更新，但 LINE 通知失敗')
+  } else if (data.notification.notified) {
+    showToast('✅ 已更新並通知租客')
+  } else {
+    showToast('✅ 已更新')
+  }
   reload()
 }
 

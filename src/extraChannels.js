@@ -7,7 +7,7 @@
 //   LINE2_NAME=帳號名稱（後台顯示用，例如 parkoo）
 
 const { Client, middleware } = require('@line/bot-sdk')
-const prisma = require('./db')
+const { upsertLineTenant } = require('./tenantStore')
 
 function registerExtraChannels(app) {
   // 掃描環境變數，找出所有 LINE<數字>_ 開頭的帳號設定
@@ -52,11 +52,7 @@ function registerExtraChannels(app) {
             console.log(`[${name}] 無法取得用戶資料:`, e.message)
           }
 
-          await prisma.tenant.upsert({
-            where: { lineUserId: userId },
-            update: profileData,
-            create: { lineUserId: userId, source: name, ...profileData }
-          })
+          await upsertLineTenant({ lineUserId: userId, source: name, data: profileData })
 
           console.log(`✅ [${name}] 記錄用戶:`, userId, profileData.name || '')
         } catch (err) {

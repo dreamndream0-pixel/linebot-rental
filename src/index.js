@@ -4,6 +4,7 @@ const { Client, middleware } = require('@line/bot-sdk')
 const { handleMessage, handlePostback } = require('./handler')
 const { startCronJobs } = require('./cron')
 const prisma = require('./db')
+const { upsertLineTenant } = require('./tenantStore')
 const adminRouter = require('./admin')
 const { registerExtraChannels } = require('./extraChannels')
 const { registerLandlordWebhooks } = require('./landlordWebhook')
@@ -50,10 +51,9 @@ app.post('/webhook', middleware(config), (req, res) => {
         } catch (e) {
           console.log('無法取得新好友資料:', e.message)
         }
-        await prisma.tenant.upsert({
-          where: { lineUserId: userId },
-          update: { isActive: true, ...profileData },
-          create: { lineUserId: userId, ...profileData }
+        await upsertLineTenant({
+          lineUserId: userId,
+          data: { isActive: true, ...profileData }
         })
         console.log('👋 新好友:', userId, profileData.name || '')
 

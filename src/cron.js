@@ -1,4 +1,5 @@
 const cron = require('node-cron')
+const { Client } = require('@line/bot-sdk')
 const prisma = require('./db')
 
 function startCronJobs(client) {
@@ -19,7 +20,10 @@ function startCronJobs(client) {
 async function sendRentReminders(client) {
   const tenants = await prisma.tenant.findMany({
     where: { isActive: true, propertyId: { not: null } },
-    include: { property: true }
+    include: {
+      property: true,
+      landlord: { select: { lineChannelToken: true, lineChannelSecret: true } }
+    }
   })
 
   for (const tenant of tenants) {
@@ -55,7 +59,13 @@ async function sendRentReminders(client) {
     }
 
     try {
-      await client.pushMessage(tenant.lineUserId, message)
+      const pushClient = tenant.landlord?.lineChannelToken
+        ? new Client({
+            channelAccessToken: tenant.landlord.lineChannelToken,
+            channelSecret: tenant.landlord.lineChannelSecret || '',
+          })
+        : client
+      await pushClient.pushMessage(tenant.lineUserId, message)
       console.log(`✅ 已通知租客：${tenant.lineUserId}`)
     } catch (err) {
       console.error(`❌ 通知失敗：${tenant.lineUserId}`, err.message)
