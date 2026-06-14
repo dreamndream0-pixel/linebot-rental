@@ -345,7 +345,7 @@ async function handleMessage(event, client, landlordId = null) {
   let reply
 
   // ── 多步驟流程中 ──
-  if (state.flow === 'booking' && (state.step === 'select_date' || text.startsWith('TIME_'))) {
+  if (state.flow === 'booking' && (state.step === 'select_date' || text.startsWith('TIME_')) && !text.startsWith('預約_')) {
     if (t.showBookVisit === false) { userState.delete(userId); reply = mainMenu(t) }
     else { reply = await handleBookingFlow(userId, text, state, client, landlordId, t) }
   } else if (state.flow === 'repair') {
