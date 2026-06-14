@@ -366,18 +366,66 @@ async function handlePostback(event, client, landlordId = null) {
         body: {
           type: 'box',
           layout: 'vertical',
-          spacing: 'sm',
+          spacing: 'md',
           contents: [
-            { type: 'text', text: t.askTime || '⏰ 請選擇看房時間', weight: 'bold' },
+            { type: 'text', text: t.askTime || '⏰ 請選擇看房時間', weight: 'bold', size: 'md' },
             { type: 'text', text: `📅 ${visitDate}`, size: 'sm', color: '#888888' },
-            ...['10:00', '11:00', '14:00', '15:00', '16:00'].map(slot => ({
+            {
               type: 'button',
-              action: { type: 'message', label: slot, text: slot },
-              style: 'secondary', height: 'sm', margin: 'xs'
-            }))
+              action: {
+                type: 'datetimepicker',
+                label: '點此選擇時間',
+                data: `SELECT_TIME_${propertyId}`,
+                mode: 'time',
+                min: '09:00',
+                max: '20:00',
+              },
+              style: 'primary',
+              color: '#7A9E7E',
+              height: 'sm',
+              margin: 'md'
+            }
           ]
         }
       }
+    })
+  }
+
+  if (data.startsWith('SELECT_TIME_')) {
+    const propertyId = data.replace('SELECT_TIME_', '')
+    const timeslot = event.postback?.params?.time  // HH:mm
+    if (!timeslot) return
+
+    const state = userState.get(userId) || {}
+    const visitDate = state.visitDate
+    if (!visitDate) {
+      await client.replyMessage(event.replyToken, { type: 'text', text: '⚠️ 請重新預約，選擇日期後再選時間。' })
+      return
+    }
+
+    const tenant = await prisma.tenant.findUnique({ where: { lineUserId: userId } })
+    const prop = await prisma.property.findUnique({ where: { id: propertyId }, select: { ownerId: true } })
+    const booking = await prisma.booking.create({
+      data: {
+        lineUserId: tenant.id,
+        propertyId,
+        date: new Date(visitDate),
+        timeslot,
+        status: 'PENDING',
+        landlordId: prop?.ownerId || null
+      },
+      include: { property: true }
+    })
+
+    userState.delete(userId)
+
+    const ownerMsg = `📅 新看房預約！\n房源：${booking.property.title}\n時間：${visitDate} ${timeslot}\n用戶：${tenant.name || tenant.lineUserId}\n請至後台確認`
+    await notifyLandlord(prop?.ownerId, ownerMsg, client)
+
+    const successMsg = t.bookSuccess || '✅ 預約成功！\n\n房東確認後會通知您，感謝！'
+    await client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: `${successMsg}\n\n🏠 ${booking.property.title}\n📅 ${visitDate} ${timeslot}`
     })
   }
 }
@@ -431,10 +479,7 @@ async function handleMessage(event, client, landlordId = null) {
   }
 
   // ── 多步驟流程中 ──
-  if (!isExitKeyword && state.flow === 'booking' && state.step === 'select_time') {
-    if (t.showBookVisit === false) { userState.delete(userId); reply = mainMenu(t) }
-    else { reply = await handleBookingFlow(userId, text, state, client, landlordId, t) }
-  } else if (!isExitKeyword && state.flow === 'repair') {
+  if (!isExitKeyword && state.flow === 'repair') {
     if (t.showReportRepair === false) { userState.delete(userId); reply = mainMenu(t) }
     else { reply = await handleRepairFlow(userId, text, state, client, landlordId, t) }
   }
@@ -481,44 +526,6 @@ async function handleMessage(event, client, landlordId = null) {
       }
     }
   }
-}
-
-// ── 看房預約流程 ──────────────────────────────────────────────────
-async function handleBookingFlow(userId, text, state, client, landlordId = null, t = {}) {
-  const { step, propertyId } = state
-
-  if (step === 'select_time' && text) {
-    const timeslot = text
-    const { visitDate } = state
-
-    const tenant = await prisma.tenant.findUnique({ where: { lineUserId: userId } })
-    // 取得房源的歸屬房東
-    const prop = await prisma.property.findUnique({ where: { id: propertyId }, select: { ownerId: true } })
-    const booking = await prisma.booking.create({
-      data: {
-        lineUserId: tenant.id,
-        propertyId,
-        date: new Date(visitDate),
-        timeslot,
-        status: 'PENDING',
-        landlordId: prop?.ownerId || null
-      },
-      include: { property: true }
-    })
-
-    userState.delete(userId)
-
-    const ownerMsg = `📅 新看房預約！\n房源：${booking.property.title}\n時間：${visitDate} ${timeslot}\n用戶：${tenant.name || tenant.lineUserId}\n請至後台確認`
-    await notifyLandlord(prop?.ownerId, ownerMsg, client)
-
-    const successMsg = (t.bookSuccess || '✅ 預約成功！\n\n房東確認後會通知您，感謝！')
-    return {
-      type: 'text',
-      text: `${successMsg}\n\n🏠 ${booking.property.title}\n📅 ${visitDate} ${timeslot}`
-    }
-  }
-
-  return null
 }
 
 // ── 維修回報流程 ──────────────────────────────────────────────────
