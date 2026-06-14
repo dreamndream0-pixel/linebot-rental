@@ -1,6 +1,27 @@
 const prisma = require('./db')
 const { findLineTenant, upsertLineTenant } = require('./tenantStore')
 
+// ── 流量限制：每位用戶每分鐘最多 10 則訊息 ──────────────────────
+const rateLimitMap = new Map() // userId → { count, resetAt }
+function isRateLimited(userId) {
+  const now = Date.now()
+  const entry = rateLimitMap.get(userId)
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(userId, { count: 1, resetAt: now + 60_000 })
+    return false
+  }
+  entry.count++
+  if (entry.count > 10) return true
+  return false
+}
+// 每小時清除過期記錄，避免 Map 無限增長
+setInterval(() => {
+  const now = Date.now()
+  for (const [id, e] of rateLimitMap) {
+    if (now > e.resetAt) rateLimitMap.delete(id)
+  }
+}, 3_600_000)
+
 // ── 通知房東（依房源歸屬，找不到則退回主帳號 OWNER） ────────────
 // landlordId: 房源的歸屬房東；client: 該房東 Bot 的 client（可推給該房東）
 async function notifyLandlord(landlordId, message, fallbackClient) {
@@ -307,6 +328,7 @@ const userState = new Map()
 
 async function handlePostback(event, client, landlordId = null) {
   const userId = event.source.userId
+  if (isRateLimited(userId)) return
   const data = event.postback?.data || ''
   const { getBotText } = require('./botText')
   const t = await getBotText(landlordId)
@@ -433,6 +455,7 @@ async function handlePostback(event, client, landlordId = null) {
 
 async function handleMessage(event, client, landlordId = null) {
   const userId = event.source.userId
+  if (isRateLimited(userId)) return
   const text = event.message?.text?.trim() || ''
   const state = userState.get(userId) || {}
 
