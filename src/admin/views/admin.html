@@ -1613,23 +1613,24 @@ function drawHeroSettings() {
     '<h3>🖼️ 首頁輪播圖設定</h3>',
     '<div style="background:#F5F2EC;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:12px;line-height:2;color:var(--charcoal);">📐 <strong>輪播圖建議規格</strong><br>・比例：<strong>16:9</strong>（如 1920×1080px）<br>・最小寬度：<strong>1280px</strong>（建議 1920px 以上）<br>・格式：<strong>JPG / WebP</strong>（檔案較小，載入快）<br>・檔案大小：<strong>1MB 以下</strong>（建議壓縮後上傳）<br>・張數：建議 <strong>1–5 張</strong>，自動每 4 秒切換</div>',
 
-    // Upload area
+    // Upload area - multi-select
     '<div class="prop-form-section">',
     '<h4>上傳新圖片</h4>',
-    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">',
-    '<input type="file" id="heroFileInput" accept="image/*" style="flex:1;min-width:200px;">',
-    '<button class="action-btn" onclick="uploadHeroImage()">⬆️ 上傳</button>',
-    '</div>',
-    '<div id="heroUploadResult" style="margin-top:8px;font-size:13px;color:var(--deep-sage);"></div>',
+    '<label id="heroDropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2px dashed var(--sage);border-radius:12px;padding:24px;cursor:pointer;background:#F8F6F1;transition:background 0.2s;" ondragover="event.preventDefault();this.style.background=\'#EDF3EE\'" ondragleave="this.style.background=\'#F8F6F1\'" ondrop="handleHeroDrop(event)">',
+    '<span style="font-size:28px;">📁</span>',
+    '<span style="font-size:13px;color:var(--charcoal);font-weight:600;">點擊選擇或拖曳圖片至此</span>',
+    '<span style="font-size:11px;color:#aaa;">可多選，JPG / PNG / WebP</span>',
+    '<input type="file" id="heroFileInput" accept="image/*" multiple style="display:none;" onchange="uploadHeroImages(this.files)">',
+    '</label>',
+    '<div id="heroUploadResult" style="margin-top:10px;font-size:13px;color:var(--deep-sage);min-height:20px;"></div>',
     '</div>',
 
-    // Slide list
+    // Slide grid - thumbnails only, drag sortable
     '<div class="prop-form-section">',
-    '<h4>目前輪播圖（拖曳可排序）</h4>',
-    '<div id="heroSlideList">',
-    renderHeroSlideList(),
+    '<h4>目前輪播圖 <span style="font-size:11px;color:#aaa;font-weight:400;">（拖曳可調整順序）</span></h4>',
+    '<div id="heroSlideGrid" style="display:flex;flex-wrap:wrap;gap:10px;min-height:60px;">',
+    renderHeroSlideGrid(),
     '</div>',
-    '<button class="action-btn" onclick="addHeroSlide()" style="margin-top:10px;">＋ 新增一張</button>',
     '</div>',
 
     '<div style="margin-top:16px;">',
@@ -1654,56 +1655,99 @@ async function renderHeroSettings() {
   drawHeroSettings()
 }
 
-function renderHeroSlideList() {
+// ── 輪播圖縮圖 grid（拖曳排序）──────────────────────────
+var _dragIdx = null
+
+function renderHeroSlideGrid() {
   if (!heroSlides.length) {
-    return '<p style="font-size:13px;color:#aaa;padding:12px 0;">尚無輪播圖，請新增。</p>'
+    return '<p style="font-size:13px;color:#aaa;padding:12px 0;">尚無輪播圖，請上傳。</p>'
   }
   return heroSlides.map(function(s, i) {
     return [
-      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;background:#F8F6F1;padding:10px;border-radius:10px;">',
-      s.url ? '<img src="' + esc(s.url) + '" style="width:80px;height:54px;object-fit:cover;border-radius:6px;flex-shrink:0;" onerror="this.style.display=\'none\'">' : '<div style="width:80px;height:54px;background:#E5E0D5;border-radius:6px;flex-shrink:0;"></div>',
-      '<div style="flex:1;display:flex;flex-direction:column;gap:6px;">',
-      '<input value="' + esc(s.url) + '" placeholder="圖片網址（Cloudinary URL）" oninput="heroSlides[' + i + '].url=this.value" style="padding:8px 10px;border:1.5px solid #E5E0D5;border-radius:8px;font-size:13px;width:100%;">',
-      '<input value="' + esc(s.alt) + '" placeholder="圖片說明（alt 文字）" oninput="heroSlides[' + i + '].alt=this.value" style="padding:8px 10px;border:1.5px solid #E5E0D5;border-radius:8px;font-size:13px;width:100%;">',
+      '<div draggable="true"',
+      ' ondragstart="heroSlideDragStart(event,' + i + ')"',
+      ' ondragover="heroSlideDragOver(event,' + i + ')"',
+      ' ondrop="heroSlideDrop(event,' + i + ')"',
+      ' ondragend="heroSlideDragEnd()"',
+      ' style="position:relative;width:120px;height:80px;border-radius:10px;overflow:hidden;cursor:grab;box-shadow:0 2px 8px rgba(0,0,0,0.1);">',
+      '<img src="' + esc(s.url) + '" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.style.background=\'#E5E0D5\'">',
+      '<div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.25);display:flex;align-items:flex-end;justify-content:flex-end;padding:4px;">',
+      '<button onclick="removeHeroSlide(' + i + ')" style="background:rgba(220,70,70,0.85);border:none;color:white;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>',
       '</div>',
-      '<button class="action-btn danger" onclick="removeHeroSlide(' + i + ')">✕</button>',
+      '<div style="position:absolute;top:4px;left:6px;background:rgba(0,0,0,0.45);color:white;font-size:10px;border-radius:4px;padding:1px 5px;">' + (i+1) + '</div>',
       '</div>',
     ].join('')
   }).join('')
 }
 
-function addHeroSlide() {
-  heroSlides.push({ url: '', alt: '小蝸出租房源' })
-  document.getElementById('heroSlideList').innerHTML = renderHeroSlideList()
+function heroSlideDragStart(e, i) {
+  _dragIdx = i
+  e.currentTarget.style.opacity = '0.4'
+  e.dataTransfer.effectAllowed = 'move'
+}
+function heroSlideDragOver(e, i) {
+  e.preventDefault()
+  e.dataTransfer.dropEffect = 'move'
+}
+function heroSlideDrop(e, i) {
+  e.preventDefault()
+  if (_dragIdx === null || _dragIdx === i) return
+  var moved = heroSlides.splice(_dragIdx, 1)[0]
+  heroSlides.splice(i, 0, moved)
+  _dragIdx = null
+  document.getElementById('heroSlideGrid').innerHTML = renderHeroSlideGrid()
+  saveHeroSlides()
+}
+function heroSlideDragEnd() {
+  _dragIdx = null
+  document.getElementById('heroSlideGrid').innerHTML = renderHeroSlideGrid()
 }
 
 async function removeHeroSlide(i) {
   heroSlides.splice(i, 1)
-  document.getElementById('heroSlideList').innerHTML = renderHeroSlideList()
-  await saveHeroSlides() // 立即儲存到資料庫
+  document.getElementById('heroSlideGrid').innerHTML = renderHeroSlideGrid()
+  await saveHeroSlides()
 }
 
-async function uploadHeroImage() {
-  var fileInput = document.getElementById('heroFileInput')
-  var resultEl = document.getElementById('heroUploadResult')
-  if (!fileInput.files.length) { showToast('請先選擇圖片'); return }
-  resultEl.textContent = '上傳中...'
-  var fd = new FormData()
-  fd.append('file', fileInput.files[0])
-  try {
-    var res = await fetch('/admin/api/upload?key=' + encodeURIComponent(KEY), { method: 'POST', body: fd })
-    var data = await res.json()
-    if (!res.ok) { resultEl.textContent = '❌ ' + (data.error || '上傳失敗'); return }
-    resultEl.innerHTML = '✅ 上傳成功！網址已複製<br><small style="color:#888;">' + esc(data.url) + '</small>'
-    navigator.clipboard.writeText(data.url).catch(function(){})
-    // auto-add as new slide
-    heroSlides.push({ url: data.url, alt: '小蝸出租房源' })
-    document.getElementById('heroSlideList').innerHTML = renderHeroSlideList()
-    fileInput.value = ''
-    await saveHeroSlides() // 立即儲存到資料庫
-  } catch(e) {
-    resultEl.textContent = '❌ 連線失敗'
+// 點擊 drop zone 觸發 file input
+document.addEventListener('click', function(e) {
+  if (e.target.closest('#heroDropZone')) {
+    var inp = document.getElementById('heroFileInput')
+    if (inp && e.target !== inp) inp.click()
   }
+})
+
+function handleHeroDrop(e) {
+  e.preventDefault()
+  document.getElementById('heroDropZone').style.background = '#F8F6F1'
+  var files = e.dataTransfer.files
+  if (files && files.length) uploadHeroImages(files)
+}
+
+async function uploadHeroImages(files) {
+  var resultEl = document.getElementById('heroUploadResult')
+  if (!files || !files.length) return
+  var arr = Array.from(files)
+  resultEl.textContent = '上傳中 0/' + arr.length + '…'
+  var done = 0, failed = 0
+  for (var f of arr) {
+    var fd = new FormData()
+    fd.append('file', f)
+    try {
+      var res = await fetch('/admin/api/upload?key=' + encodeURIComponent(KEY), { method: 'POST', body: fd })
+      var data = await res.json()
+      if (!res.ok || !data.url) { failed++; continue }
+      heroSlides.push({ url: data.url, alt: '小蝸出租房源' })
+      done++
+      resultEl.textContent = '上傳中 ' + done + '/' + arr.length + '…'
+      document.getElementById('heroSlideGrid').innerHTML = renderHeroSlideGrid()
+    } catch(e) { failed++ }
+  }
+  var msg = '✅ 已上傳 ' + done + ' 張'
+  if (failed) msg += '，' + failed + ' 張失敗'
+  resultEl.textContent = msg
+  document.getElementById('heroFileInput').value = ''
+  if (done > 0) await saveHeroSlides()
 }
 
 async function uploadLogo() {
