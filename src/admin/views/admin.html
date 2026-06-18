@@ -1594,26 +1594,9 @@ function showToast(msg) {
 var heroSlides = []
 var heroLogoUrl = ''
 
-async function renderHeroSettings() {
+function drawHeroSettings() {
   var el = document.getElementById('content')
-  el.innerHTML = '<div class="form-box"><p style="color:#888;font-size:14px;">載入中...</p></div>'
-
-  try {
-    var siteBase = (DATA.siteUrl || '').replace(/\/$/, '')
-    var res = await fetch(siteBase + '/api/admin/hero')
-    if (res.ok) {
-      var data = await res.json()
-      heroSlides = data.slides || []
-      heroLogoUrl = data.logoUrl || ''
-    } else {
-      heroSlides = []
-      heroLogoUrl = ''
-    }
-  } catch(e) {
-    heroSlides = []
-    heroLogoUrl = ''
-  }
-
+  if (!el) return
   el.innerHTML = [
     '<div class="form-box">',
     '<div style="margin-bottom:28px;">',
@@ -1654,6 +1637,21 @@ async function renderHeroSettings() {
     '</div>',
     '</div>',
   ].join('')
+}
+
+async function renderHeroSettings() {
+  var el = document.getElementById('content')
+  el.innerHTML = '<div class="form-box"><p style="color:#888;font-size:14px;">載入中...</p></div>'
+  try {
+    var siteBase = (DATA.siteUrl || '').replace(/\/$/, '')
+    var res = await fetch(siteBase + '/api/admin/hero')
+    if (res.ok) {
+      var data = await res.json()
+      heroSlides = data.slides || []
+      heroLogoUrl = data.logoUrl || ''
+    } else { heroSlides = []; heroLogoUrl = '' }
+  } catch(e) { heroSlides = []; heroLogoUrl = '' }
+  drawHeroSettings()
 }
 
 function renderHeroSlideList() {
@@ -1719,7 +1717,7 @@ async function uploadLogo() {
     if (!data.url) throw new Error('上傳失敗')
     heroLogoUrl = data.url
     resultEl.innerHTML = '✅ 上傳成功！<br><small>' + esc(data.url) + '</small>'
-    renderHeroSettings()
+    drawHeroSettings() // 只更新畫面，不重新 fetch（避免覆蓋剛上傳的值）
   } catch(e) {
     resultEl.textContent = '❌ ' + e.message
   }
@@ -1727,7 +1725,7 @@ async function uploadLogo() {
 
 async function clearLogo() {
   heroLogoUrl = ''
-  renderHeroSettings()
+  drawHeroSettings()
 }
 
 async function saveHeroSlides() {
