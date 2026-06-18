@@ -1592,6 +1592,7 @@ function showToast(msg) {
 
 // ─── 首頁輪播設定 ────────────────────────────────────────────────
 var heroSlides = []
+var heroLogoUrl = ''
 
 async function renderHeroSettings() {
   var el = document.getElementById('content')
@@ -1600,13 +1601,32 @@ async function renderHeroSettings() {
   try {
     var siteBase = (DATA.siteUrl || '').replace(/\/$/, '')
     var res = await fetch(siteBase + '/api/admin/hero')
-    heroSlides = res.ok ? await res.json() : []
+    if (res.ok) {
+      var data = await res.json()
+      heroSlides = data.slides || []
+      heroLogoUrl = data.logoUrl || ''
+    } else {
+      heroSlides = []
+      heroLogoUrl = ''
+    }
   } catch(e) {
     heroSlides = []
+    heroLogoUrl = ''
   }
 
   el.innerHTML = [
     '<div class="form-box">',
+    '<div style="margin-bottom:28px;">',
+    '<h3 style="font-size:15px;font-weight:700;margin-bottom:8px;">🖼️ 網站 LOGO 設定</h3>',
+    '<p style="font-size:13px;color:var(--gray-mid);margin-bottom:12px;">上傳後將取代頂部文字 LOGO，建議透明背景 PNG，高度 80px 以上。</p>',
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">',
+    '<input type="file" id="logoFileInput" accept="image/*" style="flex:1;min-width:160px;">',
+    '<button class="btn" style="width:auto;padding:8px 18px;" onclick="uploadLogo()">⬆ 上傳 LOGO</button>',
+    '</div>',
+    '<div id="logoUploadResult" style="margin-top:8px;font-size:13px;color:var(--deep-sage);"></div>',
+    (heroLogoUrl ? '<div style="margin-top:10px;"><img src="' + esc(heroLogoUrl) + '" style="height:48px;object-fit:contain;background:#f5f5f3;border-radius:8px;padding:4px 8px;" /><button onclick="clearLogo()" style="margin-left:10px;background:none;border:none;color:var(--warn);cursor:pointer;font-size:13px;">移除</button></div>' : ''),
+    '</div>',
+    '<hr style="border:none;border-top:1px solid var(--oat-mid);margin:0 0 20px;">',
     '<h3>🖼️ 首頁輪播圖設定</h3>',
     '<p style="font-size:13px;color:#888;margin-bottom:16px;">上傳圖片後貼上網址，可設定多張輪播（建議比例 16:9，寬度 1600px 以上）。</p>',
 
@@ -1686,6 +1706,30 @@ async function uploadHeroImage() {
   }
 }
 
+async function uploadLogo() {
+  var fileInput = document.getElementById('logoFileInput')
+  var resultEl = document.getElementById('logoUploadResult')
+  if (!fileInput.files[0]) { resultEl.textContent = '請先選擇圖片'; return }
+  resultEl.textContent = '上傳中…'
+  var fd = new FormData()
+  fd.append('file', fileInput.files[0])
+  try {
+    var r = await fetch('/admin/api/upload?key=' + encodeURIComponent(KEY), { method: 'POST', body: fd })
+    var data = await r.json()
+    if (!data.url) throw new Error('上傳失敗')
+    heroLogoUrl = data.url
+    resultEl.innerHTML = '✅ 上傳成功！<br><small>' + esc(data.url) + '</small>'
+    renderHeroSettings()
+  } catch(e) {
+    resultEl.textContent = '❌ ' + e.message
+  }
+}
+
+async function clearLogo() {
+  heroLogoUrl = ''
+  renderHeroSettings()
+}
+
 async function saveHeroSlides() {
   try {
     var siteBase = (DATA.siteUrl || '').replace(/\/$/, '')
@@ -1693,7 +1737,7 @@ async function saveHeroSlides() {
     var res = await fetch(siteBase + '/api/admin/hero', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slides: slides })
+      body: JSON.stringify({ slides: slides, logoUrl: heroLogoUrl })
     })
     var data = await res.json()
     if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || '')); return }
