@@ -1618,7 +1618,7 @@ async function renderHeroSettings() {
     '<div class="form-box">',
     '<div style="margin-bottom:28px;">',
     '<h3 style="font-size:15px;font-weight:700;margin-bottom:8px;">🖼️ 網站 LOGO 設定</h3>',
-    '<p style="font-size:13px;color:var(--gray-mid);margin-bottom:12px;">上傳後將取代頂部文字 LOGO，建議透明背景 PNG，高度 80px 以上。</p>',
+    '<div style="background:#F5F2EC;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:12px;line-height:2;color:var(--charcoal);">📐 <strong>LOGO 建議規格</strong><br>・格式：<strong>PNG（透明背景）</strong> 或 SVG<br>・尺寸：寬 <strong>400–800px</strong>、高 <strong>80–160px</strong><br>・比例：約 <strong>3:1 ~ 5:1</strong>（橫式為主）<br>・檔案大小：<strong>500KB 以下</strong><br>・實際顯示：自動縮放至 <strong>高度 40px</strong> 嵌入頂部導覽列</div>',
     '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">',
     '<input type="file" id="logoFileInput" accept="image/*" style="flex:1;min-width:160px;">',
     '<button class="btn" style="width:auto;padding:8px 18px;" onclick="uploadLogo()">⬆ 上傳 LOGO</button>',
@@ -1628,7 +1628,7 @@ async function renderHeroSettings() {
     '</div>',
     '<hr style="border:none;border-top:1px solid var(--oat-mid);margin:0 0 20px;">',
     '<h3>🖼️ 首頁輪播圖設定</h3>',
-    '<p style="font-size:13px;color:#888;margin-bottom:16px;">上傳圖片後貼上網址，可設定多張輪播（建議比例 16:9，寬度 1600px 以上）。</p>',
+    '<div style="background:#F5F2EC;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:12px;line-height:2;color:var(--charcoal);">📐 <strong>輪播圖建議規格</strong><br>・比例：<strong>16:9</strong>（如 1920×1080px）<br>・最小寬度：<strong>1280px</strong>（建議 1920px 以上）<br>・格式：<strong>JPG / WebP</strong>（檔案較小，載入快）<br>・檔案大小：<strong>1MB 以下</strong>（建議壓縮後上傳）<br>・張數：建議 <strong>1–5 張</strong>，自動每 4 秒切換</div>',
 
     // Upload area
     '<div class="prop-form-section">',
