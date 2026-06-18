@@ -435,6 +435,7 @@ function renderPropCard(p) {
     '<select onchange="changePropertyStatus(\'' + p.id + '\', this.value)" style="padding:6px 10px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;">' + statusOptions + '</select>' +
     '<a class="action-btn" href="' + (DATA.siteUrl || '') + '/property/' + p.id + (DATA.role === 'landlord' && DATA.landlordId ? '?site=' + DATA.landlordId : '') + '" target="_blank" style="text-decoration:none;">🔗 查看</a>' +
     '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">✏️ 編輯</button>' +
+    '<button class="action-btn" onclick="toggleFeatured(\'' + p.id + '\', ' + (p.featured ? 'true' : 'false') + ')" style="' + (p.featured ? 'background:#FFF3CD;color:#856404;border-color:#FFEAA7;' : '') + '">' + (p.featured ? '⭐ 精選中' : '☆ 設為精選') + '</button>' +
     '<button class="action-btn danger" onclick="deleteProperty(\'' + p.id + '\')">🗑️ 刪除</button>' +
     '</div></div>'
 }
@@ -965,6 +966,20 @@ async function deleteProperty(id) {
   })
   showToast('🗑️ 已刪除')
   reload()
+}
+
+async function toggleFeatured(id, currentFeatured) {
+  var newVal = !currentFeatured
+  var res = await fetch('/admin/api/property/' + id + '/featured?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ featured: newVal })
+  })
+  if (res.ok) {
+    showToast(newVal ? '⭐ 已設為精選' : '☆ 已取消精選')
+    reload()
+  } else {
+    showToast('❌ 操作失敗')
+  }
 }
 
 // ── 房東管理（僅總管理員） ──────────────────────────────────────

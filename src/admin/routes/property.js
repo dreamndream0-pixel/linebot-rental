@@ -127,6 +127,18 @@ router.post('/admin/api/property/:id', express.json(), async (req, res) => {
   res.json(property)
 })
 
+router.post('/admin/api/property/:id/featured', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  const { featured } = req.body
+  const property = await prisma.property.update({
+    where: { id: req.params.id },
+    data: { featured: !!featured },
+    select: { id: true, featured: true },
+  })
+  res.json(property)
+})
+
 router.post('/admin/api/property/:id/delete', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
