@@ -52,9 +52,39 @@
     background: var(--sage); color: white; border: none;
     padding: 14px 28px; border-radius: 12px; font-size: 16px;
     cursor: pointer; width: 100%; font-weight: 700;
-    transition: background .2s;
+    transition: background .2s, opacity .2s;
+    position: relative; overflow: hidden;
   }
   .btn:hover { background: var(--deep-sage); }
+  .btn:active, .action-btn:active { transform: scale(0.96); }
+  /* loading state */
+  .btn.loading, .action-btn.loading {
+    opacity: 0.65; pointer-events: none; cursor: not-allowed;
+  }
+  .btn.loading::after, .action-btn.loading::after {
+    content: '';
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid rgba(255,255,255,0.5);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: btnSpin 0.7s linear infinite;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .action-btn.loading::after {
+    border-color: rgba(78,113,83,0.4);
+    border-top-color: var(--deep-sage);
+  }
+  @keyframes btnSpin { to { transform: rotate(360deg); } }
+  /* ripple on click */
+  .btn-ripple {
+    position: absolute; border-radius: 50%;
+    background: rgba(255,255,255,0.35);
+    transform: scale(0); animation: ripple 0.5s linear;
+    pointer-events: none;
+  }
+  @keyframes ripple { to { transform: scale(4); opacity: 0; } }
   #mainView { display: none; }
   header {
     background: linear-gradient(135deg, var(--sage), var(--deep-sage));
@@ -1604,7 +1634,7 @@ function drawHeroSettings() {
     '<div style="background:#F5F2EC;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:12px;line-height:2;color:var(--charcoal);">📐 <strong>LOGO 建議規格</strong><br>・格式：<strong>PNG（透明背景）</strong> 或 SVG<br>・尺寸：寬 <strong>400–800px</strong>、高 <strong>80–160px</strong><br>・比例：約 <strong>3:1 ~ 5:1</strong>（橫式為主）<br>・檔案大小：<strong>500KB 以下</strong><br>・實際顯示：自動縮放至 <strong>高度 40px</strong> 嵌入頂部導覽列</div>',
     '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">',
     '<input type="file" id="logoFileInput" accept="image/*" style="flex:1;min-width:160px;">',
-    '<button class="btn" style="width:auto;padding:8px 18px;" onclick="uploadLogo()">⬆ 上傳 LOGO</button>',
+    '<button class="btn" style="width:auto;padding:8px 18px;" onclick="btnLoad(this, uploadLogo)">⬆ 上傳 LOGO</button>',
     '</div>',
     '<div id="logoUploadResult" style="margin-top:8px;font-size:13px;color:var(--deep-sage);"></div>',
     (heroLogoUrl ? '<div style="margin-top:10px;"><img src="' + esc(heroLogoUrl) + '" style="height:48px;object-fit:contain;background:#f5f5f3;border-radius:8px;padding:4px 8px;" /><button onclick="clearLogo()" style="margin-left:10px;background:none;border:none;color:var(--warn);cursor:pointer;font-size:13px;">移除</button></div>' : ''),
@@ -1616,12 +1646,12 @@ function drawHeroSettings() {
     // Upload area - multi-select
     '<div class="prop-form-section">',
     '<h4>上傳新圖片</h4>',
-    '<label id="heroDropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2px dashed var(--sage);border-radius:12px;padding:24px;cursor:pointer;background:#F8F6F1;transition:background 0.2s;" ondragover="event.preventDefault();this.style.background=\'#EDF3EE\'" ondragleave="this.style.background=\'#F8F6F1\'" ondrop="handleHeroDrop(event)">',
+    '<div id="heroDropZone" onclick="document.getElementById(\'heroFileInput\').click()" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2px dashed var(--sage);border-radius:12px;padding:24px;cursor:pointer;background:#F8F6F1;transition:background 0.2s;" ondragover="event.preventDefault();this.style.background=\'#EDF3EE\'" ondragleave="this.style.background=\'#F8F6F1\'" ondrop="handleHeroDrop(event)">',
     '<span style="font-size:28px;">📁</span>',
     '<span style="font-size:13px;color:var(--charcoal);font-weight:600;">點擊選擇或拖曳圖片至此</span>',
     '<span style="font-size:11px;color:#aaa;">可多選，JPG / PNG / WebP</span>',
     '<input type="file" id="heroFileInput" accept="image/*" multiple style="display:none;" onchange="uploadHeroImages(this.files)">',
-    '</label>',
+    '</div>',
     '<div id="heroUploadResult" style="margin-top:10px;font-size:13px;color:var(--deep-sage);min-height:20px;"></div>',
     '</div>',
 
@@ -1634,7 +1664,7 @@ function drawHeroSettings() {
     '</div>',
 
     '<div style="margin-top:16px;">',
-    '<button class="btn" onclick="saveHeroSlides()" style="width:auto;padding:12px 32px;">💾 儲存設定</button>',
+    '<button class="btn" onclick="btnLoad(this, saveHeroSlides)" style="width:auto;padding:12px 32px;">💾 儲存設定</button>',
     '</div>',
     '</div>',
   ].join('')
@@ -1709,14 +1739,6 @@ async function removeHeroSlide(i) {
   await saveHeroSlides()
 }
 
-// 點擊 drop zone 觸發 file input
-document.addEventListener('click', function(e) {
-  if (e.target.closest('#heroDropZone')) {
-    var inp = document.getElementById('heroFileInput')
-    if (inp && e.target !== inp) inp.click()
-  }
-})
-
 function handleHeroDrop(e) {
   e.preventDefault()
   document.getElementById('heroDropZone').style.background = '#F8F6F1'
@@ -1777,9 +1799,9 @@ async function clearLogo() {
   await saveHeroSlides() // 立即儲存到資料庫
 }
 
-async function saveHeroSlides() {
+async function saveHeroSlides(silent) {
   try {
-    var siteBase = (DATA.siteUrl || '').replace(/\/$/, '')
+    var siteBase = (DATA && DATA.siteUrl ? DATA.siteUrl : 'https://xiaowo-rental.vercel.app').replace(/\/$/, '')
     var slides = heroSlides.filter(function(s){ return s.url && s.url.trim() })
     var res = await fetch(siteBase + '/api/admin/hero', {
       method: 'POST',
@@ -1787,11 +1809,37 @@ async function saveHeroSlides() {
       body: JSON.stringify({ slides: slides, logoUrl: heroLogoUrl })
     })
     var data = await res.json()
-    if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || '')); return }
-    showToast('✅ 已儲存 ' + data.count + ' 張輪播圖')
+    if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || '')); return false }
+    if (!silent) showToast('✅ 已儲存 ' + data.count + ' 張輪播圖')
+    return true
   } catch(e) {
     showToast('❌ 連線失敗，請確認網站是否運行中')
+    return false
   }
+}
+
+// ── 全域按鈕互動 ──────────────────────────────────────
+// Ripple effect
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('.btn, .action-btn')
+  if (!btn || btn.classList.contains('loading')) return
+  var r = btn.getBoundingClientRect()
+  var d = Math.max(r.width, r.height)
+  var rEl = document.createElement('span')
+  rEl.className = 'btn-ripple'
+  rEl.style.cssText = 'width:' + d + 'px;height:' + d + 'px;left:' + (e.clientX - r.left - d/2) + 'px;top:' + (e.clientY - r.top - d/2) + 'px'
+  btn.appendChild(rEl)
+  setTimeout(function(){ rEl.remove() }, 500)
+})
+
+// Helper: wrap async onclick with loading state
+function btnLoad(btn, fn) {
+  if (btn.classList.contains('loading')) return
+  btn.classList.add('loading')
+  var orig = btn.textContent
+  Promise.resolve(fn()).finally(function() {
+    btn.classList.remove('loading')
+  })
 }
 </script>
 </body>
