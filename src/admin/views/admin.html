@@ -52,11 +52,11 @@
     background: var(--sage); color: white; border: none;
     padding: 14px 28px; border-radius: 12px; font-size: 16px;
     cursor: pointer; width: 100%; font-weight: 700;
-    transition: background .2s, opacity .2s;
+    transition: background .2s, opacity .2s, transform .08s;
     position: relative; overflow: hidden;
   }
   .btn:hover { background: var(--deep-sage); }
-  .btn:active, .action-btn:active { transform: scale(0.96); }
+  .btn:active { transform: scale(0.96) !important; }
   /* loading state */
   .btn.loading, .action-btn.loading {
     opacity: 0.65; pointer-events: none; cursor: not-allowed;
@@ -140,8 +140,11 @@
     padding: 6px 14px; border-radius: 8px; border: 1.5px solid var(--sage);
     background: transparent; color: var(--deep-sage); font-size: 13px;
     cursor: pointer; font-weight: 500;
+    position: relative; overflow: hidden;
+    transition: background .15s, color .15s, transform .08s;
   }
   .action-btn:hover { background: var(--sage); color: white; }
+  .action-btn:active { transform: scale(0.94) !important; }
   .action-btn.danger { border-color: var(--danger); color: var(--danger); }
   .action-btn.danger:hover { background: var(--danger); color: white; }
   .empty { text-align: center; color: #aaa; padding: 50px 0; font-size: 14px; }
@@ -1633,7 +1636,7 @@ function drawHeroSettings() {
     '<h3 style="font-size:15px;font-weight:700;margin-bottom:8px;">🖼️ 網站 LOGO 設定</h3>',
     '<div style="background:#F5F2EC;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:12px;line-height:2;color:var(--charcoal);">📐 <strong>LOGO 建議規格</strong><br>・格式：<strong>PNG（透明背景）</strong> 或 SVG<br>・尺寸：寬 <strong>400–800px</strong>、高 <strong>80–160px</strong><br>・比例：約 <strong>3:1 ~ 5:1</strong>（橫式為主）<br>・檔案大小：<strong>500KB 以下</strong><br>・實際顯示：自動縮放至 <strong>高度 40px</strong> 嵌入頂部導覽列</div>',
     '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">',
-    '<input type="file" id="logoFileInput" accept="image/*" style="flex:1;min-width:160px;">',
+    '<input type="file" id="logoFileInput" accept="image/*" style="flex:1;min-width:160px;" onclick="event.stopPropagation()">',
     '<button class="btn" style="width:auto;padding:8px 18px;" onclick="btnLoad(this, uploadLogo)">⬆ 上傳 LOGO</button>',
     '</div>',
     '<div id="logoUploadResult" style="margin-top:8px;font-size:13px;color:var(--deep-sage);"></div>',
@@ -1650,7 +1653,7 @@ function drawHeroSettings() {
     '<span style="font-size:28px;">📁</span>',
     '<span style="font-size:13px;color:var(--charcoal);font-weight:600;">點擊選擇或拖曳圖片至此</span>',
     '<span style="font-size:11px;color:#aaa;">可多選，JPG / PNG / WebP</span>',
-    '<input type="file" id="heroFileInput" accept="image/*" multiple style="display:none;" onchange="uploadHeroImages(this.files)">',
+    '<input type="file" id="heroFileInput" accept="image/*" multiple style="display:none;" onclick="event.stopPropagation()" onchange="uploadHeroImages(this.files)">',
     '</div>',
     '<div id="heroUploadResult" style="margin-top:10px;font-size:13px;color:var(--deep-sage);min-height:20px;"></div>',
     '</div>',
