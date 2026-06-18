@@ -1677,9 +1677,10 @@ function addHeroSlide() {
   document.getElementById('heroSlideList').innerHTML = renderHeroSlideList()
 }
 
-function removeHeroSlide(i) {
+async function removeHeroSlide(i) {
   heroSlides.splice(i, 1)
   document.getElementById('heroSlideList').innerHTML = renderHeroSlideList()
+  await saveHeroSlides() // 立即儲存到資料庫
 }
 
 async function uploadHeroImage() {
@@ -1699,6 +1700,7 @@ async function uploadHeroImage() {
     heroSlides.push({ url: data.url, alt: '小蝸出租房源' })
     document.getElementById('heroSlideList').innerHTML = renderHeroSlideList()
     fileInput.value = ''
+    await saveHeroSlides() // 立即儲存到資料庫
   } catch(e) {
     resultEl.textContent = '❌ 連線失敗'
   }
@@ -1716,8 +1718,10 @@ async function uploadLogo() {
     var data = await r.json()
     if (!data.url) throw new Error('上傳失敗')
     heroLogoUrl = data.url
-    resultEl.innerHTML = '✅ 上傳成功！<br><small>' + esc(data.url) + '</small>'
+    resultEl.innerHTML = '✅ 上傳成功，儲存中…'
     drawHeroSettings() // 只更新畫面，不重新 fetch（避免覆蓋剛上傳的值）
+    await saveHeroSlides() // 立即儲存到資料庫
+    resultEl.innerHTML = '✅ 上傳並儲存成功！<br><small>' + esc(data.url) + '</small>'
   } catch(e) {
     resultEl.textContent = '❌ ' + e.message
   }
@@ -1726,6 +1730,7 @@ async function uploadLogo() {
 async function clearLogo() {
   heroLogoUrl = ''
   drawHeroSettings()
+  await saveHeroSlides() // 立即儲存到資料庫
 }
 
 async function saveHeroSlides() {
