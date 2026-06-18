@@ -1021,7 +1021,7 @@ function renderLandlords() {
           thumb +
           '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(p.title) + '</div>' +
           '<div style="font-size:11px;color:var(--gray-mid);">NT$' + Number(p.price).toLocaleString() + '/月 · ' + statusLabel + '</div></div>' +
-          '<a href="' + (DATA.siteUrl||'') + '/property/' + p.id + '" target="_blank" style="font-size:11px;color:var(--sage);text-decoration:none;flex-shrink:0;">查看</a>' +
+          '<a href="' + (DATA.siteUrl||'') + '/property/' + p.id + '?site=' + l.id + '" target="_blank" style="font-size:11px;color:var(--sage);text-decoration:none;flex-shrink:0;">查看</a>' +
         '</div>'
       }).join('')
     return '<div class="card"><div class="card-row"><div>' +
