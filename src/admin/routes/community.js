@@ -9,7 +9,7 @@ async function ensureTables() {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS communities (
       id           TEXT PRIMARY KEY,
-      "ownerId"    TEXT NOT NULL REFERENCES landlords(id),
+      "ownerId"    TEXT REFERENCES landlords(id),
       name         TEXT NOT NULL,
       description  TEXT NOT NULL DEFAULT '',
       photos       TEXT NOT NULL DEFAULT '[]',
@@ -22,6 +22,10 @@ async function ensureTables() {
   await prisma.$executeRawUnsafe(`
     ALTER TABLE properties ADD COLUMN IF NOT EXISTS "communityId" TEXT REFERENCES communities(id)
   `)
+  // 若 ownerId 仍有 NOT NULL 約束，移除它（舊版資料表可能如此）
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE communities ALTER COLUMN "ownerId" DROP NOT NULL
+  `).catch(() => {})
 }
 
 let tableReady = false
@@ -57,7 +61,7 @@ router.post('/admin/api/community', express.json(), async (req, res) => {
   try {
     const auth = await resolveRole(req.query.key)
     if (!auth) return res.status(401).json({ error: 'unauthorized' })
-    const ownerId = auth.role === 'superadmin' ? req.body.ownerId : auth.landlordId
+    const ownerId = auth.role === 'super' ? req.body.ownerId : auth.landlordId
     const { name, description = '', photos = [], mapUrl = '' } = req.body
     if (!name) return res.status(400).json({ error: '請填寫社區名稱' })
     await withTable(async () => {
