@@ -261,6 +261,8 @@ enum PropertyStatus {
   RENTED
   PAUSED
   REJECTED
+  COMING_SOON
+  INACTIVE
 }
 
 enum BoostPlan {

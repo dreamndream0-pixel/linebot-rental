@@ -135,7 +135,8 @@
   .badge.CONFIRMED, .badge.IN_PROGRESS, .badge.AVAILABLE { background: #E8F1E9; color: var(--deep-sage); }
   .badge.DONE, .badge.COMPLETED, .badge.RENTED { background: #EEE; color: #888; }
   .badge.CANCELLED, .badge.REJECTED { background: #FAEAEA; color: var(--danger); }
-  .badge.PAUSED { background: #F3F0E8; color: #A89B6C; }
+  .badge.PAUSED, .badge.INACTIVE { background: #F3F0E8; color: #A89B6C; }
+  .badge.COMING_SOON { background: #E3F0FB; color: #2979B8; }
   .actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
   .action-btn {
     padding: 6px 14px; border-radius: 8px; border: 1.5px solid var(--sage);
@@ -250,7 +251,11 @@ var currentTab = 'tenants'
 var editingPropertyId = null
 
 var TYPE_LABEL = { SUITE: '套房', ROOM: '雅房', WHOLE_FLOOR: '整層住家', SHARED_SUITE: '分租套房' }
-var PROP_STATUS_LABEL = { PENDING: '審核中', AVAILABLE: '可租', RENTED: '已租', PAUSED: '暫停刊登', REJECTED: '退回' }
+var PROP_STATUS_LABEL = { PENDING: '審核中', AVAILABLE: '可承租', RENTED: '已出租', COMING_SOON: '即將釋出', INACTIVE: '已下架', PAUSED: '已下架', REJECTED: '退回' }
+// 上架中狀態（在前台可見）
+var PROP_ONLINE_STATUS = { AVAILABLE: true, COMING_SOON: true, RENTED: true }
+// 可搜尋狀態（首頁/列表可搜尋到）
+var PROP_SEARCHABLE = { AVAILABLE: true, COMING_SOON: true }
 var BOOKING_LABEL = { PENDING: '⏳ 待確認', CONFIRMED: '✅ 已確認', REJECTED: '❌ 已拒絕', CANCELLED: '❌ 已取消', COMPLETED: '🏁 已完成' }
 var REPAIR_LABEL = { PENDING: '待處理', IN_PROGRESS: '處理中', DONE: '已完成' }
 
@@ -455,21 +460,46 @@ function renderRepairs() {
 }
 
 // ── 房源管理 ──────────────────────────────────────────────────────
-function renderPropCard(p) {
+
+// 上架標籤樣式
+function onlineBadgeHtml(status) {
+  var isOnline = PROP_ONLINE_STATUS[status]
+  var isSearchable = PROP_SEARCHABLE[status]
+  if (!isOnline) {
+    return '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:#EEE;color:#888;">已下架</span>'
+  }
+  if (isSearchable) {
+    return '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:#E8F5E9;color:#388E3C;">上架中・可搜尋</span>'
+  }
+  return '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:#FFF3E0;color:#E65100;">上架中・不可搜尋</span>'
+}
+
+function renderPropCard(p, showCheckbox) {
   var thumb = (p.images && p.images[0])
     ? '<img class="prop-thumb" src="' + esc(p.images[0].url) + '" onerror="this.style.display=\'none\'">'
     : '<div class="prop-thumb" style="display:flex;align-items:center;justify-content:center;font-size:22px;">🏠</div>'
-  var statusOptions = Object.keys(PROP_STATUS_LABEL).map(function(s) {
+  // 只顯示 4 個主要狀態供選擇
+  var mainStatuses = ['AVAILABLE', 'RENTED', 'COMING_SOON', 'INACTIVE']
+  var statusOptions = mainStatuses.map(function(s) {
     return '<option value="' + s + '"' + (p.status === s ? ' selected' : '') + '>' + PROP_STATUS_LABEL[s] + '</option>'
   }).join('')
-  return '<div class="card"><div class="card-row">' +
-    '<div style="display:flex;gap:14px;align-items:flex-start;">' + thumb +
-    '<div><h3>' + esc(p.title) + '</h3>' +
-    '<div class="meta">' + esc(p.city) + esc(p.district) + ' · ' + (TYPE_LABEL[p.type] || '') +
+  var cbHtml = showCheckbox
+    ? '<input type="checkbox" class="prop-cb" data-id="' + p.id + '" style="width:16px;height:16px;cursor:pointer;accent-color:var(--sage);margin-right:6px;flex-shrink:0;" onclick="event.stopPropagation()">'
+    : ''
+  return '<div class="card" style="position:relative;">' +
+    '<div class="card-row" style="align-items:flex-start;">' +
+    '<div style="display:flex;gap:10px;align-items:flex-start;flex:1;min-width:0;">' +
+    cbHtml + thumb +
+    '<div style="min-width:0;">' +
+    '<h3 style="margin:0 0 4px;">' + esc(p.title) + '</h3>' +
+    '<div class="meta">' + esc(p.city || '') + esc(p.district || '') + ' · ' + (TYPE_LABEL[p.type] || '') +
     ' · NT$ ' + Number(p.price).toLocaleString() + '/月' +
-    (p.size ? ' · ' + p.size + '坪' : '') + '</div></div></div>' +
-    '<span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span></div>' +
-    '<div class="actions">' +
+    (p.size ? ' · ' + p.size + '坪' : '') + '</div>' +
+    '<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' +
+    '<span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span>' +
+    onlineBadgeHtml(p.status) +
+    '</div></div></div></div>' +
+    '<div class="actions" style="margin-top:10px;">' +
     '<select onchange="changePropertyStatus(\'' + p.id + '\', this.value)" style="padding:6px 10px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;">' + statusOptions + '</select>' +
     '<a class="action-btn" href="' + (DATA.siteUrl || '') + '/property/' + p.id + (DATA.role === 'landlord' && DATA.landlordId ? '?site=' + DATA.landlordId : '') + '" target="_blank" style="text-decoration:none;">🔗 查看</a>' +
     '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">✏️ 編輯</button>' +
@@ -478,29 +508,125 @@ function renderPropCard(p) {
     '</div></div>'
 }
 
+// 批次操作工具列
+function batchToolbarHtml() {
+  var mainStatuses = ['AVAILABLE', 'RENTED', 'COMING_SOON', 'INACTIVE']
+  var opts = mainStatuses.map(function(s) {
+    return '<option value="' + s + '">' + PROP_STATUS_LABEL[s] + '</option>'
+  }).join('')
+  return '<div id="batchBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;background:#F0F7F1;border:1.5px solid var(--sage);border-radius:10px;margin-bottom:12px;">' +
+    '<label style="font-size:13px;font-weight:600;color:var(--deep-sage);display:flex;align-items:center;gap:6px;cursor:pointer;">' +
+    '<input type="checkbox" id="selectAllCb" style="width:16px;height:16px;accent-color:var(--sage);" onchange="toggleSelectAll(this.checked)"> 全選</label>' +
+    '<span style="color:#ccc;">|</span>' +
+    '<span style="font-size:13px;color:var(--gray-mid);">批次更改狀態：</span>' +
+    '<select id="batchStatus" style="padding:6px 10px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;">' + opts + '</select>' +
+    '<button class="btn" style="width:auto;padding:6px 16px;font-size:13px;" onclick="applyBatchStatus()">套用</button>' +
+    '<span id="batchCount" style="font-size:12px;color:var(--gray-mid);margin-left:4px;">已選 0 間</span>' +
+    '</div>'
+}
+
 function renderProperties() {
-  var addBtn = '<div style="margin-bottom:14px;"><button class="btn" style="width:auto;padding:10px 24px;" onclick="openAddPropertyModal()">➕ 新增房源</button></div>'
+  var addBtn = '<div style="margin-bottom:14px;display:flex;gap:10px;align-items:center;">' +
+    '<button class="btn" style="width:auto;padding:10px 24px;" onclick="openAddPropertyModal()">➕ 新增房源</button>' +
+    '</div>'
   if (!DATA.properties.length) {
     return addBtn + '<div class="empty">還沒有房源，按上方按鈕新增第一間！</div>'
   }
+  var toolbar = batchToolbarHtml()
   if (DATA.role !== 'super') {
-    return addBtn + DATA.properties.map(renderPropCard).join('')
+    return addBtn + toolbar + DATA.properties.map(function(p){ return renderPropCard(p, true) }).join('')
   }
-  // 總管理員：依房東分組
-  var groups = {}
+  // 總管理員：依房東分組，開合式
+  var landlordMap = {}
   var order = []
-  DATA.properties.forEach(function(p) {
-    var key = (p.owner && p.owner.name) ? p.owner.name : '未分類'
-    if (!groups[key]) { groups[key] = []; order.push(key) }
-    groups[key].push(p)
+  ;(DATA.landlords || []).forEach(function(l) {
+    landlordMap[l.id] = l
   })
-  var groupHtml = order.map(function(name) {
-    return '<div style="margin-bottom:24px;">' +
-      '<div style="font-size:13px;font-weight:700;color:var(--deep-sage);padding:6px 10px;background:var(--sage-bg);border-radius:8px;margin-bottom:10px;">🏢 ' + esc(name) + '（' + groups[name].length + ' 間）</div>' +
-      groups[name].map(renderPropCard).join('') +
-    '</div>'
+  var groups = {}   // key = ownerId
+  var groupOrder = []
+  DATA.properties.forEach(function(p) {
+    var lid = p.ownerId || '__none__'
+    if (!groups[lid]) { groups[lid] = []; groupOrder.push(lid) }
+    groups[lid].push(p)
+  })
+  var groupHtml = groupOrder.map(function(lid) {
+    var l = landlordMap[lid] || {}
+    var displayName = l.name || '未分類'
+    var siteName = l.siteName ? '・' + l.siteName : ''
+    var props = groups[lid]
+    var available = props.filter(function(p){ return p.status === 'AVAILABLE' || p.status === 'COMING_SOON' }).length
+    var groupId = 'propGroup_' + lid.replace(/[^a-z0-9]/gi, '_')
+    return '<div style="margin-bottom:16px;border:1px solid var(--oat-mid);border-radius:12px;overflow:hidden;">' +
+      // 開合標題列
+      '<div onclick="toggleGroup(\'' + groupId + '\', this)" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--sage-bg);cursor:pointer;user-select:none;">' +
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+      '<input type="checkbox" class="group-cb" data-group="' + groupId + '" style="width:16px;height:16px;accent-color:var(--sage);" onclick="event.stopPropagation();toggleGroupSelect(this,\'' + groupId + '\')">' +
+      '<span style="font-size:14px;font-weight:700;color:var(--deep-sage);">🏢 ' + esc(displayName) + '</span>' +
+      (siteName ? '<span style="font-size:12px;color:var(--gray-mid);">' + esc(siteName) + '</span>' : '') +
+      '<span style="font-size:12px;color:var(--gray-mid);">共 ' + props.length + ' 間・可租/即將 ' + available + ' 間</span>' +
+      '</div>' +
+      '<span class="toggle-arrow" style="font-size:12px;color:var(--gray-mid);">▸</span>' +
+      '</div>' +
+      '<div id="' + groupId + '" style="display:none;padding:10px;">' +
+      props.map(function(p){ return renderPropCard(p, true) }).join('') +
+      '</div>' +
+      '</div>'
   }).join('')
-  return addBtn + groupHtml
+  return addBtn + toolbar + groupHtml
+}
+
+function toggleGroup(id, headerEl) {
+  var el = document.getElementById(id)
+  if (!el) return
+  var isOpen = el.style.display !== 'none'
+  el.style.display = isOpen ? 'none' : 'block'
+  var arrow = headerEl.querySelector('.toggle-arrow')
+  if (arrow) arrow.textContent = isOpen ? '▸' : '▾'
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.prop-cb').forEach(function(cb){ cb.checked = checked })
+  updateBatchCount()
+}
+
+function toggleGroupSelect(groupCb, groupId) {
+  var el = document.getElementById(groupId)
+  if (!el) return
+  el.querySelectorAll('.prop-cb').forEach(function(cb){ cb.checked = groupCb.checked })
+  updateBatchCount()
+}
+
+function updateBatchCount() {
+  var count = document.querySelectorAll('.prop-cb:checked').length
+  var el = document.getElementById('batchCount')
+  if (el) el.textContent = '已選 ' + count + ' 間'
+}
+
+// 讓所有房源卡的 checkbox 變動時更新計數
+document.addEventListener('change', function(e) {
+  if (e.target && e.target.classList.contains('prop-cb')) updateBatchCount()
+})
+
+async function applyBatchStatus() {
+  var checked = Array.from(document.querySelectorAll('.prop-cb:checked'))
+  if (!checked.length) { showToast('請先勾選房源'); return }
+  var newStatus = document.getElementById('batchStatus').value
+  var label = PROP_STATUS_LABEL[newStatus] || newStatus
+  if (!confirm('確定將 ' + checked.length + ' 間房源改為「' + label + '」？')) return
+  var ids = checked.map(function(cb){ return cb.dataset.id })
+  var failed = 0
+  for (var id of ids) {
+    try {
+      var res = await fetch('/admin/api/property/' + id + '?key=' + encodeURIComponent(KEY), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      })
+      if (!res.ok) failed++
+    } catch(e) { failed++ }
+  }
+  if (failed) showToast('⚠️ ' + failed + ' 間更新失敗')
+  else showToast('✅ 已更新 ' + ids.length + ' 間房源')
+  await reload()
 }
 
 var PROP_DRAFT_KEY = 'xiaowo_property_draft'
