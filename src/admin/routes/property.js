@@ -69,6 +69,7 @@ router.post('/admin/api/property', express.json(), async (req, res) => {
       price: parseInt(price),
       deposit: deposit || '兩個月',
       description: description || '',
+      communityId: req.body.communityId || null,
       ...extractFeeFields(req.body),
       images: { create: (imageUrls || []).map((url, i) => ({ url, order: i, isCover: i === 0 })) }
     }
@@ -102,6 +103,7 @@ router.post('/admin/api/property/:id', express.json(), async (req, res) => {
   if (price       !== undefined) data.price       = parseInt(price)
   if (deposit     !== undefined) data.deposit     = deposit
   if (description !== undefined) data.description = description
+  if (req.body.communityId !== undefined) data.communityId = req.body.communityId || null
 
   console.log('[property update] data:', JSON.stringify(data))
   const property = await prisma.property.update({ where: { id: req.params.id }, data })

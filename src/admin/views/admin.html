@@ -339,6 +339,7 @@ function renderTabBar() {
   }
   if (DATA.role === 'super' || DATA.role === 'landlord') {
     tabs.push({ id: 'heroSettings', label: '🖼️ 首頁設定' })
+    tabs.push({ id: 'community', label: '🏘️ 社區' })
   }
   document.getElementById('tabBar').innerHTML = tabs.map(function(t) {
     return '<button class="tab' + (currentTab === t.id ? ' active' : '') + '" data-tab="' + t.id + '" onclick="switchTab(this.dataset.tab)">' + t.label + '</button>'
@@ -373,6 +374,7 @@ function renderTab() {
   if (currentTab === 'landlords') el.innerHTML = renderLandlords()
   if (currentTab === 'botSettings') el.innerHTML = renderBotSettings()
   if (currentTab === 'heroSettings') renderHeroSettings()
+  if (currentTab === 'community') renderCommunityTab()
 }
 
 function esc(s) {
@@ -653,6 +655,17 @@ function propertyFormHtml(p, isModal) {
       '<div class="prop-field"><textarea id="f_desc" rows="4" placeholder="採光良好，含冷氣熱水器，近捷運站..." oninput="savePropDraft()">' + esc(p ? p.description : '') + '</textarea></div>' +
     '</div>' +
     '<div class="prop-form-section">' +
+      '<h4>社區環境</h4>' +
+      '<div class="prop-field"><label>所屬社區</label>' +
+      (function() {
+        var opts = '<option value="">無</option>' + _communities.map(function(c) {
+          return '<option value="' + esc(c.id) + '"' + (p && p.communityId === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>'
+        }).join('')
+        return '<select id="f_community">' + opts + '</select>'
+      })() +
+      '</div>' +
+    '</div>' +
+    '<div class="prop-form-section">' +
       '<h4>照片 <span style="font-size:11px;font-weight:400;color:var(--gray-light)">（拖移排序・點擊星星設封面）</span></h4>' +
       '<div id="img_preview" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;min-height:60px;padding:8px;border:2px dashed var(--oat-mid,#ddd);border-radius:10px;" ondragover="event.preventDefault()" ondrop="onImgDrop(event)"></div>' +
       '<input type="file" id="f_upload" accept="image/*" multiple onchange="uploadImages(this)" style="font-size:13px;">' +
@@ -662,7 +675,12 @@ function propertyFormHtml(p, isModal) {
   )
 }
 
-function openAddPropertyModal() {
+async function openAddPropertyModal() {
+  try {
+    var r = await fetch('/admin/api/community?key=' + encodeURIComponent(KEY))
+    if (r.ok) _communities = await r.json()
+  } catch(e) {}
+
   var draft = null
   try { draft = JSON.parse(localStorage.getItem(PROP_DRAFT_KEY) || 'null') } catch(e){}
   var hasDraft = draft && (draft.title || draft.price)
@@ -744,7 +762,12 @@ function loadPropDraft(d) {
   if (d.ownerId) set('f_owner', d.ownerId)
 }
 
-function startEditProperty(id) {
+async function startEditProperty(id) {
+  try {
+    var r = await fetch('/admin/api/community?key=' + encodeURIComponent(KEY))
+    if (r.ok) _communities = await r.json()
+  } catch(e) {}
+
   editingPropertyId = id
   var p = DATA.properties.find(function(x){ return x.id === id })
   if (!p) return
@@ -949,6 +972,7 @@ async function saveProperty() {
     electricFlat: null,
     tags: tags,
     amenities: amenities,
+    communityId: (document.getElementById('f_community') || {}).value || null,
   }
   if (!body.title || !body.price) { showToast('❌ 名稱和租金必填'); return }
 
@@ -1819,6 +1843,171 @@ async function saveHeroSlides(silent) {
     showToast('❌ 連線失敗，請確認網站是否運行中')
     return false
   }
+}
+
+// ── 社區管理 ──────────────────────────────────────────
+var _communities = []
+var _editingCommunityId = null
+var _communityPhotos = []
+
+async function renderCommunityTab() {
+  var el = document.getElementById('content')
+  el.innerHTML = '<div class="form-box"><p style="color:#888;font-size:14px;">載入中...</p></div>'
+  try {
+    var res = await fetch('/admin/api/community?key=' + encodeURIComponent(KEY))
+    if (!res.ok) throw new Error('載入失敗')
+    _communities = await res.json()
+  } catch(e) { _communities = [] }
+  drawCommunityTab()
+}
+
+function drawCommunityTab() {
+  var el = document.getElementById('content')
+  var cards = _communities.map(function(c) {
+    var photos = []
+    try { photos = JSON.parse(c.photos || '[]') } catch(e) {}
+    return '<div class="card">' +
+      '<div class="card-row">' +
+        '<div style="flex:1;">' +
+          '<h3>' + esc(c.name) + '</h3>' +
+          '<div class="meta">' +
+            (c.description ? esc(c.description.substring(0, 80)) + (c.description.length > 80 ? '…' : '') : '<span style="color:#ccc;">無介紹</span>') +
+          '</div>' +
+          '<div style="font-size:12px;color:#aaa;margin-top:4px;">📷 ' + photos.length + ' 張照片</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="actions">' +
+        '<button class="action-btn" onclick="openCommunityModal(\'' + c.id + '\')">✏️ 編輯</button>' +
+        '<button class="action-btn danger" onclick="deleteCommunity(\'' + c.id + '\')">🗑️ 刪除</button>' +
+      '</div>' +
+    '</div>'
+  }).join('')
+
+  el.innerHTML =
+    '<div style="margin-bottom:14px;">' +
+      '<button class="btn" style="width:auto;padding:10px 24px;" onclick="openCommunityModal(null)">＋ 新增社區</button>' +
+    '</div>' +
+    (_communities.length ? cards : '<div class="empty">尚無社區，按上方按鈕新增！</div>')
+}
+
+function openCommunityModal(id) {
+  _editingCommunityId = id
+  var c = id ? _communities.find(function(x){ return x.id === id }) : null
+  _communityPhotos = []
+  if (c) { try { _communityPhotos = JSON.parse(c.photos || '[]') } catch(e) {} }
+
+  var html = '<div id="communityModal" class="modal-overlay">' +
+    '<div class="modal-box">' +
+      '<div class="modal-header">' +
+        '<h3>' + (id ? '✏️ 編輯社區' : '＋ 新增社區') + '</h3>' +
+        '<button class="modal-close" onclick="closeCommunityModal()">×</button>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:14px;">' +
+        '<div class="prop-field"><label>社區名稱 *</label><input id="c_name" value="' + esc(c ? c.name : '') + '" placeholder="例：台中幸福苑"></div>' +
+        '<div class="prop-field"><label>社區介紹</label><textarea id="c_desc" rows="4" placeholder="社區環境描述...">' + esc(c ? c.description : '') + '</textarea></div>' +
+        '<div class="prop-field"><label>Google Maps 嵌入連結</label><input id="c_map" value="' + esc(c ? (c.mapUrl || '') : '') + '" placeholder="https://www.google.com/maps/embed?..."></div>' +
+        '<div class="prop-field">' +
+          '<label>照片上傳</label>' +
+          '<div id="c_photo_grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;min-height:40px;"></div>' +
+          '<div onclick="document.getElementById(\'c_file\').click()" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:2px dashed var(--sage);border-radius:10px;padding:16px;cursor:pointer;background:#F8F6F1;" ondragover="event.preventDefault()" ondrop="handleCommunityDrop(event)">' +
+            '<span style="font-size:22px;">📁</span>' +
+            '<span style="font-size:12px;color:#888;">點擊選擇或拖曳圖片至此</span>' +
+            '<input type="file" id="c_file" accept="image/*" multiple style="display:none;" onclick="event.stopPropagation()" onchange="uploadCommunityPhotos(this.files)">' +
+          '</div>' +
+          '<div id="c_upload_status" style="font-size:12px;color:var(--sage);margin-top:4px;"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:16px;position:sticky;bottom:0;background:white;padding-top:12px;">' +
+        '<button class="btn" style="flex:1;background:var(--deep-sage);" onclick="saveCommunity()">' + (id ? '儲存修改' : '新增社區') + '</button>' +
+        '<button class="action-btn" style="flex:0 0 auto;" onclick="closeCommunityModal()">取消</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>'
+
+  var existing = document.getElementById('communityModal')
+  if (existing) existing.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+  renderCommunityPhotoGrid()
+}
+
+function closeCommunityModal() {
+  var m = document.getElementById('communityModal')
+  if (m) m.remove()
+  _editingCommunityId = null
+}
+
+function renderCommunityPhotoGrid() {
+  var grid = document.getElementById('c_photo_grid')
+  if (!grid) return
+  grid.innerHTML = _communityPhotos.map(function(url, i) {
+    return '<div style="position:relative;">' +
+      '<img src="' + esc(url) + '" style="width:80px;height:60px;object-fit:cover;border-radius:8px;">' +
+      '<button onclick="removeCommunityPhoto(' + i + ')" style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:1;">×</button>' +
+    '</div>'
+  }).join('')
+}
+
+function removeCommunityPhoto(i) {
+  _communityPhotos.splice(i, 1)
+  renderCommunityPhotoGrid()
+}
+
+function handleCommunityDrop(e) {
+  e.preventDefault()
+  if (e.dataTransfer.files && e.dataTransfer.files.length) uploadCommunityPhotos(e.dataTransfer.files)
+}
+
+async function uploadCommunityPhotos(files) {
+  var status = document.getElementById('c_upload_status')
+  var arr = Array.from(files)
+  var done = 0
+  for (var f of arr) {
+    if (status) status.textContent = '上傳中 ' + done + '/' + arr.length + '…'
+    var fd = new FormData()
+    fd.append('file', f)
+    try {
+      var res = await fetch('/admin/api/upload?key=' + encodeURIComponent(KEY), { method: 'POST', body: fd })
+      var data = await res.json()
+      if (res.ok && data.url) { _communityPhotos.push(data.url); done++ }
+    } catch(e) {}
+  }
+  if (status) status.textContent = '✅ 已上傳 ' + done + ' 張'
+  document.getElementById('c_file').value = ''
+  renderCommunityPhotoGrid()
+}
+
+async function saveCommunity() {
+  var name = (document.getElementById('c_name') || {}).value || ''
+  var desc = (document.getElementById('c_desc') || {}).value || ''
+  var mapUrl = (document.getElementById('c_map') || {}).value || ''
+  if (!name.trim()) { showToast('❌ 請填寫社區名稱'); return }
+
+  var url = _editingCommunityId
+    ? '/admin/api/community/' + _editingCommunityId + '?key=' + encodeURIComponent(KEY)
+    : '/admin/api/community?key=' + encodeURIComponent(KEY)
+
+  try {
+    var res = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim(), description: desc, photos: _communityPhotos, mapUrl: mapUrl })
+    })
+    if (!res.ok) { var err = await res.json().catch(function(){ return {} }); showToast('❌ 儲存失敗：' + (err.error || res.status)); return }
+    showToast(_editingCommunityId ? '✅ 已更新社區' : '✅ 已新增社區')
+    closeCommunityModal()
+    renderCommunityTab()
+  } catch(e) { showToast('❌ 連線失敗：' + e.message) }
+}
+
+async function deleteCommunity(id) {
+  if (!confirm('確定刪除此社區？房源的社區關聯也會清除。')) return
+  try {
+    var res = await fetch('/admin/api/community/' + id + '/delete?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    })
+    if (!res.ok) { showToast('❌ 刪除失敗'); return }
+    showToast('🗑️ 已刪除社區')
+    renderCommunityTab()
+  } catch(e) { showToast('❌ 連線失敗') }
 }
 
 // ── 全域按鈕互動 ──────────────────────────────────────

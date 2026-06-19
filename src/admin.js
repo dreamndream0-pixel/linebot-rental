@@ -10,6 +10,7 @@ router.use(require('./admin/routes/tenant'))
 router.use(require('./admin/routes/property'))
 router.use(require('./admin/routes/upload'))
 router.use(require('./admin/routes/landlord'))
+router.use(require('./admin/routes/community'))
 
 router.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin/views/admin.html'))
