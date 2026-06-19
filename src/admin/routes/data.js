@@ -56,7 +56,7 @@ router.get('/admin/api/data', async (req, res) => {
     }),
     prisma.property.findMany({
       where: auth.role === 'super' ? { deletedAt: null } : { deletedAt: null, ownerId: auth.landlordId },
-      include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] }, owner: { select: { name: true } }, tags: true, amenities: true, community: { select: { id: true, name: true } } },
+      include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] }, owner: { select: { name: true } }, tags: true, amenities: true },
       orderBy: { createdAt: 'desc' }
     }),
     auth.role === 'super'
@@ -81,6 +81,22 @@ router.get('/admin/api/data', async (req, res) => {
     botEnabled: l.botEnabled !== false,
   }))
 
+  // 用 raw SQL 補上 communityId / communityName（欄位由 raw SQL 管理，不在 Prisma schema）
+  let propertiesWithCommunity = properties
+  try {
+    const communityRows = await prisma.$queryRawUnsafe(
+      `SELECT p.id, p."communityId", c.name as "communityName"
+       FROM properties p
+       LEFT JOIN communities c ON c.id = p."communityId"
+       WHERE p."deletedAt" IS NULL`
+    )
+    const communityMap = {}
+    communityRows.forEach(r => { communityMap[r.id] = { communityId: r.communityId, communityName: r.communityName } })
+    propertiesWithCommunity = properties.map(p => ({ ...p, ...( communityMap[p.id] || {}) }))
+  } catch (e) {
+    // communities 資料表尚未建立時忽略，不影響其他功能
+  }
+
   let selfLandlord = null
   if (auth.role === 'landlord') {
     try {
@@ -92,7 +108,7 @@ router.get('/admin/api/data', async (req, res) => {
   }
 
   res.json({
-    tenants, bookings, repairs, properties,
+    tenants, bookings, repairs, properties: propertiesWithCommunity,
     landlords: safeLandlords, selfLandlord,
     account: auth.label, role: auth.role,
     landlordId: auth.landlordId || null,
