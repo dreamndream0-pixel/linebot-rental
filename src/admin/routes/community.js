@@ -6,10 +6,11 @@ const prisma = new PrismaClient()
 
 // 自動建立資料表（首次使用時）
 async function ensureTables() {
+  // 不加 FK 約束，確保 CREATE TABLE 一定成功
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS communities (
       id           TEXT PRIMARY KEY,
-      "ownerId"    TEXT REFERENCES landlords(id),
+      "ownerId"    TEXT,
       name         TEXT NOT NULL,
       description  TEXT NOT NULL DEFAULT '',
       photos       TEXT NOT NULL DEFAULT '[]',
@@ -18,19 +19,18 @@ async function ensureTables() {
       "updatedAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
+  // 移除舊版 NOT NULL 約束（若存在）
+  await prisma.$executeRawUnsafe(`ALTER TABLE communities ALTER COLUMN "ownerId" DROP NOT NULL`).catch(() => {})
   // 為 properties 加入 communityId 欄位（如果不存在）
-  await prisma.$executeRawUnsafe(`
-    ALTER TABLE properties ADD COLUMN IF NOT EXISTS "communityId" TEXT REFERENCES communities(id)
-  `)
-  // 若 ownerId 仍有 NOT NULL 約束，移除它（舊版資料表可能如此）
-  await prisma.$executeRawUnsafe(`
-    ALTER TABLE communities ALTER COLUMN "ownerId" DROP NOT NULL
-  `).catch(() => {})
+  await prisma.$executeRawUnsafe(`ALTER TABLE properties ADD COLUMN IF NOT EXISTS "communityId" TEXT`).catch(() => {})
 }
 
 let tableReady = false
 async function withTable(fn) {
-  if (!tableReady) { await ensureTables(); tableReady = true }
+  if (!tableReady) {
+    await ensureTables()
+    tableReady = true
+  }
   return fn()
 }
 
