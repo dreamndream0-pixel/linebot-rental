@@ -1907,7 +1907,7 @@ function openCommunityModal(id) {
       '<div style="display:flex;flex-direction:column;gap:14px;">' +
         '<div class="prop-field"><label>社區名稱 *</label><input id="c_name" value="' + esc(c ? c.name : '') + '" placeholder="例：台中幸福苑"></div>' +
         '<div class="prop-field"><label>社區介紹</label><textarea id="c_desc" rows="4" placeholder="社區環境描述...">' + esc(c ? c.description : '') + '</textarea></div>' +
-        '<div class="prop-field"><label>Google Maps 嵌入連結</label><input id="c_map" value="' + esc(c ? (c.mapUrl || '') : '') + '" placeholder="https://www.google.com/maps/embed?..."></div>' +
+        '<div class="prop-field"><label>社區地址</label><input id="c_map" value="' + esc(c ? (c.mapUrl || '') : '') + '" placeholder="例：台中市西區民生路100號"></div>' +
         '<div class="prop-field">' +
           '<label>照片上傳</label>' +
           '<div id="c_photo_grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;min-height:40px;"></div>' +
