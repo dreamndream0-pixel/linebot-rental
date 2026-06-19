@@ -69,11 +69,18 @@ router.post('/admin/api/property', express.json(), async (req, res) => {
       price: parseInt(price),
       deposit: deposit || '兩個月',
       description: description || '',
-      communityId: req.body.communityId || null,
       ...extractFeeFields(req.body),
       images: { create: (imageUrls || []).map((url, i) => ({ url, order: i, isCover: i === 0 })) }
     }
   })
+
+  // communityId 不在 Prisma schema，用 raw SQL 單獨更新
+  if (req.body.communityId !== undefined) {
+    await prisma.$queryRawUnsafe(
+      `UPDATE properties SET "communityId"=$1 WHERE id=$2`,
+      req.body.communityId || null, property.id
+    ).catch(() => {})
+  }
 
   await syncTags(property.id, tags)
   await syncAmenities(property.id, amenities)
@@ -103,10 +110,18 @@ router.post('/admin/api/property/:id', express.json(), async (req, res) => {
   if (price       !== undefined) data.price       = parseInt(price)
   if (deposit     !== undefined) data.deposit     = deposit
   if (description !== undefined) data.description = description
-  if (req.body.communityId !== undefined) data.communityId = req.body.communityId || null
+  // communityId 不在 Prisma schema，從 data 移除，用 raw SQL 單獨更新
+  const communityIdValue = req.body.communityId
 
   console.log('[property update] data:', JSON.stringify(data))
   const property = await prisma.property.update({ where: { id: req.params.id }, data })
+
+  if (communityIdValue !== undefined) {
+    await prisma.$queryRawUnsafe(
+      `UPDATE properties SET "communityId"=$1 WHERE id=$2`,
+      communityIdValue || null, req.params.id
+    ).catch(() => {})
+  }
   console.log('[property update] result mgmtFee:', property.mgmtFee, 'electricType:', property.electricType, 'electricRate:', property.electricRate, 'cleaningFee:', property.cleaningFee)
 
   if (Array.isArray(imageUrls)) {
