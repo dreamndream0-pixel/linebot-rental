@@ -2,7 +2,7 @@ services:
   - type: web
     name: linebot-rental
     runtime: node
-    buildCommand: npm install && npx prisma generate && npx prisma db push --accept-data-loss
+    buildCommand: npm install && npx prisma generate
     startCommand: npm start
     plan: free
     envVars:
