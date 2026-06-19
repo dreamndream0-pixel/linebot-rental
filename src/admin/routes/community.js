@@ -4,14 +4,53 @@ const { PrismaClient } = require('@prisma/client')
 const { resolveRole } = require('../helpers')
 const prisma = new PrismaClient()
 
+// 自動建立資料表（首次使用時）
+async function ensureTables() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS communities (
+      id           TEXT PRIMARY KEY,
+      "ownerId"    TEXT NOT NULL REFERENCES landlords(id),
+      name         TEXT NOT NULL,
+      description  TEXT NOT NULL DEFAULT '',
+      photos       TEXT NOT NULL DEFAULT '[]',
+      "mapUrl"     TEXT,
+      "createdAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "updatedAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  // 為 properties 加入 communityId 欄位（如果不存在）
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS "communityId" TEXT REFERENCES communities(id)
+  `)
+}
+
+let tableReady = false
+async function withTable(fn) {
+  if (!tableReady) { await ensureTables(); tableReady = true }
+  return fn()
+}
+
+function newId() {
+  return require('crypto').randomBytes(12).toString('base64url').replace(/[^a-z0-9]/gi, '').slice(0, 20)
+}
+
 router.get('/admin/api/community', async (req, res) => {
   try {
     const auth = await resolveRole(req.query.key)
     if (!auth) return res.status(401).json({ error: 'unauthorized' })
-    const where = auth.role === 'superadmin' ? {} : { ownerId: auth.landlordId }
-    const communities = await prisma.community.findMany({ where, orderBy: { createdAt: 'desc' } })
-    res.json(communities)
-  } catch(e) { res.status(500).json({ error: e.message }) }
+    await withTable(async () => {
+      const where = auth.role === 'superadmin'
+        ? {}
+        : { ownerId: auth.landlordId }
+      const communities = await prisma.$queryRawUnsafe(
+        auth.role === 'superadmin'
+          ? `SELECT * FROM communities ORDER BY "createdAt" DESC`
+          : `SELECT * FROM communities WHERE "ownerId" = $1 ORDER BY "createdAt" DESC`,
+        ...(auth.role === 'superadmin' ? [] : [auth.landlordId])
+      )
+      res.json(communities)
+    })
+  } catch(e) { console.error(e); res.status(500).json({ error: e.message }) }
 })
 
 router.post('/admin/api/community', express.json(), async (req, res) => {
@@ -21,11 +60,17 @@ router.post('/admin/api/community', express.json(), async (req, res) => {
     const ownerId = auth.role === 'superadmin' ? req.body.ownerId : auth.landlordId
     const { name, description = '', photos = [], mapUrl = '' } = req.body
     if (!name) return res.status(400).json({ error: '請填寫社區名稱' })
-    const c = await prisma.community.create({
-      data: { ownerId, name, description, photos: JSON.stringify(photos), mapUrl: mapUrl || null }
+    await withTable(async () => {
+      const id = 'c' + newId()
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO communities (id, "ownerId", name, description, photos, "mapUrl", "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
+        id, ownerId, name, description, JSON.stringify(photos), mapUrl || null
+      )
+      const rows = await prisma.$queryRawUnsafe(`SELECT * FROM communities WHERE id = $1`, id)
+      res.json(rows[0])
     })
-    res.json(c)
-  } catch(e) { res.status(500).json({ error: e.message }) }
+  } catch(e) { console.error(e); res.status(500).json({ error: e.message }) }
 })
 
 router.post('/admin/api/community/:id', express.json(), async (req, res) => {
@@ -33,24 +78,27 @@ router.post('/admin/api/community/:id', express.json(), async (req, res) => {
     const auth = await resolveRole(req.query.key)
     if (!auth) return res.status(401).json({ error: 'unauthorized' })
     const { name, description, photos, mapUrl } = req.body
-    const data = {}
-    if (name !== undefined) data.name = name
-    if (description !== undefined) data.description = description
-    if (photos !== undefined) data.photos = JSON.stringify(photos)
-    if (mapUrl !== undefined) data.mapUrl = mapUrl || null
-    const c = await prisma.community.update({ where: { id: req.params.id }, data })
-    res.json(c)
-  } catch(e) { res.status(500).json({ error: e.message }) }
+    await withTable(async () => {
+      if (name !== undefined)        await prisma.$executeRawUnsafe(`UPDATE communities SET name=$1, "updatedAt"=NOW() WHERE id=$2`, name, req.params.id)
+      if (description !== undefined) await prisma.$executeRawUnsafe(`UPDATE communities SET description=$1, "updatedAt"=NOW() WHERE id=$2`, description, req.params.id)
+      if (photos !== undefined)      await prisma.$executeRawUnsafe(`UPDATE communities SET photos=$1, "updatedAt"=NOW() WHERE id=$2`, JSON.stringify(photos), req.params.id)
+      if (mapUrl !== undefined)      await prisma.$executeRawUnsafe(`UPDATE communities SET "mapUrl"=$1, "updatedAt"=NOW() WHERE id=$2`, mapUrl || null, req.params.id)
+      const rows = await prisma.$queryRawUnsafe(`SELECT * FROM communities WHERE id = $1`, req.params.id)
+      res.json(rows[0])
+    })
+  } catch(e) { console.error(e); res.status(500).json({ error: e.message }) }
 })
 
 router.post('/admin/api/community/:id/delete', express.json(), async (req, res) => {
   try {
     const auth = await resolveRole(req.query.key)
     if (!auth) return res.status(401).json({ error: 'unauthorized' })
-    await prisma.property.updateMany({ where: { communityId: req.params.id }, data: { communityId: null } })
-    await prisma.community.delete({ where: { id: req.params.id } })
-    res.json({ ok: true })
-  } catch(e) { res.status(500).json({ error: e.message }) }
+    await withTable(async () => {
+      await prisma.$executeRawUnsafe(`UPDATE properties SET "communityId"=NULL WHERE "communityId"=$1`, req.params.id)
+      await prisma.$executeRawUnsafe(`DELETE FROM communities WHERE id=$1`, req.params.id)
+      res.json({ ok: true })
+    })
+  } catch(e) { console.error(e); res.status(500).json({ error: e.message }) }
 })
 
 module.exports = router
