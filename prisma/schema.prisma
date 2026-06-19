@@ -245,6 +245,14 @@ enum PropertyType {
   ROOM
   WHOLE_FLOOR
   SHARED_SUITE
+  STUDIO
+  STORE
+  OFFICE
+  LIVE_OFFICE
+  FACTORY
+  PARKING
+  LAND
+  OTHER
 }
 
 enum PropertyStatus {
