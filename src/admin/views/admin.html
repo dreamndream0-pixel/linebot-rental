@@ -556,18 +556,24 @@ function renderProperties() {
     var props = groups[lid]
     var available = props.filter(function(p){ return p.status === 'AVAILABLE' || p.status === 'COMING_SOON' }).length
     var groupId = 'propGroup_' + lid.replace(/[^a-z0-9]/gi, '_')
-    return '<div style="margin-bottom:16px;border:1px solid var(--oat-mid);border-radius:12px;overflow:hidden;">' +
-      // 開合標題列
-      '<div onclick="toggleGroup(\'' + groupId + '\', this)" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--sage-bg);cursor:pointer;user-select:none;">' +
-      '<div style="display:flex;align-items:center;gap:8px;">' +
+    // 用顏色區分不同房東（依 index 循環）
+    var colorPalette = ['#EAF3EB','#EBF0F8','#F5F0E8','#F0EBF5','#EBF5F3','#F8EEE8']
+    var idx = groupOrder.indexOf(lid)
+    var bgColor = colorPalette[idx % colorPalette.length]
+    return '<div style="margin-bottom:20px;border:2px solid var(--oat-mid);border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);">' +
+      // 開合標題列（帶底色）
+      '<div onclick="toggleGroup(\'' + groupId + '\', this)" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:' + bgColor + ';cursor:pointer;user-select:none;border-bottom:2px solid var(--oat-mid);">' +
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
       '<input type="checkbox" class="group-cb" data-group="' + groupId + '" style="width:16px;height:16px;accent-color:var(--sage);" onclick="event.stopPropagation();toggleGroupSelect(this,\'' + groupId + '\')">' +
-      '<span style="font-size:14px;font-weight:700;color:var(--deep-sage);">🏢 ' + esc(displayName) + '</span>' +
-      (siteName ? '<span style="font-size:12px;color:var(--gray-mid);">' + esc(siteName) + '</span>' : '') +
-      '<span style="font-size:12px;color:var(--gray-mid);">共 ' + props.length + ' 間・可租/即將 ' + available + ' 間</span>' +
+      '<span style="font-size:15px;font-weight:800;color:var(--deep-sage);">🏢 ' + esc(displayName) + '</span>' +
+      (l.siteName ? '<span style="font-size:12px;font-weight:600;color:var(--sage);background:white;border-radius:99px;padding:2px 10px;border:1px solid var(--oat-mid);">🌐 ' + esc(l.siteName) + '</span>' : '') +
+      '<span style="font-size:12px;color:var(--gray-mid);">共 <strong>' + props.length + '</strong> 間</span>' +
+      '<span style="font-size:11px;padding:2px 8px;border-radius:99px;background:#E8F5E9;color:#388E3C;font-weight:600;">可租/即將 ' + available + ' 間</span>' +
       '</div>' +
-      '<span class="toggle-arrow" style="font-size:12px;color:var(--gray-mid);">▸</span>' +
+      '<span class="toggle-arrow" style="font-size:14px;color:var(--gray-mid);font-weight:700;">▸</span>' +
       '</div>' +
-      '<div id="' + groupId + '" style="display:none;padding:10px;">' +
+      // 展開內容（帶淡底色）
+      '<div id="' + groupId + '" style="display:none;padding:14px;background:#FAFAF8;">' +
       props.map(function(p){ return renderPropCard(p, true) }).join('') +
       '</div>' +
       '</div>'
