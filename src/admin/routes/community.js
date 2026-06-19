@@ -4,8 +4,11 @@ const { PrismaClient } = require('@prisma/client')
 const { resolveRole } = require('../helpers')
 const prisma = new PrismaClient()
 
-// ── 模組載入時立即建立資料表（不等第一個 request）─────────────────
-const _migrationDone = (async () => {
+// 每次請求前都確認資料表存在（有 cache 避免重複執行）
+let _tableEnsured = false
+async function ensureTable() {
+  if (_tableEnsured) return
+  const results = []
   try {
     await prisma.$queryRawUnsafe(`
       CREATE TABLE IF NOT EXISTS communities (
@@ -19,28 +22,45 @@ const _migrationDone = (async () => {
         "updatedAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `)
-    console.log('[community] communities table ready')
+    results.push('communities table OK')
   } catch(e) {
-    console.error('[community] CREATE TABLE failed:', e.message)
+    results.push('communities table ERROR: ' + e.message)
+    return results  // 建表失敗就停下，不往後走
   }
   try {
     await prisma.$queryRawUnsafe(`ALTER TABLE communities ALTER COLUMN "ownerId" DROP NOT NULL`)
-  } catch(_) {}
+    results.push('drop NOT NULL OK')
+  } catch(e) { results.push('drop NOT NULL skip: ' + e.message) }
   try {
     await prisma.$queryRawUnsafe(`ALTER TABLE properties ADD COLUMN IF NOT EXISTS "communityId" TEXT`)
-    console.log('[community] communityId column ready')
-  } catch(_) {}
-})()
+    results.push('communityId column OK')
+  } catch(e) { results.push('communityId column skip: ' + e.message) }
+  _tableEnsured = true
+  return results
+}
 
 function newId() {
   return require('crypto').randomBytes(12).toString('base64url').replace(/[^a-z0-9]/gi, '').slice(0, 20)
 }
 
+// 專用 migrate 端點，讓後台頁面可以主動觸發並查看結果
+router.get('/admin/api/migrate', async (req, res) => {
+  try {
+    const auth = await resolveRole(req.query.key)
+    if (!auth) return res.status(401).json({ error: 'unauthorized' })
+    _tableEnsured = false  // 強制重新執行
+    const results = await ensureTable()
+    res.json({ ok: _tableEnsured, results })
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 router.get('/admin/api/community', async (req, res) => {
   try {
     const auth = await resolveRole(req.query.key)
     if (!auth) return res.status(401).json({ error: 'unauthorized' })
-    await _migrationDone
+    await ensureTable()
     const communities = await prisma.$queryRawUnsafe(
       auth.role === 'super'
         ? `SELECT * FROM communities ORDER BY "createdAt" DESC`
@@ -55,7 +75,7 @@ router.post('/admin/api/community', express.json(), async (req, res) => {
   try {
     const auth = await resolveRole(req.query.key)
     if (!auth) return res.status(401).json({ error: 'unauthorized' })
-    await _migrationDone
+    await ensureTable()
     const ownerId = auth.role === 'super' ? (req.body.ownerId || null) : auth.landlordId
     const { name, description = '', photos = [], mapUrl = '' } = req.body
     if (!name) return res.status(400).json({ error: '請填寫社區名稱' })
@@ -74,7 +94,7 @@ router.post('/admin/api/community/:id', express.json(), async (req, res) => {
   try {
     const auth = await resolveRole(req.query.key)
     if (!auth) return res.status(401).json({ error: 'unauthorized' })
-    await _migrationDone
+    await ensureTable()
     const { name, description, photos, mapUrl } = req.body
     if (name !== undefined)        await prisma.$queryRawUnsafe(`UPDATE communities SET name=$1, "updatedAt"=NOW() WHERE id=$2`, name, req.params.id)
     if (description !== undefined) await prisma.$queryRawUnsafe(`UPDATE communities SET description=$1, "updatedAt"=NOW() WHERE id=$2`, description, req.params.id)
@@ -89,7 +109,7 @@ router.post('/admin/api/community/:id/delete', express.json(), async (req, res) 
   try {
     const auth = await resolveRole(req.query.key)
     if (!auth) return res.status(401).json({ error: 'unauthorized' })
-    await _migrationDone
+    await ensureTable()
     await prisma.$queryRawUnsafe(`UPDATE properties SET "communityId"=NULL WHERE "communityId"=$1`, req.params.id)
     await prisma.$queryRawUnsafe(`DELETE FROM communities WHERE id=$1`, req.params.id)
     res.json({ ok: true })

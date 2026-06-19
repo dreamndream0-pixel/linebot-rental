@@ -318,6 +318,8 @@ function logout() {
 }
 
 async function reload() {
+  // 確保 communities 資料表存在（靜默執行）
+  fetch('/admin/api/migrate?key=' + encodeURIComponent(KEY)).catch(() => {})
   var res = await fetch('/admin/api/data?key=' + encodeURIComponent(KEY))
   DATA = await res.json()
   renderStats()
