@@ -104,7 +104,8 @@ function menuButton(label, action) {
 }
 
 // ── 空房列表（讀取統一資料庫的 AVAILABLE 房源） ──────────────────
-const TYPE_LABEL = { SUITE: '套房', ROOM: '雅房', WHOLE_FLOOR: '整層住家', SHARED_SUITE: '分租套房' }
+const TYPE_LABEL = { SUITE: '套房', ROOM: '雅房', WHOLE_FLOOR: '整層住家', SHARED_SUITE: '分租套房', STUDIO: '獨立套房', STORE: '店面', OFFICE: '辦公', LIVE_OFFICE: '住辦', FACTORY: '廠房', PARKING: '車位', LAND: '土地', OTHER: '其他' }
+const SITE_URL = process.env.SITE_URL || 'https://xiaowo-rental.vercel.app'
 
 // ── 把房源陣列轉成 Flex 卡片輪播（list 與 search 共用） ──────────
 function roomsToCarousel(rooms, altText, t = {}) {
@@ -140,13 +141,26 @@ function roomsToCarousel(rooms, altText, t = {}) {
       footer: {
         type: 'box',
         layout: 'vertical',
-        contents: [{
-          type: 'button',
-          action: { type: 'postback', label: t.bookButtonLabel || '預約看這間', data: `BOOK_${room.id}`, displayText: `預約 ${room.title}` },
-          style: 'primary',
-          color: '#7A9E7E',
-          height: 'sm'
-        }]
+        spacing: 'sm',
+        contents: [
+          {
+            type: 'button',
+            action: {
+              type: 'uri',
+              label: '🔍 查看詳情',
+              uri: `${SITE_URL}/property/${room.id}${room.ownerId ? '?site=' + room.ownerId : ''}`
+            },
+            style: 'secondary',
+            height: 'sm'
+          },
+          {
+            type: 'button',
+            action: { type: 'postback', label: t.bookButtonLabel || '📅 預約看房', data: `BOOK_${room.id}`, displayText: `預約 ${room.title}` },
+            style: 'primary',
+            color: '#7A9E7E',
+            height: 'sm'
+          }
+        ]
       }
     }
   })
