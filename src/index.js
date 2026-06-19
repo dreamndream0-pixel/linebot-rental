@@ -76,18 +76,18 @@ app.get('/', (req, res) => {
 // ── 啟動 ───────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000
 
-async function main() {
-  await prisma.$connect()
-  console.log('✅ 資料庫已連線')
-
-  startCronJobs(client)
-
-  app.listen(PORT, () => {
-    console.log(`🚀 小蝸出租 LINE Bot 啟動於 port ${PORT}`)
-  })
-}
-
-main().catch((err) => {
-  console.error('啟動失敗：', err)
-  process.exit(1)
+// 先監聽 port（讓 Render 偵測到），再連 DB
+app.listen(PORT, () => {
+  console.log(`🚀 小蝸出租 LINE Bot 啟動於 port ${PORT}`)
 })
+
+// 非同步連線 DB（不阻塞 port 啟動）
+prisma.$connect()
+  .then(() => {
+    console.log('✅ 資料庫已連線')
+    startCronJobs(client)
+  })
+  .catch((err) => {
+    console.error('❌ 資料庫連線失敗：', err.message)
+    // 不 process.exit，讓 server 繼續運行（Render 健康檢查才能通過）
+  })
