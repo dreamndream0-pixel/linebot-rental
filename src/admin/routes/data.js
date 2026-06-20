@@ -62,7 +62,7 @@ router.get('/admin/api/data', async (req, res) => {
     auth.role === 'super'
       ? prisma.landlord.findMany({
           orderBy: { createdAt: 'desc' },
-          select: { id: true, name: true, email: true, phone: true, adminKey: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, richMenuConfig: true, richMenuId: true, richMenuEnabled: true, siteName: true, siteLogo: true, botTextConfig: true, botEnabled: true }
+          select: { id: true, name: true, email: true, phone: true, adminKey: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, richMenuConfig: true, richMenuId: true, richMenuEnabled: true, siteName: true, siteLogo: true, botTextConfig: true, botEnabled: true, features: true }
         })
       : Promise.resolve([]),
   ])
@@ -79,6 +79,7 @@ router.get('/admin/api/data', async (req, res) => {
     siteLogo: l.siteLogo || null,
     botTextConfig: l.botTextConfig || null,
     botEnabled: l.botEnabled !== false,
+    features: l.features || null,
   }))
 
   // 用 raw SQL 補上 communityId / communityName（欄位由 raw SQL 管理，不在 Prisma schema）
@@ -102,7 +103,7 @@ router.get('/admin/api/data', async (req, res) => {
     try {
       selfLandlord = await prisma.landlord.findUnique({
         where: { id: auth.landlordId },
-        select: { id: true, botTextConfig: true, botEnabled: true }
+        select: { id: true, botTextConfig: true, botEnabled: true, features: true }
       })
     } catch (e) { console.error('selfLandlord 查詢失敗:', e.message) }
   }

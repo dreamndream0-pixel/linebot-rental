@@ -12,6 +12,7 @@ router.use(require('./admin/routes/upload'))
 router.use(require('./admin/routes/landlord'))
 router.use(require('./admin/routes/community'))
 router.use(require('./admin/routes/importexport'))
+router.use(require('./admin/routes/features'))
 
 router.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin/views/admin.html'))

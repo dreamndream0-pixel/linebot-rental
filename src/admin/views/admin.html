@@ -333,20 +333,26 @@ async function reload() {
 }
 
 function renderTabBar() {
+  var ownFeatures = {}
+  try { ownFeatures = DATA.selfLandlord && DATA.selfLandlord.features ? JSON.parse(DATA.selfLandlord.features) : {} } catch {}
+  function feat(key) { return ownFeatures[key] !== false }
+
   var tabs = [
     { id: 'tenants', label: '👥 用戶' },
-    { id: 'bookings', label: '📅 預約' },
-    { id: 'repairs', label: '🔧 維修' },
-    { id: 'properties', label: '🏠 房源管理' },
   ]
+  if (DATA.role === 'super' || feat('booking')) tabs.push({ id: 'bookings', label: '📅 預約' })
+  if (DATA.role === 'super' || feat('repair')) tabs.push({ id: 'repairs', label: '🔧 維修' })
+  tabs.push({ id: 'properties', label: '🏠 房源管理' })
   if (DATA.role === 'super') {
     tabs.push({ id: 'landlords', label: '🏢 房東管理' })
   }
-  if (DATA.role === 'landlord') {
+  if (DATA.role === 'landlord' && feat('bot')) {
     tabs.push({ id: 'botSettings', label: '⚙️ Bot 設定' })
   }
-  if (DATA.role === 'super' || DATA.role === 'landlord') {
+  if (DATA.role === 'super' || feat('heroSlides')) {
     tabs.push({ id: 'heroSettings', label: '🖼️ 首頁設定' })
+  }
+  if (DATA.role === 'super' || feat('community')) {
     tabs.push({ id: 'community', label: '🏘️ 社區' })
   }
   document.getElementById('tabBar').innerHTML = tabs.map(function(t) {
@@ -1305,6 +1311,7 @@ function renderLandlords() {
       '<button class="action-btn" onclick="setupBot(\'' + l.id + '\', \'' + esc(l.name).replace(/'/g, '') + '\', \'' + webhookUrl + '\')">🤖 Bot 設定</button>' +
       '<button class="action-btn" onclick="openBotTextEditor(\'' + l.id + '\')">💬 Bot 文字</button>' +
       '<button class="action-btn ' + (l.botEnabled ? 'danger' : '') + '" onclick="toggleBotEnabled(\'' + l.id + '\', ' + (!l.botEnabled) + ')">' + (l.botEnabled ? '⏸️ 停用 Bot' : '▶️ 啟用 Bot') + '</button>' +
+      '<button class="action-btn" onclick="openFeaturesEditor(\'' + l.id + '\')">⚙️ 功能</button>' +
       '<button class="action-btn" onclick="openMenuEditor(\'' + l.id + '\')">📱 選單</button>' +
       (l.hasRichMenu ? '<button class="action-btn ' + (l.richMenuEnabled ? 'danger' : '') + '" onclick="toggleMenu(\'' + l.id + '\', ' + (!l.richMenuEnabled) + ')">' + (l.richMenuEnabled ? '🔕 關閉選單' : '🔔 開啟選單') + '</button>' : '') +
       '<button class="action-btn" onclick="regenerateKey(\'' + l.id + '\')">🔑 重發金鑰</button>' +
@@ -1475,6 +1482,70 @@ function renderMenuEditor() {
 function closeMenuEditor() {
   var m = document.getElementById('menuModal')
   if (m) m.remove()
+}
+
+// ── 功能模組編輯器 ──────────────────────────────────────────────
+var FEATURE_MODULES = [
+  { key: 'bot',        label: '🤖 LINE Bot 機器人',   desc: '聊天機器人、圖文選單、Bot 設定' },
+  { key: 'site',       label: '🌐 個人官網',           desc: '房東個人官網 /site/xxx' },
+  { key: 'heroSlides', label: '🖼️ 官網輪播圖',        desc: '首頁設定、輪播照片與 Logo' },
+  { key: 'booking',    label: '📅 預約看房',           desc: '租客預約看房功能' },
+  { key: 'repair',     label: '🔧 維修回報',           desc: '租客維修申請管理' },
+  { key: 'community',  label: '🏘️ 社區管理',          desc: '社區環境介紹與照片' },
+  { key: 'csvImport',  label: '📊 CSV 匯出/匯入',      desc: '批次新增、更新房源資料' },
+]
+
+function openFeaturesEditor(landlordId) {
+  var l = (DATA.landlords || []).find(function(x){ return x.id === landlordId })
+  var current = {}
+  try { current = l && l.features ? JSON.parse(l.features) : {} } catch {}
+  FEATURE_MODULES.forEach(function(m) { if (current[m.key] === undefined) current[m.key] = true })
+
+  var rows = FEATURE_MODULES.map(function(m) {
+    var checked = current[m.key] !== false
+    return '<label style="display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--oat-mid);cursor:pointer;">' +
+      '<input type="checkbox" id="feat_' + m.key + '" ' + (checked ? 'checked' : '') + ' style="margin-top:3px;width:18px;height:18px;accent-color:var(--sage);flex-shrink:0;">' +
+      '<div><div style="font-size:14px;font-weight:700;color:var(--charcoal);">' + esc(m.label) + '</div>' +
+      '<div style="font-size:12px;color:var(--gray-mid);margin-top:2px;">' + esc(m.desc) + '</div>' +
+      '</div></label>'
+  }).join('')
+
+  var html = '<div id="featModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+    '<div style="background:white;border-radius:18px;padding:24px;max-width:460px;width:100%;max-height:90vh;overflow-y:auto;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+    '<h3 style="margin:0;">⚙️ 功能模組</h3>' +
+    '<button onclick="document.getElementById(\'featModal\').remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button></div>' +
+    '<p style="font-size:13px;color:var(--gray-mid);margin-bottom:16px;">勾選要開放給此房東的功能。取消後，對應的後台頁籤與功能將會隱藏。</p>' +
+    rows +
+    '<div style="display:flex;gap:8px;margin-top:20px;">' +
+    '<button onclick="document.getElementById(\'featModal\').remove()" style="flex:1;padding:12px;border-radius:10px;border:1.5px solid #E5E0D5;background:white;cursor:pointer;font-size:14px;">取消</button>' +
+    '<button class="btn" style="flex:2;" onclick="saveFeaturesEditor(\'' + landlordId + '\')">✅ 儲存</button>' +
+    '</div></div></div>'
+
+  var existing = document.getElementById('featModal')
+  if (existing) existing.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
+async function saveFeaturesEditor(landlordId) {
+  var features = {}
+  FEATURE_MODULES.forEach(function(m) {
+    var el = document.getElementById('feat_' + m.key)
+    if (el) features[m.key] = el.checked
+  })
+  try {
+    var res = await fetch('/admin/api/landlord/' + landlordId + '/features?key=' + encodeURIComponent(KEY), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ features: features }),
+    })
+    var data = await res.json()
+    if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || '')); return }
+    var l = (DATA.landlords || []).find(function(x){ return x.id === landlordId })
+    if (l) l.features = JSON.stringify(features)
+    document.getElementById('featModal').remove()
+    showToast('✅ 功能模組已更新')
+  } catch(e) { showToast('❌ 連線失敗') }
 }
 
 async function previewMenu() {

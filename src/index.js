@@ -108,6 +108,7 @@ prisma.$connect()
           "updatedAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `)
+      await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS features TEXT`)
       console.log('✅ 資料表結構已確認')
     } catch(e) {
       console.error('⚠️ 資料表確認時發生警告（通常可忽略）:', e.message)
