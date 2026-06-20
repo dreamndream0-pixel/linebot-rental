@@ -534,6 +534,10 @@ async function handleMessage(event, client, landlordId = null) {
       reply = { type: 'text', text: `🔧 ${category}\n\n${t.askRepairDesc}` }
     }
   }
+  // ── 明確呼叫選單 ──
+  else if (['選單', '主選單', 'menu'].includes(text.toLowerCase())) {
+    reply = mainMenu(t)
+  }
   else {
     // 嘗試把訊息當作搜尋關鍵字解析
     const parsed = parseSearchQuery(text)
