@@ -391,8 +391,7 @@ function esc(s) {
 
 // ── 房源 CSV 匯出 ──────────────────────────────────────────────────
 function exportProperties() {
-  var key = DATA && DATA.key ? DATA.key : (new URLSearchParams(location.search).get('key') || '')
-  window.open('/admin/api/property/export?key=' + encodeURIComponent(key), '_blank')
+  window.open('/admin/api/property/export?key=' + encodeURIComponent(KEY), '_blank')
 }
 
 // ── 下載範本 ──────────────────────────────────────────────────────
@@ -436,8 +435,7 @@ async function importProperties(input) {
 
   try {
     var text = await file.text()
-    var key = DATA && DATA.key ? DATA.key : (new URLSearchParams(location.search).get('key') || '')
-    var res = await fetch('/admin/api/property/import?key=' + encodeURIComponent(key), {
+    var res = await fetch('/admin/api/property/import?key=' + encodeURIComponent(KEY), {
       method: 'POST',
       headers: { 'Content-Type': 'text/csv' },
       body: text,
