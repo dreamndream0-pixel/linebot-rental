@@ -389,6 +389,77 @@ function esc(s) {
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
 }
 
+// ── 房源 CSV 匯出 ──────────────────────────────────────────────────
+function exportProperties() {
+  var key = DATA && DATA.key ? DATA.key : (new URLSearchParams(location.search).get('key') || '')
+  window.open('/admin/api/property/export?key=' + encodeURIComponent(key), '_blank')
+}
+
+// ── 下載範本 ──────────────────────────────────────────────────────
+function downloadTemplate() {
+  var bom = '\uFEFF'
+  var header = [
+    'ID（更新用，新增留空）','標題*','房型*（SUITE套房/ROOM雅房/WHOLE_FLOOR整層/SHARED_SUITE分租套房/STUDIO一房一廳/STORE店面/OFFICE辦公室/LIVE_OFFICE住辦/FACTORY廠房/PARKING車位/LAND土地/OTHER其他）',
+    '狀態（AVAILABLE可承租/COMING_SOON即將釋出/RENTED已出租/INACTIVE已下架）',
+    '縣市*','行政區*','地址*','租金*（數字）','押金（預設：兩個月）','坪數*（數字）','樓層（例：3F）','總樓層（數字）',
+    '管理費（數字，預設0）','清潔費（數字）','電費方式（meter台電/flat固定金額/included含租金）',
+    '每度電費（electricType=meter時填）','固定電費金額（electricType=flat時填）',
+    '含網路（true/false）','含水費（true/false）','含第四台（true/false）',
+    '可養寵物（true/false）','可開伙（true/false）','可短租（true/false）','歡迎學生（true/false）','精選房源（true/false）',
+    '房源描述','標籤（多個用｜分隔，例：獨洗曬｜可租補｜近捷運）'
+  ]
+  var example = [
+    '','範例套房A','SUITE','AVAILABLE','台中市','西區','台灣大道100號','8000','兩個月','8','5F','12','0','','meter','4','','true','true','false','false','true','false','true','false','採光良好，近市場','獨洗曬｜近超商｜可租補'
+  ]
+  var csvContent = bom + header.map(csvCell).join(',') + '\r\n' + example.map(csvCell).join(',')
+  var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  var a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = 'property_import_template.csv'
+  a.click()
+}
+
+function csvCell(v) {
+  var s = String(v == null ? '' : v)
+  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('｜')) return '"' + s.replace(/"/g, '""') + '"'
+  return s
+}
+
+// ── 房源 CSV 匯入 ──────────────────────────────────────────────────
+async function importProperties(input) {
+  var file = input.files[0]
+  if (!file) return
+  input.value = ''
+
+  var resultEl = document.getElementById('importResult')
+  if (resultEl) { resultEl.style.display = 'block'; resultEl.style.background = '#f5f5f0'; resultEl.innerHTML = '⏳ 匯入中，請稍候...' }
+
+  try {
+    var text = await file.text()
+    var key = DATA && DATA.key ? DATA.key : (new URLSearchParams(location.search).get('key') || '')
+    var res = await fetch('/admin/api/property/import?key=' + encodeURIComponent(key), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/csv' },
+      body: text,
+    })
+    var data = await res.json()
+    if (!res.ok) {
+      if (resultEl) { resultEl.style.background = '#fff0f0'; resultEl.innerHTML = '❌ 匯入失敗：' + esc(data.error || '') }
+      return
+    }
+    var msg = '✅ 匯入完成！新增 <b>' + data.created + '</b> 筆・更新 <b>' + data.updated + '</b> 筆'
+    if (data.skipped) msg += '・略過 <b>' + data.skipped + '</b> 筆'
+    if (data.errors && data.errors.length) {
+      msg += '<br><span style="color:#c0392b;">⚠️ 錯誤：<br>' + data.errors.map(esc).join('<br>') + '</span>'
+    }
+    if (resultEl) { resultEl.style.background = data.errors.length ? '#fffbe6' : '#f0f8f0'; resultEl.innerHTML = msg }
+    // 重新整理資料
+    if (data.created || data.updated) setTimeout(function(){ location.reload() }, 1800)
+  } catch(e) {
+    if (resultEl) { resultEl.style.background = '#fff0f0'; resultEl.innerHTML = '❌ 連線錯誤：' + esc(e.message) }
+  }
+}
+
 function renderTenants() {
   if (!DATA.tenants.length) return '<div class="empty">還沒有用戶，等人加 Bot 好友吧！</div>'
   return DATA.tenants.map(function(t) {
@@ -526,9 +597,13 @@ function batchToolbarHtml() {
 }
 
 function renderProperties() {
-  var addBtn = '<div style="margin-bottom:14px;display:flex;gap:10px;align-items:center;">' +
+  var addBtn = '<div style="margin-bottom:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">' +
     '<button class="btn" style="width:auto;padding:10px 24px;" onclick="openAddPropertyModal()">➕ 新增房源</button>' +
-    '</div>'
+    '<button onclick="exportProperties()" style="padding:9px 18px;border-radius:8px;border:1.5px solid var(--sage);background:white;color:var(--deep-sage);font-size:13px;font-weight:600;cursor:pointer;">⬇️ 匯出 CSV</button>' +
+    '<label style="padding:9px 18px;border-radius:8px;border:1.5px solid #b59a6a;background:white;color:#7a5c2e;font-size:13px;font-weight:600;cursor:pointer;">⬆️ 匯入 CSV<input type="file" accept=".csv,text/csv" style="display:none;" onchange="importProperties(this)"></label>' +
+    '<a onclick="downloadTemplate()" style="font-size:12px;color:var(--sage);cursor:pointer;text-decoration:underline;align-self:center;">📄 下載範本</a>' +
+    '</div>' +
+    '<div id="importResult" style="display:none;margin-bottom:12px;padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.7;"></div>'
   if (!DATA.properties.length) {
     return addBtn + '<div class="empty">還沒有房源，按上方按鈕新增第一間！</div>'
   }
