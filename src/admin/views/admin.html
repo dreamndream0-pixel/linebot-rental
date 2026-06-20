@@ -249,6 +249,21 @@ var DATA = null
 var KEY = sessionStorage.getItem('adminKey') || ''
 var currentTab = 'tenants'
 var editingPropertyId = null
+var _ownFeatures = {}   // 登入後由 refreshOwnFeatures() 設定
+
+function refreshOwnFeatures() {
+  try {
+    _ownFeatures = DATA && DATA.selfLandlord && DATA.selfLandlord.features
+      ? JSON.parse(DATA.selfLandlord.features)
+      : {}
+  } catch { _ownFeatures = {} }
+}
+
+// 總管理員永遠回 true；房東依 features 設定判斷
+function feat(key) {
+  if (DATA && DATA.role === 'super') return true
+  return _ownFeatures[key] !== false
+}
 
 var TYPE_LABEL = { SUITE: '套房', ROOM: '雅房', WHOLE_FLOOR: '整層住家', SHARED_SUITE: '分租套房' }
 var PROP_STATUS_LABEL = { PENDING: '審核中', AVAILABLE: '可承租', RENTED: '已出租', COMING_SOON: '即將釋出', INACTIVE: '已下架', PAUSED: '已下架', REJECTED: '退回' }
@@ -286,14 +301,20 @@ async function login(savedKey) {
     if (DATA.account) {
       document.getElementById('accountLabel').textContent = '👤 ' + DATA.account
     }
+    refreshOwnFeatures()
     if (DATA.siteUrl) {
       var sl = document.getElementById('siteLink')
       var msl = document.getElementById('mainSiteLink')
       if (sl) {
         if (DATA.role === 'landlord' && DATA.landlordId) {
-          // 房東：第一顆＝個人官網，第二顆＝小蝸主站
-          sl.href = DATA.siteUrl + '/site/' + DATA.landlordId
-          sl.textContent = '🌐 個人官網'
+          // 房東：第一顆＝個人官網（若功能開啟），第二顆＝小蝸主站
+          if (feat('site')) {
+            sl.href = DATA.siteUrl + '/site/' + DATA.landlordId
+            sl.textContent = '🌐 個人官網'
+            sl.style.display = 'inline-flex'
+          } else {
+            sl.style.display = 'none'
+          }
           if (msl) { msl.href = DATA.siteUrl; msl.style.display = 'inline-flex' }
         } else {
           // 總管理員：只需要主站
@@ -333,10 +354,6 @@ async function reload() {
 }
 
 function renderTabBar() {
-  var ownFeatures = {}
-  try { ownFeatures = DATA.selfLandlord && DATA.selfLandlord.features ? JSON.parse(DATA.selfLandlord.features) : {} } catch {}
-  function feat(key) { return ownFeatures[key] !== false }
-
   var tabs = [
     { id: 'tenants', label: '👥 用戶' },
   ]
@@ -601,11 +618,14 @@ function batchToolbarHtml() {
 }
 
 function renderProperties() {
+  var csvBtns = feat('csvImport')
+    ? '<button onclick="exportProperties()" style="padding:9px 18px;border-radius:8px;border:1.5px solid var(--sage);background:white;color:var(--deep-sage);font-size:13px;font-weight:600;cursor:pointer;">⬇️ 匯出 CSV</button>' +
+      '<label style="padding:9px 18px;border-radius:8px;border:1.5px solid #b59a6a;background:white;color:#7a5c2e;font-size:13px;font-weight:600;cursor:pointer;">⬆️ 匯入 CSV<input type="file" accept=".csv,text/csv" style="display:none;" onchange="importProperties(this)"></label>' +
+      '<a onclick="downloadTemplate()" style="font-size:12px;color:var(--sage);cursor:pointer;text-decoration:underline;align-self:center;">📄 下載範本</a>'
+    : ''
   var addBtn = '<div style="margin-bottom:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">' +
     '<button class="btn" style="width:auto;padding:10px 24px;" onclick="openAddPropertyModal()">➕ 新增房源</button>' +
-    '<button onclick="exportProperties()" style="padding:9px 18px;border-radius:8px;border:1.5px solid var(--sage);background:white;color:var(--deep-sage);font-size:13px;font-weight:600;cursor:pointer;">⬇️ 匯出 CSV</button>' +
-    '<label style="padding:9px 18px;border-radius:8px;border:1.5px solid #b59a6a;background:white;color:#7a5c2e;font-size:13px;font-weight:600;cursor:pointer;">⬆️ 匯入 CSV<input type="file" accept=".csv,text/csv" style="display:none;" onchange="importProperties(this)"></label>' +
-    '<a onclick="downloadTemplate()" style="font-size:12px;color:var(--sage);cursor:pointer;text-decoration:underline;align-self:center;">📄 下載範本</a>' +
+    csvBtns +
     '</div>' +
     '<div id="importResult" style="display:none;margin-bottom:12px;padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.7;"></div>'
   if (!DATA.properties.length) {
