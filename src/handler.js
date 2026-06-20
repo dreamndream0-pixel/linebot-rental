@@ -540,7 +540,11 @@ async function handleMessage(event, client, landlordId = null) {
     if (parsed) {
       reply = await searchRooms(parsed, landlordId, t)
     } else {
-      reply = mainMenu(t)
+      // 看不懂的訊息：只給一行提示，不重複彈出整個選單（底部圖文選單已固定顯示）
+      reply = {
+        type: 'text',
+        text: '抱歉，我還看不太懂這個指令 😅\n\n請點下方選單，或輸入「選單」查看功能。',
+      }
     }
   }
 

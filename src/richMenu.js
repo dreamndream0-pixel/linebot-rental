@@ -76,13 +76,18 @@ function buildAreas(template, cells) {
   const layout = TEMPLATES[template]
   return layout.map((cell, i) => {
     const data = cells[i] || {}
+    const bounds = {
+      x: Math.round(cell.x * W),
+      y: Math.round(cell.y * H),
+      width: Math.round(cell.w * W),
+      height: Math.round(cell.h * H),
+    }
+    // type='uri' → 開啟外部連結；其餘預設 message
+    if (data.type === 'uri' && data.uri) {
+      return { bounds, action: { type: 'uri', uri: data.uri } }
+    }
     return {
-      bounds: {
-        x: Math.round(cell.x * W),
-        y: Math.round(cell.y * H),
-        width: Math.round(cell.w * W),
-        height: Math.round(cell.h * H),
-      },
+      bounds,
       action: data.text
         ? { type: 'message', text: data.text }
         : { type: 'message', text: data.label || '選單' },
@@ -94,13 +99,21 @@ function buildAreas(template, cells) {
 async function applyRichMenu(landlordId) {
   const landlord = await prisma.landlord.findUnique({
     where: { id: landlordId },
-    select: { lineChannelToken: true, richMenuConfig: true, richMenuId: true, name: true }
+    select: { lineChannelToken: true, richMenuConfig: true, richMenuId: true, name: true, id: true }
   })
   if (!landlord || !landlord.lineChannelToken) throw new Error('房東未設定 Bot')
   if (!landlord.richMenuConfig) throw new Error('尚未設定選單')
 
   const config = JSON.parse(landlord.richMenuConfig)
   const { template, cells } = config
+
+  // 自動補齊「更多房源」格子的 URI（若 type=uri 但 uri 未填）
+  const siteUrl = (process.env.SITE_URL || 'https://xiaowo-rental.vercel.app').replace(/\/$/, '')
+  cells.forEach(cell => {
+    if (cell.type === 'uri' && !cell.uri) {
+      cell.uri = `${siteUrl}/site/${landlordId}`
+    }
+  })
 
   // 1. 產生圖片
   const svg = buildSvg(template, cells)

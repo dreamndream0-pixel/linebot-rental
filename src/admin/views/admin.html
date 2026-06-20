@@ -1367,9 +1367,10 @@ var MENU_TEMPLATES = {
   '4': { label: '田字四格', count: 4 },
   '6': { label: '六格 (2×3)', count: 6 },
 }
-var DEFAULT_ICONS = ['🏠','📅','🔧','📋','💬','📞']
-var DEFAULT_LABELS = ['查詢空房','預約看房','維修回報','我的預約','聯絡我們','其他']
-var DEFAULT_TEXTS = ['查詢空房','預約看房','維修回報','我的預約','聯絡','選單']
+var DEFAULT_ICONS = ['🏠','📅','🔧','📋','🔗','📞']
+var DEFAULT_LABELS = ['查詢空房','預約看房','維修回報','我的預約','更多房源','其他']
+var DEFAULT_TEXTS = ['查詢空房','預約看房','維修回報','我的預約','','選單']
+var DEFAULT_TYPES = ['message','message','message','message','uri','message']
 var menuEditState = { landlordId: null, template: '4', cells: [] }
 
 function openMenuEditor(landlordId) {
@@ -1395,7 +1396,7 @@ function resetMenuCells() {
   menuEditState.chatBarText = '選單'
   menuEditState.cells = []
   for (var i = 0; i < 4; i++) {
-    menuEditState.cells.push({ icon: DEFAULT_ICONS[i], label: DEFAULT_LABELS[i], text: DEFAULT_TEXTS[i] })
+    menuEditState.cells.push({ icon: DEFAULT_ICONS[i], label: DEFAULT_LABELS[i], text: DEFAULT_TEXTS[i], type: DEFAULT_TYPES[i] || 'message', uri: '' })
   }
 }
 
@@ -1404,7 +1405,7 @@ function changeTemplate(t) {
   var count = MENU_TEMPLATES[t].count
   var cells = []
   for (var i = 0; i < count; i++) {
-    cells.push(menuEditState.cells[i] || { icon: DEFAULT_ICONS[i] || '', label: DEFAULT_LABELS[i] || '按鈕', text: DEFAULT_TEXTS[i] || '' })
+    cells.push(menuEditState.cells[i] || { icon: DEFAULT_ICONS[i] || '', label: DEFAULT_LABELS[i] || '按鈕', text: DEFAULT_TEXTS[i] || '', type: DEFAULT_TYPES[i] || 'message', uri: '' })
   }
   menuEditState.cells = cells
   renderMenuEditor()
@@ -1412,6 +1413,11 @@ function changeTemplate(t) {
 
 function updateCell(i, field, val) {
   menuEditState.cells[i][field] = val
+}
+
+function updateCellType(i, type) {
+  menuEditState.cells[i].type = type
+  renderMenuEditor()  // 重新渲染讓輸入欄位切換
 }
 
 function renderMenuEditor() {
@@ -1422,13 +1428,23 @@ function renderMenuEditor() {
   }).join('')
 
   var cellInputs = menuEditState.cells.map(function(c, i) {
+    var isUri = c.type === 'uri'
     return '<div style="border:1px solid #E5E0D5;border-radius:10px;padding:12px;margin-bottom:8px;">' +
-      '<div style="font-size:12px;color:var(--gray-mid);margin-bottom:6px;">格子 ' + (i+1) + '</div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+      '<span style="font-size:12px;color:var(--gray-mid);">格子 ' + (i+1) + '</span>' +
+      '<select onchange="updateCellType(' + i + ',this.value)" style="font-size:12px;padding:4px 8px;border:1px solid #E5E0D5;border-radius:6px;background:white;">' +
+      '<option value="message"' + (!isUri ? ' selected' : '') + '>💬 傳送文字</option>' +
+      '<option value="uri"' + (isUri ? ' selected' : '') + '>🔗 開啟網址</option>' +
+      '</select>' +
+      '</div>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
       '<input value="' + esc(c.icon || '') + '" onchange="updateCell(' + i + ',\'icon\',this.value)" placeholder="圖示" style="width:60px;padding:8px;border:1px solid #E5E0D5;border-radius:8px;text-align:center;">' +
       '<input value="' + esc(c.label || '') + '" onchange="updateCell(' + i + ',\'label\',this.value)" placeholder="顯示文字" style="flex:1;min-width:100px;padding:8px;border:1px solid #E5E0D5;border-radius:8px;">' +
       '</div>' +
-      '<input value="' + esc(c.text || '') + '" onchange="updateCell(' + i + ',\'text\',this.value)" placeholder="點擊後送出的文字（例：查詢空房）" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;margin-top:6px;">' +
+      (isUri
+        ? '<input value="' + esc(c.uri || '') + '" onchange="updateCell(' + i + ',\'uri\',this.value)" placeholder="網址（留空自動帶入房東官網）" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;margin-top:6px;">'
+        : '<input value="' + esc(c.text || '') + '" onchange="updateCell(' + i + ',\'text\',this.value)" placeholder="點擊後送出的文字（例：查詢空房）" style="width:100%;padding:8px;border:1px solid #E5E0D5;border-radius:8px;margin-top:6px;">'
+      ) +
       '</div>'
   }).join('')
 
