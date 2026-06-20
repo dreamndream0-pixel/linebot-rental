@@ -324,6 +324,8 @@ async function login(savedKey) {
         }
       }
     }
+    // 如果當前 tab 被功能模組關掉，切到 properties
+    if (currentTab === 'tenants' && DATA.role !== 'super' && !feat('tenants')) currentTab = 'properties'
     renderTabBar()
     renderStats()
     renderTab()
@@ -354,9 +356,8 @@ async function reload() {
 }
 
 function renderTabBar() {
-  var tabs = [
-    { id: 'tenants', label: '👥 用戶' },
-  ]
+  var tabs = []
+  if (DATA.role === 'super' || feat('tenants')) tabs.push({ id: 'tenants', label: '👥 用戶' })
   if (DATA.role === 'super' || feat('booking')) tabs.push({ id: 'bookings', label: '📅 預約' })
   if (DATA.role === 'super' || feat('repair')) tabs.push({ id: 'repairs', label: '🔧 維修' })
   tabs.push({ id: 'properties', label: '🏠 房源管理' })
@@ -482,8 +483,11 @@ async function importProperties(input) {
 }
 
 function renderTenants() {
-  if (!DATA.tenants.length) return '<div class="empty">還沒有用戶，等人加 Bot 好友吧！</div>'
-  return DATA.tenants.map(function(t) {
+  var linePart = ''
+  if (!DATA.tenants.length) {
+    linePart = '<div class="empty">還沒有用戶，等人加 Bot 好友吧！</div>'
+  } else {
+    linePart = DATA.tenants.map(function(t) {
     var avatar = t.avatarUrl
       ? '<img src="' + esc(t.avatarUrl) + '" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'">'
       : '<div style="width:52px;height:52px;border-radius:50%;background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">👤</div>'
@@ -505,7 +509,44 @@ function renderTenants() {
       '<br>加入時間：' + fmtDate(t.createdAt) + '</div>' +
       '<span class="uid" onclick="copyText(\'' + t.lineUserId + '\')" title="點擊複製">' + t.lineUserId + '</span>' +
       '</div></div></div></div>'
-  }).join('')
+    }).join('')
+  }
+
+  // 網站註冊用戶（僅 super admin 可見）
+  var webPart = ''
+  if (DATA.role === 'super') {
+    webPart = '<div style="margin-top:28px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      '<h3 style="font-size:16px;font-weight:800;margin:0;">🌐 網站註冊用戶</h3>' +
+      '<button onclick="loadWebUsers()" class="action-btn">🔄 載入</button>' +
+      '</div>' +
+      '<div id="webUsersList"><div class="empty" style="font-size:13px;">點擊「載入」查看網站註冊用戶（資料僅限總管理員查看）</div></div>' +
+      '</div>'
+  }
+
+  return linePart + webPart
+}
+
+async function loadWebUsers() {
+  document.getElementById('webUsersList').innerHTML = '<div class="empty">載入中...</div>'
+  try {
+    var res = await fetch('/admin/api/webusers?key=' + encodeURIComponent(KEY))
+    var users = await res.json()
+    if (!res.ok) { document.getElementById('webUsersList').innerHTML = '<div class="empty">載入失敗</div>'; return }
+    if (!users.length) { document.getElementById('webUsersList').innerHTML = '<div class="empty">目前沒有網站用戶</div>'; return }
+    document.getElementById('webUsersList').innerHTML = users.map(function(u) {
+      var roleLabel = { TENANT: '租客', LANDLORD: '房東', ADMIN: '管理員' }[u.role] || u.role
+      var deleted = u.deletedAt ? ' <span style="color:var(--danger);font-size:11px;">[已刪除]</span>' : ''
+      return '<div class="card"><div class="card-row"><div>' +
+        '<h3 style="margin-bottom:4px;">' + esc(u.name) + deleted + '</h3>' +
+        '<div class="meta">📧 ' + esc(u.email) +
+        (u.phone ? ' · 📞 ' + esc(u.phone) : '') +
+        '<br>身份：' + roleLabel + ' · 加入：' + fmtDate(u.createdAt) + '</div>' +
+        '</div></div></div>'
+    }).join('')
+  } catch (e) {
+    document.getElementById('webUsersList').innerHTML = '<div class="empty">載入失敗：' + e.message + '</div>'
+  }
 }
 
 function renderBookings() {
@@ -1506,6 +1547,7 @@ function closeMenuEditor() {
 
 // ── 功能模組編輯器 ──────────────────────────────────────────────
 var FEATURE_MODULES = [
+  { key: 'tenants',    label: '👥 LINE Bot 用戶',      desc: 'LINE Bot 用戶列表與管理' },
   { key: 'bot',        label: '🤖 LINE Bot 機器人',   desc: '聊天機器人、圖文選單、Bot 設定' },
   { key: 'site',       label: '🌐 個人官網',           desc: '房東個人官網 /site/xxx' },
   { key: 'heroSlides', label: '🖼️ 官網輪播圖',        desc: '首頁設定、輪播照片與 Logo' },
