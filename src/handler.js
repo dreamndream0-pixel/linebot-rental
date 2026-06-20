@@ -84,6 +84,7 @@ function mainMenu(t = {}) {
           t.showBookVisit !== false ? menuButton(t.btnBookVisit || '📅 預約看房', '預約看房') : null,
           t.showReportRepair !== false ? menuButton(t.btnReportRepair || '🔧 維修回報', '維修回報') : null,
           t.showMyBookings !== false ? menuButton(t.btnMyBookings || '📋 我的預約', '我的預約') : null,
+          t.showMoreRooms !== false && t._siteUrl ? menuUriButton(t.btnMoreRooms || '🔗 更多房源', t._siteUrl) : null,
           { type: 'separator', margin: 'md' },
           { type: 'text', text: t.searchHint || '💡 也可直接輸入條件搜尋', size: 'xs', color: '#888888', margin: 'md', wrap: true },
           { type: 'text', text: t.searchExample || '例如：台中市 沙鹿區 5000-8000', size: 'xs', color: '#aaaaaa', wrap: true },
@@ -97,6 +98,16 @@ function menuButton(label, action) {
   return {
     type: 'button',
     action: { type: 'message', label, text: action },
+    style: 'secondary',
+    height: 'sm',
+    margin: 'sm'
+  }
+}
+
+function menuUriButton(label, uri) {
+  return {
+    type: 'button',
+    action: { type: 'uri', label, uri },
     style: 'secondary',
     height: 'sm',
     margin: 'sm'
@@ -476,6 +487,11 @@ async function handleMessage(event, client, landlordId = null) {
   // 載入該房東的 Bot 文字設定 + 開關狀態
   const { getBotText } = require('./botText')
   const t = await getBotText(landlordId)
+
+  // 注入房東官網 URL（供「更多房源」按鈕使用）
+  if (landlordId) {
+    t._siteUrl = `${SITE_URL}/site/${landlordId}`
+  }
 
   // Bot 已被房東關閉 → 回固定訊息，不處理功能
   if (landlordId && t._enabled === false) {

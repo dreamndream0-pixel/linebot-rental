@@ -10,6 +10,7 @@ const DEFAULT_TEXT = {
   showBookVisit: true,
   showReportRepair: true,
   showMyBookings: true,
+  showMoreRooms: true,
 
   // 主選單
   menuTitle: '🐌 小蝸出租',
@@ -18,6 +19,7 @@ const DEFAULT_TEXT = {
   btnBookVisit: '📅 預約看房',
   btnReportRepair: '🔧 維修回報',
   btnMyBookings: '📋 我的預約',
+  btnMoreRooms: '🔗 更多房源',
   searchHint: '💡 也可直接輸入條件搜尋',
   searchExample: '例如：台中市 沙鹿區 5000-8000',
 
