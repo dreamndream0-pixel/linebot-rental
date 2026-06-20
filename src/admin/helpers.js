@@ -31,7 +31,7 @@ function ownsRecord(auth, record) {
 }
 
 // ── ISR 重新驗證 ─────────────────────────────────────────────────
-async function revalidateSite(paths) {
+async function revalidateSite(paths, tags = []) {
   const siteUrl = process.env.SITE_URL
   const secret = process.env.REVALIDATE_SECRET
   if (!siteUrl || !secret) return
@@ -39,7 +39,8 @@ async function revalidateSite(paths) {
     await fetch(`${siteUrl}/api/revalidate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ secret, paths }),
+      // 每次更新房源時，同步清除標籤快取
+      body: JSON.stringify({ secret, paths, tags: ['all-tags', ...tags] }),
     })
   } catch (_) {}
 }
