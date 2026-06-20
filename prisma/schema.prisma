@@ -97,6 +97,7 @@ model Landlord {
   tenants       Tenant[]
   bookings      Booking[]
   repairs       Repair[]
+  communities   Community[]
 
   @@index([email])
   @@index([adminKey])
@@ -230,6 +231,9 @@ model Property {
   lineTenants Tenant[]       @relation("TenantResidence")
   repairs     Repair[]
 
+  communityId String?
+  community   Community?     @relation(fields: [communityId], references: [id])
+
   @@index([landlordId])
   @@index([ownerId])
   @@index([city, district])
@@ -238,6 +242,35 @@ model Property {
   @@index([type])
   @@index([featured])
   @@map("properties")
+}
+
+// ─────────────────────────────────────────────
+// 社區（房源群組）
+// ─────────────────────────────────────────────
+model Community {
+  id          String     @id @default(cuid())
+  ownerId     String?
+  owner       Landlord?  @relation(fields: [ownerId], references: [id])
+  name        String
+  description String     @default("") @db.Text
+  photos      String     @default("[]") @db.Text
+  mapUrl      String?
+  properties  Property[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@map("communities")
+}
+
+// ─────────────────────────────────────────────
+// 網站全域設定（logo、輪播圖等）
+// ─────────────────────────────────────────────
+model SiteSetting {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@map("site_settings")
 }
 
 enum PropertyType {

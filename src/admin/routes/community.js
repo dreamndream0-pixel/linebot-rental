@@ -1,8 +1,7 @@
 const express = require('express')
 const router = express.Router()
-const { PrismaClient } = require('@prisma/client')
 const { resolveRole } = require('../helpers')
-const prisma = new PrismaClient()
+const prisma = require('../../db')
 
 // 每次請求前都確認資料表存在（有 cache 避免重複執行）
 let _tableEnsured = false

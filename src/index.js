@@ -83,8 +83,35 @@ app.listen(PORT, () => {
 
 // 非同步連線 DB（不阻塞 port 啟動）
 prisma.$connect()
-  .then(() => {
+  .then(async () => {
     console.log('✅ 資料庫已連線')
+    // 確保所有資料表存在（db push 等效，防止重新部署後資料表消失）
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS communities (
+          id           TEXT PRIMARY KEY,
+          "ownerId"    TEXT,
+          name         TEXT NOT NULL,
+          description  TEXT NOT NULL DEFAULT '',
+          photos       TEXT NOT NULL DEFAULT '[]',
+          "mapUrl"     TEXT,
+          "createdAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          "updatedAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `)
+      await prisma.$executeRawUnsafe(`ALTER TABLE properties ADD COLUMN IF NOT EXISTS "communityId" TEXT`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE communities ALTER COLUMN "ownerId" DROP NOT NULL`)
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS site_settings (
+          key          TEXT PRIMARY KEY,
+          value        TEXT NOT NULL,
+          "updatedAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `)
+      console.log('✅ 資料表結構已確認')
+    } catch(e) {
+      console.error('⚠️ 資料表確認時發生警告（通常可忽略）:', e.message)
+    }
     startCronJobs(client)
   })
   .catch((err) => {
