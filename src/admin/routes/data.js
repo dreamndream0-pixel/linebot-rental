@@ -103,7 +103,7 @@ router.get('/admin/api/data', async (req, res) => {
     try {
       selfLandlord = await prisma.landlord.findUnique({
         where: { id: auth.landlordId },
-        select: { id: true, botTextConfig: true, botEnabled: true, features: true }
+        select: { id: true, botTextConfig: true, botEnabled: true, features: true, siteName: true, siteLogo: true }
       })
     } catch (e) { console.error('selfLandlord 查詢失敗:', e.message) }
   }
