@@ -203,8 +203,13 @@ router.post('/admin/api/landlord/:id/site', express.json(), async (req, res) => 
     data.features = JSON.stringify(feats)
   }
 
-  await prisma.landlord.update({ where: { id: req.params.id }, data })
-  res.json({ ok: true })
+  try {
+    await prisma.landlord.update({ where: { id: req.params.id }, data })
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('[site] update error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // ── Bot 開關 / 文字設定 ──────────────────────────────────────────

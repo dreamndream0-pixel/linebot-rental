@@ -2353,11 +2353,17 @@ function clearBrandLogo() {
 }
 
 async function saveLandlordBrand() {
+  if (!DATA.landlordId) { showToast('❌ 無法儲存：缺少房東 ID'); return }
   var res = await fetch('/admin/api/landlord/' + DATA.landlordId + '/site?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ siteLogo: landlordBrandState.siteLogo, siteSlides: landlordBrandState.siteSlides }),
   })
-  if (!res.ok) { showToast('❌ 儲存失敗'); return }
+  if (!res.ok) {
+    var errText = ''
+    try { var d = await res.json(); errText = d.error || '' } catch(_) {}
+    showToast('❌ 儲存失敗' + (errText ? '：' + errText : ' (HTTP ' + res.status + ')'))
+    return
+  }
   showToast('✅ 首頁設定已儲存')
   if (DATA.selfLandlord) {
     DATA.selfLandlord.siteLogo = landlordBrandState.siteLogo
