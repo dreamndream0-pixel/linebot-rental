@@ -1383,20 +1383,53 @@ function togglePropList(id, btn) {
 function openAddLandlordModal() {
   var existing = document.getElementById('landlordModal')
   if (existing) existing.remove()
-  var html = '<div id="landlordModal" class="modal-overlay">' +
-    '<div class="modal-box">' +
-    '<div class="modal-header"><h3>➕ 新增房東</h3>' +
-    '<button class="modal-close" onclick="closeAddLandlordModal()">×</button></div>' +
-    '<div class="form-grid" style="margin-top:16px;">' +
-    '<div><label>房東名稱 *</label><input id="l_name" placeholder="王先生 / 紅寶石建設"></div>' +
-    '<div><label>Email（登入帳號）*</label><input id="l_email" placeholder="landlord@example.com"></div>' +
-    '<div><label>電話</label><input id="l_phone" placeholder="0912..."></div>' +
+  var html =
+    '<div id="landlordModal" onclick="if(event.target===this)closeAddLandlordModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+    '<div style="background:#fff;border-radius:20px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,0.18);overflow:hidden;">' +
+
+    // Header
+    '<div style="background:linear-gradient(135deg,var(--deep-sage,#4A6741),#6a9462);padding:24px 28px 20px;color:#fff;display:flex;align-items:center;justify-content:space-between;">' +
+    '<div>' +
+    '<div style="font-size:13px;opacity:0.8;letter-spacing:0.5px;margin-bottom:4px;">房東管理</div>' +
+    '<div style="font-size:20px;font-weight:700;">新增房東</div>' +
     '</div>' +
-    '<div style="display:flex;gap:8px;margin-top:16px;position:sticky;bottom:0;background:white;padding-top:12px;">' +
-    '<button class="btn" style="flex:1;background:var(--deep-sage);" onclick="createLandlord()">新增房東</button>' +
-    '<button class="action-btn" style="flex:0 0 auto;" onclick="closeAddLandlordModal()">取消</button>' +
-    '</div></div></div>'
+    '<button onclick="closeAddLandlordModal()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;width:36px;height:36px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s;" onmouseover="this.style.background=\'rgba(255,255,255,0.35)\'" onmouseout="this.style.background=\'rgba(255,255,255,0.2)\'">✕</button>' +
+    '</div>' +
+
+    // Body
+    '<div style="padding:28px;">' +
+    '<div id="landlordModalError" style="display:none;background:#FEE2E2;color:#B91C1C;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:16px;"></div>' +
+
+    // Name + Email row
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
+    '<div>' +
+    '<label style="display:block;font-size:12px;font-weight:600;color:var(--gray-mid,#6B7280);margin-bottom:6px;letter-spacing:0.3px;">房東名稱 <span style="color:#ef4444;">*</span></label>' +
+    '<input id="l_name" placeholder="王先生 / 紅寶石建設" style="width:100%;border:1.5px solid #E5DFD5;border-radius:10px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\'var(--deep-sage,#4A6741)\'" onblur="this.style.borderColor=\'#E5DFD5\'">' +
+    '</div>' +
+    '<div>' +
+    '<label style="display:block;font-size:12px;font-weight:600;color:var(--gray-mid,#6B7280);margin-bottom:6px;letter-spacing:0.3px;">Email（登入帳號）<span style="color:#ef4444;">*</span></label>' +
+    '<input id="l_email" type="email" placeholder="landlord@example.com" style="width:100%;border:1.5px solid #E5DFD5;border-radius:10px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\'var(--deep-sage,#4A6741)\'" onblur="this.style.borderColor=\'#E5DFD5\'">' +
+    '</div>' +
+    '</div>' +
+
+    // Phone row
+    '<div style="margin-bottom:24px;">' +
+    '<label style="display:block;font-size:12px;font-weight:600;color:var(--gray-mid,#6B7280);margin-bottom:6px;letter-spacing:0.3px;">電話</label>' +
+    '<input id="l_phone" type="tel" placeholder="0912 345 678" style="width:100%;border:1.5px solid #E5DFD5;border-radius:10px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box;transition:border-color 0.2s;" onfocus="this.style.borderColor=\'var(--deep-sage,#4A6741)\'" onblur="this.style.borderColor=\'#E5DFD5\'">' +
+    '</div>' +
+
+    // Footer buttons
+    '<div style="display:flex;gap:10px;">' +
+    '<button onclick="createLandlord()" id="createLandlordBtn" style="flex:1;background:linear-gradient(135deg,var(--deep-sage,#4A6741),#6a9462);color:#fff;border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;transition:opacity 0.2s;" onmouseover="this.style.opacity=\'0.88\'" onmouseout="this.style.opacity=\'1\'">新增房東</button>' +
+    '<button onclick="closeAddLandlordModal()" style="background:#F5F0EA;color:var(--gray-mid,#6B7280);border:none;border-radius:12px;padding:13px 20px;font-size:15px;font-weight:600;cursor:pointer;transition:background 0.2s;" onmouseover="this.style.background=\'#EDE8E0\'" onmouseout="this.style.background=\'#F5F0EA\'">取消</button>' +
+    '</div>' +
+
+    '</div>' + // end body
+    '</div>' + // end modal-box
+    '</div>'   // end overlay
+
   document.body.insertAdjacentHTML('beforeend', html)
+  setTimeout(function(){ var el = document.getElementById('l_name'); if(el) el.focus() }, 50)
 }
 
 function closeAddLandlordModal() {
@@ -1505,7 +1538,17 @@ async function createLandlord() {
   var name = document.getElementById('l_name').value.trim()
   var email = document.getElementById('l_email').value.trim()
   var phone = document.getElementById('l_phone').value.trim()
-  if (!name || !email) { showToast('❌ 名稱和 Email 必填'); return }
+
+  // inline error helper
+  function showModalError(msg) {
+    var errEl = document.getElementById('landlordModalError')
+    if (errEl) { errEl.textContent = msg; errEl.style.display = 'block' }
+  }
+
+  if (!name || !email) { showModalError('房東名稱和 Email 為必填'); return }
+
+  var btn = document.getElementById('createLandlordBtn')
+  if (btn) { btn.disabled = true; btn.textContent = '新增中…' }
 
   var res = await fetch('/admin/api/landlord?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'},
@@ -1513,13 +1556,22 @@ async function createLandlord() {
   })
   if (!res.ok) {
     var err = await res.json()
-    showToast('❌ ' + (err.error === 'email 已存在' ? 'Email 已存在' : '新增失敗'))
+    showModalError(err.error === 'email 已存在' ? '此 Email 已有房東帳號' : '新增失敗，請稍後再試')
+    if (btn) { btn.disabled = false; btn.textContent = '新增房東' }
     return
   }
   var data = await res.json()
-  // 顯示金鑰給管理員複製（只此一次完整顯示）
   closeAddLandlordModal()
-  alert('✅ 房東「' + data.name + '」已建立！\\n\\n登入金鑰（請交給房東，用來登入後台）：\\n' + data._adminKey + '\\n\\n這組金鑰就是房東登入後台的密碼。')
+  // 顯示金鑰浮動提示
+  var keyHtml = '<div id="adminKeyToast" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:16px;padding:28px 32px;box-shadow:0 20px 60px rgba(0,0,0,0.22);z-index:10000;max-width:420px;width:90%;text-align:center;">' +
+    '<div style="font-size:32px;margin-bottom:8px;">✅</div>' +
+    '<div style="font-size:17px;font-weight:700;color:#1a1a1a;margin-bottom:6px;">房東「' + esc(data.name) + '」已建立！</div>' +
+    '<div style="font-size:13px;color:#6B7280;margin-bottom:16px;">請將以下登入金鑰交給房東，用於登入管理後台（僅此一次顯示）</div>' +
+    '<div onclick="navigator.clipboard&&navigator.clipboard.writeText(\'' + esc(data._adminKey) + '\').then(function(){showToast(\'已複製！\')})" style="background:#F5F0EA;border-radius:10px;padding:14px;font-family:monospace;font-size:15px;font-weight:700;letter-spacing:1px;color:var(--deep-sage,#4A6741);cursor:pointer;user-select:all;word-break:break-all;" title="點擊複製">' + esc(data._adminKey) + '</div>' +
+    '<div style="font-size:12px;color:#9CA3AF;margin-top:8px;">點擊上方金鑰可複製</div>' +
+    '<button onclick="document.getElementById(\'adminKeyToast\').remove()" style="margin-top:20px;background:var(--deep-sage,#4A6741);color:#fff;border:none;border-radius:10px;padding:10px 32px;font-size:14px;font-weight:700;cursor:pointer;">確認關閉</button>' +
+    '</div>'
+  document.body.insertAdjacentHTML('beforeend', keyHtml)
   reload()
 }
 
