@@ -2245,17 +2245,18 @@ function renderLandlordBrandSettings() {
     '<div style="background:#F5F2EC;border-radius:10px;padding:10px 16px;margin-bottom:12px;font-size:12px;line-height:2;color:var(--charcoal);">',
     '📐 <strong>LOGO 建議規格</strong><br>・格式：<strong>PNG（透明背景）</strong> 或 SVG<br>・尺寸：寬 <strong>400–800px</strong>・高 <strong>80–160px</strong><br>・比例：約 <strong>3:1 ~ 5:1</strong>（橫式為主）・<strong>500KB 以下</strong>',
     '</div>',
-    '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">',
-    '<div id="brandLogoPreview" style="width:80px;height:80px;border-radius:12px;border:1.5px solid #E5DFD5;background:#F5F3EF;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">',
-    landlordBrandState.siteLogo ? '<img src="' + esc(landlordBrandState.siteLogo) + '" style="width:100%;height:100%;object-fit:contain;" />' : '<span style="font-size:28px;">🏠</span>',
+    // 上傳列
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">',
+    '<input type="file" id="brandLogoFile" accept="image/*" style="flex:1;min-width:160px;font-size:13px;" onclick="event.stopPropagation()">',
+    '<button class="btn" style="width:auto;padding:8px 18px;" onclick="btnLoad(this, uploadBrandLogo)">⬆ 上傳 LOGO</button>',
     '</div>',
-    '<div style="flex:1;">',
-    '<input type="file" id="brandLogoFile" accept="image/*" style="font-size:13px;margin-bottom:6px;display:block;" onclick="event.stopPropagation()">',
-    '<button class="action-btn" onclick="btnLoad(this, uploadBrandLogo)" style="font-size:12px;">⬆ 上傳 Logo</button>',
-    '<span id="brandLogoStatus" style="font-size:12px;color:var(--sage);margin-left:8px;"></span>',
+    '<div id="brandLogoStatus" style="font-size:13px;color:var(--deep-sage);margin-bottom:8px;"></div>',
+    // 預覽（與主站一致：橫式直接顯示圖，不套框框）
+    '<div id="brandLogoPreview">',
+    landlordBrandState.siteLogo
+      ? '<div style="margin-top:4px;display:flex;align-items:center;gap:12px;"><img src="' + esc(landlordBrandState.siteLogo) + '" style="height:48px;object-fit:contain;background:#f5f5f3;border-radius:8px;padding:4px 8px;" /><button onclick="clearBrandLogo()" style="background:none;border:none;color:var(--warn);cursor:pointer;font-size:13px;">移除</button></div>'
+      : '',
     '</div>',
-    '</div>',
-    landlordBrandState.siteLogo ? '<button onclick="clearBrandLogo()" style="font-size:12px;background:none;border:none;color:var(--warn);cursor:pointer;padding:4px 0;margin-top:4px;display:block;">✕ 移除 Logo</button>' : '',
     '</div>',
 
     '<hr style="border:none;border-top:1px solid var(--oat-mid);margin:0 0 24px;">',
@@ -2336,12 +2337,20 @@ async function uploadBrandLogo() {
   var data = await r.json()
   if (!data.url) throw new Error('上傳失敗')
   landlordBrandState.siteLogo = data.url
+  // 更新預覽（橫式，無框框，與主站一致）
   var prev = document.getElementById('brandLogoPreview')
-  if (prev) prev.innerHTML = '<img src="' + esc(data.url) + '" style="width:100%;height:100%;object-fit:contain;" />'
-  if (statusEl) statusEl.textContent = '✅ 上傳成功'
+  if (prev) prev.innerHTML = '<div style="margin-top:4px;display:flex;align-items:center;gap:12px;"><img src="' + esc(data.url) + '" style="height:48px;object-fit:contain;background:#f5f5f3;border-radius:8px;padding:4px 8px;" /><button onclick="clearBrandLogo()" style="background:none;border:none;color:var(--warn);cursor:pointer;font-size:13px;">移除</button></div>'
+  if (statusEl) statusEl.innerHTML = '✅ 上傳並儲存中…'
+  // 立即儲存
+  await saveLandlordBrand()
+  if (statusEl) statusEl.innerHTML = '✅ 上傳成功！<br><small style="color:#aaa;">' + esc(data.url) + '</small>'
 }
 
-function clearBrandLogo() { landlordBrandState.siteLogo = ''; renderLandlordBrandSettings() }
+function clearBrandLogo() {
+  landlordBrandState.siteLogo = ''
+  var prev = document.getElementById('brandLogoPreview')
+  if (prev) prev.innerHTML = ''
+}
 
 async function saveLandlordBrand() {
   var res = await fetch('/admin/api/landlord/' + DATA.landlordId + '/site?key=' + encodeURIComponent(KEY), {
