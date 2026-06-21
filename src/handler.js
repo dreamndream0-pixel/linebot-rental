@@ -201,10 +201,46 @@ async function listAvailableRooms(landlordId = null, t = {}) {
 }
 
 // ── 關鍵字解析 ────────────────────────────────────────────────────
-// 支援：「台中市 沙鹿區 5000-8000」「沙鹿 8000以下」「5000-8000」「沙鹿區」
+// 支援多元條件，例如：
+//   「台中市 沙鹿區 5000-8000」「沙鹿 8000以下」「沙鹿 套房 冷氣 5000以下」
+//   「10坪以上」「5-8坪 雅房」「電梯 機車位」「近火車站」
+// 中文房型 → Prisma enum（先比對長詞，避免「套房」吃掉「獨立套房」）
+// 註：刻意不放「車位/土地」，避免「機車位」等附屬設備關鍵字被誤判成房型
+const TYPE_MAP = [
+  ['獨立套房', 'STUDIO'], ['分租套房', 'SHARED_SUITE'], ['整層住家', 'WHOLE_FLOOR'],
+  ['整層', 'WHOLE_FLOOR'], ['套房', 'SUITE'], ['雅房', 'ROOM'],
+  ['店面', 'STORE'], ['住辦', 'LIVE_OFFICE'], ['辦公', 'OFFICE'], ['廠房', 'FACTORY'],
+]
+// 純關鍵字（無城市/區域/價格/坪數/房型）時，需命中這些常見房源特徵詞才觸發搜尋，避免把閒聊當搜尋
+const SEARCH_HINT_WORDS = [
+  '冷氣','洗衣','冰箱','熱水','電視','網路','wifi','第四台','衣櫃','書桌','沙發','陽台','頂樓','加蓋',
+  '電梯','車位','機車','停車','寵物','貓','狗','開伙','煮','租補','仲介','洗曬','曬衣','垃圾','管理','監視','保全',
+  '捷運','火車','高鐵','學校','學區','夜市','公園','市場','醫院','新','採光','獨衛','獨立衛浴',
+]
+// 過濾掉非實質的功能詞
+const KW_STOP = ['我要','想要','想找','請問','有沒有','有無','幫我','可以','麻煩','謝謝','你好','哈囉',
+  '租屋','找房','房子','房間','租金','預算','左右','附近','以下','以上','以內','元']
+
 function parseSearchQuery(text) {
-  const result = { city: null, district: null, minPrice: null, maxPrice: null }
+  const result = { city: null, district: null, minPrice: null, maxPrice: null, minSize: null, maxSize: null, type: null, keywords: [] }
   let rest = text
+
+  // 坪數（先抽，含「坪」字，避免與價格數字混淆）
+  const sizeRange = rest.match(/(\d+(?:\.\d+)?)\s*[-~到至]\s*(\d+(?:\.\d+)?)\s*坪/)
+  if (sizeRange) {
+    result.minSize = parseFloat(sizeRange[1]); result.maxSize = parseFloat(sizeRange[2])
+    rest = rest.replace(sizeRange[0], ' ')
+  } else {
+    const sizeUnder = rest.match(/(\d+(?:\.\d+)?)\s*坪\s*(以下|以內|內)/)
+    if (sizeUnder) { result.maxSize = parseFloat(sizeUnder[1]); rest = rest.replace(sizeUnder[0], ' ') }
+    const sizeOver = rest.match(/(\d+(?:\.\d+)?)\s*坪\s*(以上)/)
+    if (sizeOver) { result.minSize = parseFloat(sizeOver[1]); rest = rest.replace(sizeOver[0], ' ') }
+    // 單純「X坪」→ 視為至少 X 坪
+    const sizeExact = rest.match(/(\d+(?:\.\d+)?)\s*坪/)
+    if (sizeExact && result.minSize == null && result.maxSize == null) {
+      result.minSize = parseFloat(sizeExact[1]); rest = rest.replace(sizeExact[0], ' ')
+    }
+  }
 
   // 城市（台中市 / 台中）
   const cityMatch = rest.match(/(台北|新北|桃園|台中|臺中|台南|臺南|高雄|基隆|新竹|苗栗|彰化|南投|雲林|嘉義|屏東|宜蘭|花蓮|台東|臺東|澎湖|金門|連江)市?/)
@@ -213,7 +249,7 @@ function parseSearchQuery(text) {
     rest = rest.replace(cityMatch[0], ' ')
   }
 
-  // 區域（XX區 / XX鄉 / XX鎮 / XX市）
+  // 區域（XX區 / XX鄉 / XX鎮）
   const distMatch = rest.match(/([\u4e00-\u9fa5]{1,4})(區|鄉|鎮)/)
   if (distMatch) {
     result.district = distMatch[1] + distMatch[2]
@@ -241,15 +277,23 @@ function parseSearchQuery(text) {
     }
   }
 
-  // 若已抓到價格但還沒抓到區域，把剩下的中文詞當區域（如「沙鹿 8000以下」）
-  if (!result.district && (result.minPrice || result.maxPrice)) {
-    const loose = rest.match(/[\u4e00-\u9fa5]{2,4}/)
-    if (loose) result.district = loose[0]
+  // 房型（先比對長詞）
+  for (const [word, enumVal] of TYPE_MAP) {
+    if (rest.includes(word)) { result.type = enumVal; rest = rest.replace(word, ' '); break }
   }
 
-  // 完全沒有任何可辨識條件（城市/區域/價格）→ 不當搜尋，避免閒聊誤判
-  const hasAny = result.city || result.district || result.minPrice || result.maxPrice
-  return hasAny ? result : null
+  // 剩餘中文／英文詞當「通用關鍵字」：之後同時比對 區域/名稱/描述/地址/標籤/設備
+  const kwMatches = rest.match(/[\u4e00-\u9fa5a-zA-Z]{2,}/g) || []
+  result.keywords = [...new Set(kwMatches.filter(w => !KW_STOP.includes(w)))]
+
+  // 觸發判斷：有結構化條件 → 一定是搜尋；只有純關鍵字 → 需命中常見特徵詞才觸發，避免閒聊誤判
+  const hasStructured = result.city || result.district || result.minPrice || result.maxPrice
+    || result.minSize != null || result.maxSize != null || result.type
+  if (hasStructured) return result
+  if (result.keywords.length && result.keywords.some(kw => SEARCH_HINT_WORDS.some(h => kw.includes(h)))) {
+    return result
+  }
+  return null
 }
 
 // ── 關鍵字搜尋房源 ────────────────────────────────────────────────
@@ -258,10 +302,29 @@ async function searchRooms(parsed, landlordId = null, t = {}) {
   if (landlordId) where.ownerId = landlordId
   if (parsed.city) where.city = parsed.city
   if (parsed.district) where.district = { contains: parsed.district.replace(/(區|鄉|鎮)$/, '') }
+  if (parsed.type) where.type = parsed.type
   if (parsed.minPrice || parsed.maxPrice) {
     where.price = {}
     if (parsed.minPrice) where.price.gte = parsed.minPrice
     if (parsed.maxPrice) where.price.lte = parsed.maxPrice
+  }
+  if (parsed.minSize != null || parsed.maxSize != null) {
+    where.size = {}
+    if (parsed.minSize != null) where.size.gte = parsed.minSize
+    if (parsed.maxSize != null) where.size.lte = parsed.maxSize
+  }
+  // 通用關鍵字：每個關鍵字都要命中（AND），但可落在 區域/名稱/描述/地址/標籤/設備 任一欄位（OR）
+  if (parsed.keywords && parsed.keywords.length) {
+    where.AND = parsed.keywords.map(kw => ({
+      OR: [
+        { district:    { contains: kw } },
+        { title:       { contains: kw } },
+        { description: { contains: kw } },
+        { address:     { contains: kw } },
+        { tags:        { some: { name: { contains: kw } } } },
+        { amenities:   { some: { name: { contains: kw } } } },
+      ],
+    }))
   }
 
   const rooms = await prisma.property.findMany({
@@ -272,12 +335,18 @@ async function searchRooms(parsed, landlordId = null, t = {}) {
   })
 
   // 組合搜尋條件描述
+  const TYPE_LABELS = { SUITE: '套房', ROOM: '雅房', WHOLE_FLOOR: '整層住家', SHARED_SUITE: '分租套房', STUDIO: '獨立套房', STORE: '店面', OFFICE: '辦公', LIVE_OFFICE: '住辦', FACTORY: '廠房', PARKING: '車位', LAND: '土地', OTHER: '其他' }
   const parts = []
   if (parsed.city) parts.push(parsed.city)
   if (parsed.district) parts.push(parsed.district)
+  if (parsed.type) parts.push(TYPE_LABELS[parsed.type] || parsed.type)
   if (parsed.minPrice && parsed.maxPrice) parts.push(`${parsed.minPrice}-${parsed.maxPrice}元`)
   else if (parsed.maxPrice) parts.push(`${parsed.maxPrice}元以下`)
   else if (parsed.minPrice) parts.push(`${parsed.minPrice}元以上`)
+  if (parsed.minSize != null && parsed.maxSize != null) parts.push(`${parsed.minSize}-${parsed.maxSize}坪`)
+  else if (parsed.maxSize != null) parts.push(`${parsed.maxSize}坪以下`)
+  else if (parsed.minSize != null) parts.push(`${parsed.minSize}坪以上`)
+  if (parsed.keywords && parsed.keywords.length) parts.push(parsed.keywords.join(' '))
   const condText = parts.join(' ')
 
   if (rooms.length === 0) {
@@ -624,4 +693,4 @@ async function handleRepairFlow(userId, text, state, client, landlordId = null, 
   return null
 }
 
-module.exports = { handleMessage, handlePostback }
+module.exports = { handleMessage, handlePostback, parseSearchQuery }
