@@ -1380,19 +1380,37 @@ function togglePropList(id, btn) {
   btn.textContent = btn.textContent.replace(open ? '▴' : '▾', open ? '▾' : '▴')
 }
 
-function renderLandlords() {
-  var formHtml = '<div class="form-box"><h3>➕ 新增房東</h3>' +
-    '<div class="form-grid">' +
+function openAddLandlordModal() {
+  var existing = document.getElementById('landlordModal')
+  if (existing) existing.remove()
+  var html = '<div id="landlordModal" class="modal-overlay">' +
+    '<div class="modal-box">' +
+    '<div class="modal-header"><h3>➕ 新增房東</h3>' +
+    '<button class="modal-close" onclick="closeAddLandlordModal()">×</button></div>' +
+    '<div class="form-grid" style="margin-top:16px;">' +
     '<div><label>房東名稱 *</label><input id="l_name" placeholder="王先生 / 紅寶石建設"></div>' +
     '<div><label>Email（登入帳號）*</label><input id="l_email" placeholder="landlord@example.com"></div>' +
     '<div><label>電話</label><input id="l_phone" placeholder="0912..."></div>' +
     '</div>' +
-    '<div class="actions" style="margin-top:14px;">' +
-    '<button class="btn" style="width:auto;padding:10px 24px;" onclick="createLandlord()">新增房東</button>' +
-    '</div></div>'
+    '<div style="display:flex;gap:8px;margin-top:16px;position:sticky;bottom:0;background:white;padding-top:12px;">' +
+    '<button class="btn" style="flex:1;background:var(--deep-sage);" onclick="createLandlord()">新增房東</button>' +
+    '<button class="action-btn" style="flex:0 0 auto;" onclick="closeAddLandlordModal()">取消</button>' +
+    '</div></div></div>'
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
+function closeAddLandlordModal() {
+  var el = document.getElementById('landlordModal')
+  if (el) el.remove()
+}
+
+function renderLandlords() {
+  var addBtnHtml = '<div style="margin-bottom:16px;">' +
+    '<button class="btn" style="width:auto;padding:10px 24px;" onclick="openAddLandlordModal()">➕ 新增房東</button>' +
+    '</div>'
 
   var list = DATA.landlords || []
-  if (!list.length) return formHtml + '<div class="empty">還沒有房東，用上方表單新增第一位！</div>'
+  if (!list.length) return addBtnHtml + '<div class="empty">還沒有房東，點上方按鈕新增第一位！</div>'
 
   var listHtml = list.map(function(l) {
     var lProps = DATA.properties.filter(function(p){ return p.ownerId === l.id })
@@ -1402,6 +1420,7 @@ function renderLandlords() {
       : '<span style="color:var(--warn,#C9913A);font-size:12px;">🤖 Bot 未設定</span>'
     var webhookUrl = location.origin + '/webhook/landlord/' + l.id
     var propListId = 'props_' + l.id
+    var cardBodyId = 'landlordBody_' + l.id
     var propListHtml = lProps.length === 0 ? '<div style="color:var(--gray-light);font-size:13px;padding:8px 0;">尚無房源</div>' :
       lProps.map(function(p) {
         var statusLabel = { AVAILABLE:'可租', RENTED:'已租', PAUSED:'暫停', PENDING:'審核中', REJECTED:'拒絕' }[p.status] || p.status
@@ -1413,10 +1432,18 @@ function renderLandlords() {
           '<a href="' + (DATA.siteUrl||'') + '/property/' + p.id + '?site=' + l.id + '" target="_blank" style="font-size:11px;color:var(--sage);text-decoration:none;flex-shrink:0;">查看</a>' +
         '</div>'
       }).join('')
-    return '<div class="card"><div class="card-row"><div>' +
-      '<h3>' + esc(l.name) + (l.isActive ? '' : ' <span style="font-size:12px;color:var(--danger);">(已停用)</span>') + '</h3>' +
+    return '<div class="card">' +
+      '<div onclick="toggleLandlordCard(\'' + cardBodyId + '\', this)" style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;cursor:pointer;user-select:none;">' +
+      '<div style="display:flex;align-items:center;gap:10px;">' +
+      '<span style="font-size:15px;font-weight:700;">' + esc(l.name) + (l.isActive ? '' : ' <span style="font-size:12px;color:var(--danger);">(已停用)</span>') + '</span>' +
+      '<span>' + botStatus + '</span>' +
+      '</div>' +
+      '<span class="landlord-arrow" style="font-size:14px;color:var(--gray-mid);">▸</span>' +
+      '</div>' +
+      '<div id="' + cardBodyId + '" style="display:none;margin-top:10px;">' +
+      '<div class="card-row"><div>' +
       '<div class="meta">📧 ' + esc(l.email) + (l.phone ? ' · 📞 ' + esc(l.phone) : '') +
-      '<br>加入：' + fmtDate(l.createdAt) + ' · ' + botStatus + '</div>' +
+      '<br>加入：' + fmtDate(l.createdAt) + '</div>' +
       '<div style="margin-top:6px;"><span style="font-size:12px;color:var(--gray-mid);">登入金鑰：</span>' +
       '<span class="uid" onclick="copyText(\'' + l.adminKey + '\')" title="點擊複製">' + l.adminKey + '</span></div>' +
       '<div style="margin-top:6px;"><span style="font-size:12px;color:var(--gray-mid);">Webhook URL：</span><br>' +
@@ -1439,9 +1466,19 @@ function renderLandlords() {
       '<button onclick="togglePropList(\'' + propListId + '\', this)" style="background:none;border:none;font-size:13px;font-weight:600;color:var(--deep-sage);cursor:pointer;padding:0;">🏠 房源（' + propCount + '）▾</button>' +
       '<div id="' + propListId + '" style="display:none;margin-top:8px;">' + propListHtml + '</div>' +
       '</div>' +
+      '</div>' +
       '</div>'
   }).join('')
-  return formHtml + listHtml
+  return addBtnHtml + listHtml
+}
+
+function toggleLandlordCard(bodyId, headerEl) {
+  var body = document.getElementById(bodyId)
+  if (!body) return
+  var open = body.style.display !== 'none'
+  body.style.display = open ? 'none' : 'block'
+  var arrow = headerEl.querySelector('.landlord-arrow')
+  if (arrow) arrow.textContent = open ? '▸' : '▾'
 }
 
 // 設定房東的 LINE Bot
@@ -1481,6 +1518,7 @@ async function createLandlord() {
   }
   var data = await res.json()
   // 顯示金鑰給管理員複製（只此一次完整顯示）
+  closeAddLandlordModal()
   alert('✅ 房東「' + data.name + '」已建立！\\n\\n登入金鑰（請交給房東，用來登入後台）：\\n' + data._adminKey + '\\n\\n這組金鑰就是房東登入後台的密碼。')
   reload()
 }
