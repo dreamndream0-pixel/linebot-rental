@@ -667,7 +667,7 @@ function approveProperty(id) {
   }).then(function(r) { return r.json() }).then(function(d) {
     if (d.error) { showToast('❌ ' + d.error); return }
     showToast('✅ 已審核通過，房源已上架')
-    loadData()
+    reload()
   }).catch(function(e) { showToast('❌ 操作失敗：' + e.message) })
 }
 
@@ -680,7 +680,7 @@ function rejectProperty(id) {
   }).then(function(r) { return r.json() }).then(function(d) {
     if (d.error) { showToast('❌ ' + d.error); return }
     showToast('🔄 已退回房源')
-    loadData()
+    reload()
   }).catch(function(e) { showToast('❌ 操作失敗：' + e.message) })
 }
 
