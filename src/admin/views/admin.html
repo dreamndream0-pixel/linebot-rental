@@ -2224,91 +2224,140 @@ async function renderHeroSettings() {
   drawHeroSettings()
 }
 
-// ── 房東自己的品牌設定（官網名稱 + Logo）────────────────────────
-var landlordBrandState = { siteName: '', siteLogo: '' }
+// ── 房東自己的首頁設定（Logo + 輪播圖，與主站規格相同）──────────
+var landlordBrandState = { siteLogo: '', siteSlides: [] }
 
 function renderLandlordBrandSettings() {
   var el = document.getElementById('content')
-  // Pre-fill from DATA.selfLandlord (landlord role) or landlords array (super)
   var me = DATA.selfLandlord || (DATA.landlords || []).find(function(l){ return l.id === DATA.landlordId }) || {}
-  landlordBrandState = { siteName: me.siteName || '', siteLogo: me.siteLogo || '' }
+  var feats = {}
+  try { feats = me.features ? JSON.parse(me.features) : {} } catch(_) {}
+  landlordBrandState = { siteLogo: me.siteLogo || '', siteSlides: feats.siteSlides || [] }
 
   el.innerHTML = [
     '<div class="form-box">',
-    '<h3 style="font-size:16px;font-weight:700;margin-bottom:6px;">🏷️ 官網品牌設定</h3>',
-    '<p style="font-size:13px;color:#aaa;margin-bottom:24px;">這裡的設定只影響您的個人房東官網，與小蝸主站完全分開</p>',
+    '<h3 style="font-size:16px;font-weight:700;margin-bottom:6px;">🖼️ 首頁設定</h3>',
+    '<p style="font-size:13px;color:#aaa;margin-bottom:24px;">設定只影響您的個人房東官網，與小蝸主站完全分開</p>',
 
-    // Site name
-    '<div style="margin-bottom:20px;">',
-    '<label style="display:block;font-size:12px;font-weight:700;color:var(--gray-mid);margin-bottom:6px;">官網名稱</label>',
-    '<input id="brandSiteName" value="' + esc(landlordBrandState.siteName) + '" placeholder="例：小蝸沙鹿館" style="width:100%;border:1.5px solid #E5DFD5;border-radius:10px;padding:10px 14px;font-size:14px;outline:none;box-sizing:border-box;" />',
-    '<div style="font-size:11px;color:#aaa;margin-top:5px;">顯示在您的個人官網頂部（/site/你的ID）</div>',
+    // ── Logo ──
+    '<div style="margin-bottom:24px;">',
+    '<h4 style="font-size:14px;font-weight:700;margin-bottom:8px;">🏷️ 官網 LOGO</h4>',
+    '<div style="background:#F5F2EC;border-radius:10px;padding:10px 16px;margin-bottom:12px;font-size:12px;line-height:2;color:var(--charcoal);">',
+    '📐 <strong>LOGO 建議規格</strong><br>・格式：<strong>PNG（透明背景）</strong> 或 SVG<br>・尺寸：寬 <strong>400–800px</strong>・高 <strong>80–160px</strong><br>・比例：約 <strong>3:1 ~ 5:1</strong>（橫式為主）・<strong>500KB 以下</strong>',
     '</div>',
-
-    // Logo upload
-    '<div style="margin-bottom:20px;">',
-    '<label style="display:block;font-size:12px;font-weight:700;color:var(--gray-mid);margin-bottom:6px;">官網 LOGO</label>',
-    '<div style="background:#F5F2EC;border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:11px;line-height:1.9;color:var(--charcoal);">',
-    '格式：<strong>PNG（透明背景）</strong>・尺寸：寬 400–800px, 高 80–160px・500KB 以下',
-    '</div>',
-    '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">',
+    '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">',
     '<div id="brandLogoPreview" style="width:80px;height:80px;border-radius:12px;border:1.5px solid #E5DFD5;background:#F5F3EF;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">',
-    landlordBrandState.siteLogo
-      ? '<img src="' + esc(landlordBrandState.siteLogo) + '" style="width:100%;height:100%;object-fit:contain;" />'
-      : '<span style="font-size:28px;">🏠</span>',
+    landlordBrandState.siteLogo ? '<img src="' + esc(landlordBrandState.siteLogo) + '" style="width:100%;height:100%;object-fit:contain;" />' : '<span style="font-size:28px;">🏠</span>',
     '</div>',
     '<div style="flex:1;">',
-    '<input type="file" id="brandLogoFile" accept="image/*" style="font-size:13px;margin-bottom:6px;display:block;">',
+    '<input type="file" id="brandLogoFile" accept="image/*" style="font-size:13px;margin-bottom:6px;display:block;" onclick="event.stopPropagation()">',
     '<button class="action-btn" onclick="btnLoad(this, uploadBrandLogo)" style="font-size:12px;">⬆ 上傳 Logo</button>',
     '<span id="brandLogoStatus" style="font-size:12px;color:var(--sage);margin-left:8px;"></span>',
     '</div>',
     '</div>',
-    landlordBrandState.siteLogo
-      ? '<button onclick="clearBrandLogo()" style="font-size:12px;background:none;border:none;color:var(--warn);cursor:pointer;padding:0;">✕ 移除 Logo</button>'
-      : '',
+    landlordBrandState.siteLogo ? '<button onclick="clearBrandLogo()" style="font-size:12px;background:none;border:none;color:var(--warn);cursor:pointer;padding:4px 0;margin-top:4px;display:block;">✕ 移除 Logo</button>' : '',
     '</div>',
 
-    // Save button
-    '<button class="btn" onclick="btnLoad(this, saveLandlordBrand)" style="width:auto;padding:12px 32px;">💾 儲存品牌設定</button>',
+    '<hr style="border:none;border-top:1px solid var(--oat-mid);margin:0 0 24px;">',
+
+    // ── 輪播圖 ──
+    '<div style="margin-bottom:24px;">',
+    '<h4 style="font-size:14px;font-weight:700;margin-bottom:8px;">🖼️ 首頁輪播圖</h4>',
+    '<div style="background:#F5F2EC;border-radius:10px;padding:10px 16px;margin-bottom:12px;font-size:12px;line-height:2;color:var(--charcoal);">',
+    '📐 <strong>輪播圖建議規格</strong><br>・比例：<strong>16:9</strong>（如 1920×1080px）・最小寬度：<strong>1280px</strong><br>・格式：<strong>JPG / WebP</strong>・<strong>1MB 以下</strong>・建議 <strong>1–5 張</strong>，每 4 秒切換',
+    '</div>',
+    '<div id="brandDropZone" onclick="document.getElementById(\'brandSlideFile\').click()" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2px dashed var(--sage);border-radius:12px;padding:24px;cursor:pointer;background:#F8F6F1;transition:background 0.2s;" ondragover="event.preventDefault();this.style.background=\'#EDF3EE\'" ondragleave="this.style.background=\'#F8F6F1\'" ondrop="handleBrandSlideDrop(event)">',
+    '<span style="font-size:28px;">📁</span>',
+    '<span style="font-size:13px;color:var(--charcoal);font-weight:600;">點擊選擇或拖曳圖片至此</span>',
+    '<span style="font-size:11px;color:#aaa;">可多選，JPG / PNG / WebP</span>',
+    '<input type="file" id="brandSlideFile" accept="image/*" multiple style="display:none;" onclick="event.stopPropagation()" onchange="uploadBrandSlides(this.files)">',
+    '</div>',
+    '<div id="brandSlideUploadResult" style="margin-top:10px;font-size:13px;color:var(--deep-sage);min-height:20px;"></div>',
+    '<div id="brandSlideGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;min-height:40px;">',
+    renderBrandSlideGrid(),
+    '</div>',
+    '</div>',
+
+    '<button class="btn" onclick="btnLoad(this, saveLandlordBrand)" style="width:auto;padding:12px 32px;">💾 儲存設定</button>',
     '</div>',
   ].join('')
+}
+
+function renderBrandSlideGrid() {
+  if (!landlordBrandState.siteSlides.length) return '<p style="font-size:13px;color:#aaa;padding:8px 0;">尚無輪播圖</p>'
+  return landlordBrandState.siteSlides.map(function(s, i) {
+    return '<div style="position:relative;width:120px;height:80px;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">' +
+      '<img src="' + esc(s.url) + '" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.style.background=\'#E5E0D5\'">' +
+      '<button onclick="removeBrandSlide(' + i + ')" style="position:absolute;top:4px;right:4px;background:rgba(220,70,70,0.85);border:none;color:white;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:14px;line-height:1;">✕</button>' +
+      '<div style="position:absolute;top:4px;left:6px;background:rgba(0,0,0,0.45);color:white;font-size:10px;border-radius:4px;padding:1px 5px;">' + (i+1) + '</div>' +
+      '</div>'
+  }).join('')
+}
+
+function removeBrandSlide(i) {
+  landlordBrandState.siteSlides.splice(i, 1)
+  var g = document.getElementById('brandSlideGrid'); if (g) g.innerHTML = renderBrandSlideGrid()
+}
+
+function handleBrandSlideDrop(e) {
+  e.preventDefault()
+  var dz = document.getElementById('brandDropZone'); if (dz) dz.style.background = '#F8F6F1'
+  if (e.dataTransfer.files && e.dataTransfer.files.length) uploadBrandSlides(e.dataTransfer.files)
+}
+
+async function uploadBrandSlides(files) {
+  var resultEl = document.getElementById('brandSlideUploadResult')
+  if (!files || !files.length) return
+  var arr = Array.from(files), done = 0, failed = 0
+  resultEl.textContent = '上傳中 0/' + arr.length + '…'
+  for (var f of arr) {
+    var fd = new FormData(); fd.append('file', f)
+    try {
+      var r = await fetch('/admin/api/upload?key=' + encodeURIComponent(KEY), { method: 'POST', body: fd })
+      var d = await r.json()
+      if (!r.ok || !d.url) { failed++; continue }
+      landlordBrandState.siteSlides.push({ url: d.url })
+      done++
+      resultEl.textContent = '上傳中 ' + done + '/' + arr.length + '…'
+      var g = document.getElementById('brandSlideGrid'); if (g) g.innerHTML = renderBrandSlideGrid()
+    } catch(e) { failed++ }
+  }
+  resultEl.textContent = (done > 0 ? '✅ 已上傳 ' + done + ' 張' : '') + (failed ? (done > 0 ? '，' : '') + failed + ' 張失敗' : '')
+  document.getElementById('brandSlideFile').value = ''
 }
 
 async function uploadBrandLogo() {
   var fileInput = document.getElementById('brandLogoFile')
   var statusEl  = document.getElementById('brandLogoStatus')
-  if (!fileInput || !fileInput.files[0]) { statusEl.textContent = '請先選擇圖片'; return }
-  statusEl.textContent = '上傳中…'
-  var fd = new FormData()
-  fd.append('file', fileInput.files[0])
+  if (!fileInput || !fileInput.files[0]) { if(statusEl) statusEl.textContent = '請先選擇圖片'; return }
+  if (statusEl) statusEl.textContent = '上傳中…'
+  var fd = new FormData(); fd.append('file', fileInput.files[0])
   var r = await fetch('/admin/api/upload?key=' + encodeURIComponent(KEY), { method: 'POST', body: fd })
   var data = await r.json()
   if (!data.url) throw new Error('上傳失敗')
   landlordBrandState.siteLogo = data.url
   var prev = document.getElementById('brandLogoPreview')
   if (prev) prev.innerHTML = '<img src="' + esc(data.url) + '" style="width:100%;height:100%;object-fit:contain;" />'
-  statusEl.textContent = '✅ 上傳成功'
+  if (statusEl) statusEl.textContent = '✅ 上傳成功'
 }
 
-function clearBrandLogo() {
-  landlordBrandState.siteLogo = ''
-  renderLandlordBrandSettings()
-}
+function clearBrandLogo() { landlordBrandState.siteLogo = ''; renderLandlordBrandSettings() }
 
 async function saveLandlordBrand() {
-  var nameEl = document.getElementById('brandSiteName')
-  var siteName = nameEl ? nameEl.value.trim() : landlordBrandState.siteName
   var res = await fetch('/admin/api/landlord/' + DATA.landlordId + '/site?key=' + encodeURIComponent(KEY), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ siteName: siteName, siteLogo: landlordBrandState.siteLogo }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ siteLogo: landlordBrandState.siteLogo, siteSlides: landlordBrandState.siteSlides }),
   })
   if (!res.ok) { showToast('❌ 儲存失敗'); return }
-  showToast('✅ 品牌設定已儲存')
-  // Update local DATA cache
-  var me = (DATA.landlords || []).find(function(l){ return l.id === DATA.landlordId })
-  if (me) { me.siteName = siteName; me.siteLogo = landlordBrandState.siteLogo }
-  renderLandlordBrandSettings()
+  showToast('✅ 首頁設定已儲存')
+  if (DATA.selfLandlord) {
+    DATA.selfLandlord.siteLogo = landlordBrandState.siteLogo
+    try {
+      var feats = DATA.selfLandlord.features ? JSON.parse(DATA.selfLandlord.features) : {}
+      feats.siteSlides = landlordBrandState.siteSlides
+      DATA.selfLandlord.features = JSON.stringify(feats)
+    } catch(_) {}
+  }
 }
 
 // ── 輪播圖縮圖 grid（拖曳排序）──────────────────────────

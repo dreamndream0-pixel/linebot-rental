@@ -189,10 +189,19 @@ router.post('/admin/api/landlord/:id/site', express.json(), async (req, res) => 
     return res.status(403).json({ error: 'forbidden' })
   }
 
-  const { siteName, siteLogo } = req.body
+  const { siteName, siteLogo, siteSlides } = req.body
   const data = {}
   if (siteName !== undefined) data.siteName = siteName || null
   if (siteLogo !== undefined) data.siteLogo = siteLogo || null
+
+  // siteSlides stored inside features JSON to avoid schema change
+  if (siteSlides !== undefined) {
+    const current = await prisma.landlord.findUnique({ where: { id: req.params.id }, select: { features: true } })
+    let feats = {}
+    try { feats = current?.features ? JSON.parse(current.features) : {} } catch (_) {}
+    feats.siteSlides = Array.isArray(siteSlides) ? siteSlides : []
+    data.features = JSON.stringify(feats)
+  }
 
   await prisma.landlord.update({ where: { id: req.params.id }, data })
   res.json({ ok: true })
