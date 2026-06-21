@@ -660,26 +660,28 @@ function batchToolbarHtml() {
 
 function approveProperty(id) {
   if (!confirm('確定通過審核並上架此房源？')) return
-  fetch('/admin/api/property/' + id, {
+  fetch('/admin/api/property/' + id + '?key=' + encodeURIComponent(KEY), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-admin-key': KEY },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: 'AVAILABLE' })
-  }).then(function(r) { return r.json() }).then(function() {
+  }).then(function(r) { return r.json() }).then(function(d) {
+    if (d.error) { showToast('❌ ' + d.error); return }
     showToast('✅ 已審核通過，房源已上架')
     loadData()
-  }).catch(function() { showToast('❌ 操作失敗') })
+  }).catch(function(e) { showToast('❌ 操作失敗：' + e.message) })
 }
 
 function rejectProperty(id) {
   if (!confirm('確定退回此房源？')) return
-  fetch('/admin/api/property/' + id, {
+  fetch('/admin/api/property/' + id + '?key=' + encodeURIComponent(KEY), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-admin-key': KEY },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: 'REJECTED' })
-  }).then(function(r) { return r.json() }).then(function() {
+  }).then(function(r) { return r.json() }).then(function(d) {
+    if (d.error) { showToast('❌ ' + d.error); return }
     showToast('🔄 已退回房源')
     loadData()
-  }).catch(function() { showToast('❌ 操作失敗') })
+  }).catch(function(e) { showToast('❌ 操作失敗：' + e.message) })
 }
 
 function renderPendingSection() {
