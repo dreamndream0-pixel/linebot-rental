@@ -14,6 +14,7 @@ router.use(require('./admin/routes/community'))
 router.use(require('./admin/routes/importexport'))
 router.use(require('./admin/routes/features'))
 router.use(require('./admin/routes/contactNotify'))
+router.use(require('./admin/routes/internalLandlord'))
 router.use(require('./admin/routes/webusers'))
 
 router.get('/admin', (req, res) => {
