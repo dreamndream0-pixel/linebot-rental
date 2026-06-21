@@ -658,6 +658,59 @@ function batchToolbarHtml() {
     '</div>'
 }
 
+function approveProperty(id) {
+  if (!confirm('確定通過審核並上架此房源？')) return
+  fetch('/admin/api/property/' + id, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-admin-key': KEY },
+    body: JSON.stringify({ status: 'AVAILABLE' })
+  }).then(function(r) { return r.json() }).then(function() {
+    showToast('✅ 已審核通過，房源已上架')
+    loadData()
+  }).catch(function() { showToast('❌ 操作失敗') })
+}
+
+function rejectProperty(id) {
+  if (!confirm('確定退回此房源？')) return
+  fetch('/admin/api/property/' + id, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-admin-key': KEY },
+    body: JSON.stringify({ status: 'REJECTED' })
+  }).then(function(r) { return r.json() }).then(function() {
+    showToast('🔄 已退回房源')
+    loadData()
+  }).catch(function() { showToast('❌ 操作失敗') })
+}
+
+function renderPendingSection() {
+  var pending = DATA.properties.filter(function(p) { return p.status === 'PENDING' })
+  if (!pending.length) return ''
+  return '<div style="margin-bottom:20px;border:2px solid #F59E0B;border-radius:14px;overflow:hidden;">' +
+    '<div style="background:#FFFBEB;padding:12px 16px;border-bottom:2px solid #F59E0B;display:flex;align-items:center;gap:10px;">' +
+    '<span style="font-size:16px;">⏳</span>' +
+    '<span style="font-weight:800;font-size:15px;color:#92400E;">待審核房源</span>' +
+    '<span style="background:#F59E0B;color:white;font-size:12px;font-weight:700;padding:2px 10px;border-radius:99px;">' + pending.length + ' 間</span>' +
+    '</div>' +
+    '<div style="padding:14px;display:flex;flex-direction:column;gap:10px;">' +
+    pending.map(function(p) {
+      var landlordName = ''
+      if (DATA.role === 'super') {
+        var l = (DATA.landlords || []).find(function(l){ return l.id === p.ownerId })
+        landlordName = l ? '・' + esc(l.name) : ''
+      }
+      return '<div style="background:white;border-radius:10px;border:1.5px solid #FDE68A;padding:12px 14px;display:flex;align-items:center;gap:12px;">' +
+        '<div style="flex:1;min-width:0;">' +
+        '<div style="font-weight:700;font-size:14px;color:#3d3d3d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(p.title) + '</div>' +
+        '<div style="font-size:12px;color:#aaa;margin-top:3px;">' + esc(p.city||'') + esc(p.district||'') + ' · NT$' + Number(p.price).toLocaleString() + '/月' + landlordName + '</div>' +
+        '</div>' +
+        '<button onclick="startEditProperty(\'' + p.id + '\')" style="padding:6px 14px;border-radius:8px;border:1.5px solid #ddd;background:white;font-size:12px;cursor:pointer;font-weight:600;">✏️ 編輯</button>' +
+        '<button onclick="approveProperty(\'' + p.id + '\')" style="padding:6px 16px;border-radius:8px;border:none;background:#22C55E;color:white;font-size:12px;font-weight:700;cursor:pointer;">✅ 通過上架</button>' +
+        '<button onclick="rejectProperty(\'' + p.id + '\')" style="padding:6px 14px;border-radius:8px;border:1.5px solid #EF4444;background:white;color:#EF4444;font-size:12px;font-weight:700;cursor:pointer;">❌ 退回</button>' +
+        '</div>'
+    }).join('') +
+    '</div></div>'
+}
+
 function renderProperties() {
   var csvBtns = feat('csvImport')
     ? '<button onclick="exportProperties()" style="padding:9px 18px;border-radius:8px;border:1.5px solid var(--sage);background:white;color:var(--deep-sage);font-size:13px;font-weight:600;cursor:pointer;">⬇️ 匯出 CSV</button>' +
@@ -669,12 +722,14 @@ function renderProperties() {
     csvBtns +
     '</div>' +
     '<div id="importResult" style="display:none;margin-bottom:12px;padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.7;"></div>'
-  if (!DATA.properties.length) {
-    return addBtn + '<div class="empty">還沒有房源，按上方按鈕新增第一間！</div>'
+  var pendingSection = renderPendingSection()
+  if (!DATA.properties.filter(function(p){ return p.status !== 'PENDING' }).length) {
+    return addBtn + pendingSection + (pendingSection ? '' : '<div class="empty">還沒有房源，按上方按鈕新增第一間！</div>')
   }
   var toolbar = batchToolbarHtml()
+  var nonPending = DATA.properties.filter(function(p){ return p.status !== 'PENDING' })
   if (DATA.role !== 'super') {
-    return addBtn + toolbar + DATA.properties.map(function(p){ return renderPropCard(p, true) }).join('')
+    return addBtn + pendingSection + toolbar + nonPending.map(function(p){ return renderPropCard(p, true) }).join('')
   }
   // 總管理員：依房東分組，開合式
   var landlordMap = {}
@@ -684,7 +739,7 @@ function renderProperties() {
   })
   var groups = {}   // key = ownerId
   var groupOrder = []
-  DATA.properties.forEach(function(p) {
+  DATA.properties.filter(function(p){ return p.status !== 'PENDING' }).forEach(function(p) {
     var lid = p.ownerId || '__none__'
     if (!groups[lid]) { groups[lid] = []; groupOrder.push(lid) }
     groups[lid].push(p)
@@ -718,7 +773,7 @@ function renderProperties() {
       '</div>' +
       '</div>'
   }).join('')
-  return addBtn + toolbar + groupHtml
+  return addBtn + pendingSection + toolbar + groupHtml
 }
 
 function toggleGroup(id, headerEl) {
