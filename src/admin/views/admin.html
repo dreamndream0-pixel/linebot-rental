@@ -251,7 +251,12 @@
   .admin-toolbar-left, .admin-toolbar-right { display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
   .admin-primary { background:var(--deep-sage)!important;color:white!important;border:none!important;box-shadow:0 10px 24px rgba(47,107,70,.22); }
   .property-table { background:white;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);overflow:hidden; }
-  .property-table-head, .property-row, .property-filter-row { display:grid;grid-template-columns:34px 44px 112px minmax(190px,1.35fr) minmax(118px,.72fr) minmax(104px,.62fr) minmax(118px,.72fr) minmax(84px,.5fr) minmax(116px,.66fr) 86px;gap:12px;align-items:center; }
+  .property-tabs { display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px; }
+  .property-tab { border:1px solid var(--line);background:white;border-radius:999px;padding:9px 14px;font-size:13px;font-weight:800;color:#4B5563;cursor:pointer;display:inline-flex;align-items:center;gap:7px; }
+  .property-tab.active { background:var(--deep-sage);border-color:var(--deep-sage);color:white;box-shadow:0 10px 22px rgba(47,107,70,.18); }
+  .property-tab-count { font-size:11px;font-weight:900;border-radius:999px;padding:2px 7px;background:#F1F5F1;color:#52665A; }
+  .property-tab.active .property-tab-count { background:rgba(255,255,255,.22);color:white; }
+  .property-table-head, .property-row, .property-filter-row { display:grid;grid-template-columns:34px 44px 112px minmax(190px,1.25fr) minmax(118px,.66fr) minmax(104px,.56fr) minmax(118px,.66fr) minmax(84px,.44fr) minmax(116px,.58fr) minmax(82px,.42fr) 86px;gap:12px;align-items:center; }
   .property-table-head { padding:14px 18px;background:#FAFBFA;font-size:13px;font-weight:900;color:#111827;border-bottom:1px solid var(--line); }
   .property-filter-row { padding:10px 18px;background:#F8FAF8;border-bottom:1px solid var(--line); }
   .property-filter-row input, .property-filter-row select { width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:white;padding:7px 9px;font-size:12px; }
@@ -850,6 +855,7 @@ function renderPropCard(p, showCheckbox) {
     '<div class="property-meta">NT$ ' + Number(p.price || 0).toLocaleString() + ' / 月</div>' +
     '<div class="property-meta">' + (p.size ? p.size + ' 坪' : '-') + '</div>' +
     '<div class="property-meta">' + fmtDate(p.updatedAt || p.createdAt) + '</div>' +
+    '<div class="property-meta">' + Number(p.viewCount || 0).toLocaleString() + '</div>' +
     '<div class="property-actions">' +
       '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">編輯</button>' +
     '</div>' +
@@ -931,8 +937,18 @@ function renderPendingSection() {
 }
 
 // ── 房源篩選（總篩選 / 房東區塊篩選）─────────────────────────────
+var propertyViewTab = 'overview'
 var propFilters = { location: '', type: '', rent: '', size: '', status: '', featured: '' }
 var groupPropFilters = {}
+
+var PROPERTY_VIEW_TABS = [
+  { id: 'overview', label: '總覽' },
+  { id: 'available', label: '待出租' },
+  { id: 'rented', label: '承租中' },
+  { id: 'coming', label: '即將釋出' },
+  { id: 'featured', label: '精選房源' },
+  { id: 'offline', label: '已下架' },
+]
 
 function propLocationText(p) {
   return [p.city || '', p.district || ''].join('')
@@ -974,6 +990,32 @@ function matchPropFilters(p, filters) {
     if (filters.featured === 'no' && feat) return false
   }
   return true
+}
+
+function matchPropertyViewTab(p, tab) {
+  if (tab === 'available') return p.status === 'AVAILABLE'
+  if (tab === 'rented') return p.status === 'RENTED'
+  if (tab === 'coming') return p.status === 'COMING_SOON'
+  if (tab === 'featured') return DATA.role !== 'super' ? !!p.siteFeatured : !!p.featured
+  if (tab === 'offline') return ['INACTIVE', 'PAUSED', 'REJECTED'].indexOf(p.status) !== -1
+  return true
+}
+
+function propertyTabList(list, tab) {
+  return list.filter(function(p) { return matchPropertyViewTab(p, tab || propertyViewTab) })
+}
+
+function propertyTabsHtml(list) {
+  return '<div class="property-tabs">' + PROPERTY_VIEW_TABS.map(function(t) {
+    var count = propertyTabList(list, t.id).length
+    return '<button class="property-tab' + (propertyViewTab === t.id ? ' active' : '') + '" onclick="setPropertyViewTab(\'' + t.id + '\')">' +
+      esc(t.label) + '<span class="property-tab-count">' + count + '</span></button>'
+  }).join('') + '</div>'
+}
+
+function setPropertyViewTab(tab) {
+  propertyViewTab = tab || 'overview'
+  rerenderPropertiesTab()
 }
 
 function filterPropList(list) {
@@ -1059,17 +1101,19 @@ function renderProperties() {
     '<div id="importResult" style="display:none;margin-bottom:12px;padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.7;"></div>'
   var pendingSection = renderPendingSection()
   var allNonPending = DATA.properties.filter(function(p){ return p.status !== 'PENDING' })
+  var propertyTabs = propertyTabsHtml(allNonPending)
   if (!allNonPending.length) {
     return addBtn + pendingSection + (pendingSection ? '' : '<div class="empty">還沒有房源，按上方按鈕新增第一間！</div>')
   }
   var filterBar = propFilterBarHtml()
   var toolbar = batchToolbarHtml()
-  var nonPending = filterPropList(allNonPending)
+  var tabbedList = propertyTabList(allNonPending)
+  var nonPending = filterPropList(tabbedList)
   if (!nonPending.length) {
-    return addBtn + pendingSection + filterBar + '<div class="empty">沒有符合篩選條件的房源</div>'
+    return addBtn + pendingSection + propertyTabs + filterBar + '<div class="empty">沒有符合篩選條件的房源</div>'
   }
   if (DATA.role !== 'super') {
-    return addBtn + pendingSection + filterBar + toolbar + propertyTableHtml(nonPending, true)
+    return addBtn + pendingSection + propertyTabs + filterBar + toolbar + propertyTableHtml(nonPending, true)
   }
   // 總管理員：依房東分組，開合式
   var landlordMap = {}
@@ -1114,7 +1158,7 @@ function renderProperties() {
       '</div>' +
       '</div>'
   }).join('')
-  return addBtn + pendingSection + filterBar + toolbar + groupHtml
+  return addBtn + pendingSection + propertyTabs + filterBar + toolbar + groupHtml
 }
 
 function propertyTableHtml(list, showCheckbox, groupKey) {
@@ -1124,7 +1168,7 @@ function propertyTableHtml(list, showCheckbox, groupKey) {
     filteredList = list.filter(function(p){ return matchPropFilters(p, gf) })
   }
   return '<div class="property-table">' +
-    '<div class="property-table-head"><div></div><div>精選</div><div>狀態</div><div>房源</div><div>地點</div><div>類型</div><div>租金</div><div>坪數</div><div>更新時間</div><div style="text-align:right;">操作</div></div>' +
+    '<div class="property-table-head"><div></div><div>精選</div><div>狀態</div><div>房源</div><div>地點</div><div>類型</div><div>租金</div><div>坪數</div><div>更新時間</div><div>瀏覽</div><div style="text-align:right;">操作</div></div>' +
     (groupKey ? propertyGroupFilterRowHtml(list, groupKey) : '') +
     (filteredList.length ? filteredList.map(function(p){ return renderPropCard(p, showCheckbox) }).join('') : '<div style="padding:22px;color:var(--muted);font-size:13px;">此房東沒有符合欄位篩選的房源</div>') +
   '</div>'
@@ -1159,6 +1203,7 @@ function propertyGroupFilterRowHtml(list, groupKey) {
     '<select onchange="' + prefix + '\'type\', this.value)"><option value="">全部類型</option>' + types.map(function(o){ return '<option value="' + o.value + '"' + (gf.type === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
     '<select onchange="' + prefix + '\'rent\', this.value)"><option value="">全部租金</option>' + rentOpts.map(function(o){ return '<option value="' + o.value + '"' + (gf.rent === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
     '<select onchange="' + prefix + '\'size\', this.value)"><option value="">全部坪數</option>' + sizeOpts.map(function(o){ return '<option value="' + o.value + '"' + (gf.size === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
+    '<div></div>' +
     '<div></div>' +
     '<div style="text-align:right;">' + (clearActive ? '<button class="action-btn" onclick="clearGroupPropFilter(\'' + groupKey.replace(/'/g, "\\'") + '\')">清除</button>' : '') + '</div>' +
     '</div>'
