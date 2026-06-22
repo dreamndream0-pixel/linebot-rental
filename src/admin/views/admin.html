@@ -251,7 +251,7 @@
   .admin-toolbar-left, .admin-toolbar-right { display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
   .admin-primary { background:var(--deep-sage)!important;color:white!important;border:none!important;box-shadow:0 10px 24px rgba(47,107,70,.22); }
   .property-table { background:white;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);overflow:hidden; }
-  .property-table-head, .property-row, .property-filter-row { display:grid;grid-template-columns:minmax(240px,1.5fr) minmax(120px,.75fr) minmax(110px,.65fr) minmax(120px,.7fr) minmax(90px,.55fr) minmax(130px,.75fr) minmax(120px,.7fr) minmax(210px,1fr);gap:14px;align-items:center; }
+  .property-table-head, .property-row, .property-filter-row { display:grid;grid-template-columns:34px 112px minmax(190px,1.35fr) minmax(118px,.72fr) minmax(104px,.62fr) minmax(118px,.72fr) minmax(84px,.5fr) minmax(116px,.66fr) minmax(150px,.82fr);gap:12px;align-items:center; }
   .property-table-head { padding:14px 18px;background:#FAFBFA;font-size:13px;font-weight:900;color:#111827;border-bottom:1px solid var(--line); }
   .property-filter-row { padding:10px 18px;background:#F8FAF8;border-bottom:1px solid var(--line); }
   .property-filter-row input, .property-filter-row select { width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:white;padding:7px 9px;font-size:12px; }
@@ -260,7 +260,10 @@
   .property-main { display:flex;align-items:center;gap:14px;min-width:0;color:inherit;text-decoration:none; }
   .property-main:hover h3 { color:var(--deep-sage);text-decoration:underline; }
   .property-main h3 { margin:0 0 4px;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-  .property-meta { font-size:13px;color:var(--muted);line-height:1.55; }
+  .property-meta { font-size:13px;color:var(--muted);line-height:1.55;min-width:0; }
+  .property-status-cell { display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-width:0; }
+  .property-status-select { width:100%;max-width:112px;padding:8px;border-radius:8px;border:1px solid var(--line);font-size:13px;background:white; }
+  .property-release-input { width:100%;max-width:112px;border:1px solid var(--line);border-radius:8px;padding:6px 7px;font-size:12px; }
   .property-actions { display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap; }
   .property-actions select { max-width:120px; }
   @media(max-width:1180px) {
@@ -825,21 +828,21 @@ function renderPropCard(p, showCheckbox) {
   var featOn = DATA.role !== 'super' ? !!p.siteFeatured : !!p.featured
   var featOnLabel  = '★ 精選中'
   var featOffLabel = '☆ 設精選'
-  var statusSelect = '<select onchange="changePropertyStatus(\'' + p.id + '\', this.value)" style="width:96px;padding:8px 8px;border-radius:8px;border:1px solid var(--line);font-size:13px;background:white;flex-shrink:0;">' + statusOptions + '</select>'
+  var statusSelect = '<select class="property-status-select" onchange="changePropertyStatus(\'' + p.id + '\', this.value, this)">' + statusOptions + '</select>'
   var releaseDateInput = p.status === 'COMING_SOON'
-    ? '<input type="date" value="' + esc(dateInputValue(p.availableFrom)) + '" onchange="changeAvailableFrom(\'' + p.id + '\', this.value)" style="margin-top:7px;width:132px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px;">'
+    ? '<input class="property-release-input" type="date" value="' + esc(dateInputValue(p.availableFrom)) + '" onchange="changeAvailableFrom(\'' + p.id + '\', this.value)">'
     : ''
-  return '<div class="property-row">' +
-    '<div class="property-main">' + cbHtml + statusSelect +
-      '<a class="property-main" href="' + propUrl(p) + '" target="_blank" style="gap:14px;min-width:0;">' + thumb +
-        '<div style="min-width:0;"><h3>' + esc(p.title) + '</h3><div class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div></div>' +
-      '</a>' +
-    '</div>' +
+  return '<div class="property-row" id="propertyRow_' + esc(p.id) + '">' +
+    '<div>' + cbHtml + '</div>' +
+    '<div class="property-status-cell">' + statusSelect + releaseDateInput + '</div>' +
+    '<a class="property-main" href="' + propUrl(p) + '" target="_blank" style="gap:14px;min-width:0;">' + thumb +
+      '<div style="min-width:0;"><h3>' + esc(p.title) + '</h3><div class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div></div>' +
+    '</a>' +
     '<div class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div>' +
     '<div class="property-meta">' + (TYPE_LABEL[p.type] || p.type || '-') + '</div>' +
     '<div class="property-meta">NT$ ' + Number(p.price || 0).toLocaleString() + ' / 月</div>' +
     '<div class="property-meta">' + (p.size ? p.size + ' 坪' : '-') + '</div>' +
-    '<div><span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span><div style="margin-top:6px;">' + onlineBadgeHtml(p.status) + '</div>' + releaseDateInput + '</div>' +
+    '<div><span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span><div style="margin-top:6px;">' + onlineBadgeHtml(p.status) + '</div></div>' +
     '<div class="property-meta">' + fmtDate(p.updatedAt || p.createdAt) + '</div>' +
     '<div class="property-actions">' +
       '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">編輯</button>' +
@@ -1117,7 +1120,7 @@ function propertyTableHtml(list, showCheckbox, groupKey) {
     filteredList = list.filter(function(p){ return matchPropFilters(p, gf) })
   }
   return '<div class="property-table">' +
-    '<div class="property-table-head"><div>房源</div><div>地點</div><div>類型</div><div>租金</div><div>坪數</div><div>狀態</div><div>更新時間</div><div style="text-align:right;">操作</div></div>' +
+    '<div class="property-table-head"><div></div><div>狀態</div><div>房源</div><div>地點</div><div>類型</div><div>租金</div><div>坪數</div><div>更新時間</div><div style="text-align:right;">操作</div></div>' +
     (groupKey ? propertyGroupFilterRowHtml(list, groupKey) : '') +
     (filteredList.length ? filteredList.map(function(p){ return renderPropCard(p, showCheckbox) }).join('') : '<div style="padding:22px;color:var(--muted);font-size:13px;">此房東沒有符合欄位篩選的房源</div>') +
   '</div>'
@@ -1144,12 +1147,13 @@ function propertyGroupFilterRowHtml(list, groupKey) {
   var prefix = "setGroupPropFilter('" + groupKey.replace(/'/g, "\\'") + "',"
   var clearActive = Object.keys(gf).some(function(k){ return gf[k] })
   return '<div class="property-filter-row">' +
-    '<div style="font-size:12px;color:var(--muted);font-weight:800;">欄位篩選</div>' +
+    '<div style="font-size:12px;color:var(--muted);font-weight:800;">篩選</div>' +
+    '<select onchange="' + prefix + '\'status\', this.value)"><option value="">全部狀態</option>' + statuses.map(function(o){ return '<option value="' + o.value + '"' + (gf.status === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
+    '<div></div>' +
     '<select onchange="' + prefix + '\'location\', this.value)"><option value="">全部地點</option>' + locations.map(function(v){ return '<option value="' + esc(v) + '"' + (gf.location === v ? ' selected' : '') + '>' + esc(v) + '</option>' }).join('') + '</select>' +
     '<select onchange="' + prefix + '\'type\', this.value)"><option value="">全部類型</option>' + types.map(function(o){ return '<option value="' + o.value + '"' + (gf.type === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
     '<select onchange="' + prefix + '\'rent\', this.value)"><option value="">全部租金</option>' + rentOpts.map(function(o){ return '<option value="' + o.value + '"' + (gf.rent === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
     '<select onchange="' + prefix + '\'size\', this.value)"><option value="">全部坪數</option>' + sizeOpts.map(function(o){ return '<option value="' + o.value + '"' + (gf.size === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
-    '<select onchange="' + prefix + '\'status\', this.value)"><option value="">全部狀態</option>' + statuses.map(function(o){ return '<option value="' + o.value + '"' + (gf.status === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
     '<div></div>' +
     '<div style="text-align:right;">' + (clearActive ? '<button class="action-btn" onclick="clearGroupPropFilter(\'' + groupKey.replace(/'/g, "\\'") + '\')">清除</button>' : '') + '</div>' +
     '</div>'
@@ -1741,23 +1745,53 @@ async function saveProperty() {
   reload()
 }
 
-async function changePropertyStatus(id, status) {
+function updatePropertyRowInPlace(id) {
+  var p = (DATA.properties || []).find(function(x){ return x.id === id })
+  var row = document.getElementById('propertyRow_' + id)
+  if (!p || !row) return
+  var showCheckbox = !!row.querySelector('.prop-cb')
+  row.outerHTML = renderPropCard(p, showCheckbox)
+  updateBatchCount()
+}
+
+async function changePropertyStatus(id, status, selectEl) {
+  var p = (DATA.properties || []).find(function(x){ return x.id === id })
+  var previousStatus = p ? p.status : (selectEl ? selectEl.getAttribute('data-current') : '')
   var body = { status: status }
   if (status === 'COMING_SOON') {
     var date = prompt('請輸入即將釋出日期（YYYY-MM-DD）')
-    if (date === null) return
+    if (date === null) {
+      if (selectEl && previousStatus) selectEl.value = previousStatus
+      return
+    }
     date = date.trim()
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showToast('❌ 日期格式請用 YYYY-MM-DD'); return }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      if (selectEl && previousStatus) selectEl.value = previousStatus
+      showToast('❌ 日期格式請用 YYYY-MM-DD'); return
+    }
     body.availableFrom = date
   } else {
     body.availableFrom = null
   }
-  await fetch('/admin/api/property/' + id + '?key=' + encodeURIComponent(KEY), {
+  if (selectEl) selectEl.disabled = true
+  var res = await fetch('/admin/api/property/' + id + '?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify(body)
   })
+  if (selectEl) selectEl.disabled = false
+  if (!res.ok) {
+    if (selectEl && previousStatus) selectEl.value = previousStatus
+    var err = await res.json().catch(function(){ return {} })
+    showToast('❌ 狀態更新失敗：' + (err.error || res.status))
+    return
+  }
+  if (p) {
+    p.status = status
+    p.availableFrom = body.availableFrom
+    p.updatedAt = new Date().toISOString()
+  }
   showToast('✅ 狀態已更新')
-  reload()
+  updatePropertyRowInPlace(id)
 }
 
 async function changeAvailableFrom(id, date) {
@@ -1767,8 +1801,14 @@ async function changeAvailableFrom(id, date) {
     body: JSON.stringify({ status: 'COMING_SOON', availableFrom: date })
   })
   if (!res.ok) { showToast('❌ 日期更新失敗'); return }
+  var p = (DATA.properties || []).find(function(x){ return x.id === id })
+  if (p) {
+    p.status = 'COMING_SOON'
+    p.availableFrom = date
+    p.updatedAt = new Date().toISOString()
+  }
   showToast('✅ 即將釋出日期已更新')
-  reload()
+  updatePropertyRowInPlace(id)
 }
 
 async function deleteProperty(id) {
