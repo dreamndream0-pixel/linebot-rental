@@ -307,15 +307,9 @@ async function login(savedKey) {
       var msl = document.getElementById('mainSiteLink')
       if (sl) {
         if (DATA.role === 'landlord' && DATA.landlordId) {
-          // 房東：第一顆＝個人官網（若功能開啟），第二顆＝小蝸主站
-          if (feat('site')) {
-            sl.href = DATA.siteUrl + '/site/' + DATA.landlordId
-            sl.textContent = '🌐 個人官網'
-            sl.style.display = 'inline-flex'
-          } else {
-            sl.style.display = 'none'
-          }
-          if (msl) { msl.href = DATA.siteUrl; msl.style.display = 'inline-flex' }
+          // 房東：「前往首頁」連到自己的個人官網首頁（隱藏重複的舊按鈕）
+          sl.style.display = 'none'
+          if (msl) { msl.href = DATA.siteUrl + '/site/' + DATA.landlordId; msl.style.display = 'inline-flex' }
         } else {
           // 總管理員：只需要主站
           sl.href = DATA.siteUrl
