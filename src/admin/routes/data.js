@@ -98,7 +98,11 @@ router.get('/admin/api/data', async (req, res) => {
     }),
     prisma.property.findMany({
       where: auth.role === 'super' ? { deletedAt: null } : { deletedAt: null, ownerId: auth.landlordId },
-      include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] }, owner: { select: { name: true } }, tags: true, amenities: true },
+      // 列表只需封面圖；完整 images/tags/amenities 改由編輯時 GET /admin/api/property/:id 取得
+      include: {
+        images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }], take: 1, select: { url: true } },
+        owner: { select: { name: true } },
+      },
       orderBy: { createdAt: 'desc' }
     }),
     auth.role === 'super'

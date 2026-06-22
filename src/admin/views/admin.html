@@ -1658,6 +1658,15 @@ async function startEditProperty(id) {
   var p = DATA.properties.find(function(x){ return x.id === id })
   if (!p) return
 
+  // 列表為了加速只帶封面圖；編輯需要完整 images/tags/amenities，這裡補抓單筆完整資料
+  // （就地合併，保留列表已帶的瀏覽數 / communityName 等欄位；抓過一次就快取）
+  if (!p._full) {
+    try {
+      var fr = await fetch('/admin/api/property/' + id + '?key=' + encodeURIComponent(KEY))
+      if (fr.ok) { Object.assign(p, await fr.json()); p._full = true }
+    } catch(e) {}
+  }
+
   var html = '<div id="propModal" class="modal-overlay">' +
     '<div class="modal-box">' +
     '<div class="modal-header"><h3>✏️ 編輯房源</h3>' +
