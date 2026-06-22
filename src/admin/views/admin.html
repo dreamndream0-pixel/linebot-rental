@@ -1356,18 +1356,16 @@ async function applyBatchStatus() {
   }
   if (!confirm('確定將 ' + checked.length + ' 間房源改為「' + label + '」？')) return
   var ids = checked.map(function(cb){ return cb.dataset.id })
-  var failed = 0
-  for (var id of ids) {
-    try {
-      var res = await fetch('/admin/api/property/' + id + '?key=' + encodeURIComponent(KEY), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, availableFrom: availableFrom })
-      })
-      if (!res.ok) failed++
-    } catch(e) { failed++ }
-  }
-  if (failed) showToast('⚠️ ' + failed + ' 間更新失敗')
-  else showToast('✅ 已更新 ' + ids.length + ' 間房源')
+  showToast('更新中…')
+  try {
+    var res = await fetch('/admin/api/properties/batch-status?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids, status: newStatus, availableFrom: availableFrom })
+    })
+    var data = await res.json().catch(function(){ return {} })
+    if (!res.ok) { showToast('❌ ' + (data.error || '更新失敗')); return }
+    showToast('✅ 已更新 ' + (data.updated || ids.length) + ' 間房源')
+  } catch(e) { showToast('❌ 更新失敗，請稍後再試'); return }
   await reload()
 }
 
@@ -1375,17 +1373,17 @@ async function applyBatchFeatured(featured) {
   var checked = Array.from(document.querySelectorAll('.prop-cb:checked'))
   if (!checked.length) { showToast('請先勾選房源'); return }
   if (!confirm('確定將 ' + checked.length + ' 間房源' + (featured ? '設為精選' : '取消精選') + '？')) return
-  var failed = 0
-  for (var cb of checked) {
-    try {
-      var res = await fetch('/admin/api/property/' + cb.dataset.id + '/featured?key=' + encodeURIComponent(KEY), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ featured: featured })
-      })
-      if (!res.ok) failed++
-    } catch(e) { failed++ }
-  }
-  showToast(failed ? '⚠️ ' + failed + ' 間精選更新失敗' : '✅ 已更新精選')
+  var ids = checked.map(function(cb){ return cb.dataset.id })
+  showToast('更新中…')
+  try {
+    var res = await fetch('/admin/api/properties/batch-featured?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids, featured: featured })
+    })
+    var data = await res.json().catch(function(){ return {} })
+    if (!res.ok) { showToast('❌ ' + (data.error || '精選更新失敗')); return }
+    showToast('✅ 已更新精選 ' + (data.updated || ids.length) + ' 間')
+  } catch(e) { showToast('❌ 精選更新失敗，請稍後再試'); return }
   await reload()
 }
 

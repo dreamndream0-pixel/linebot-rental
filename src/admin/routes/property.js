@@ -215,4 +215,69 @@ router.post('/admin/api/property/:id/delete', express.json(), async (req, res) =
   res.json(property)
 })
 
+// ── 批次更新狀態（一次 updateMany，避免逐筆 HTTP/DB 造成的超慢與卡住）──
+router.post('/admin/api/properties/batch-status', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  const { ids, status, availableFrom } = req.body
+  if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids 必填' })
+  if (!status) return res.status(400).json({ error: 'status 必填' })
+
+  // 房東只能改自己的房源；先撈出實際可更新的房源（同時取得 ownerId 供清快取）
+  const where = { id: { in: ids } }
+  if (auth.role === 'landlord') where.ownerId = auth.landlordId
+  const targets = await prisma.property.findMany({ where, select: { id: true, ownerId: true } })
+  if (!targets.length) return res.status(404).json({ error: '找不到可更新的房源' })
+  const targetIds = targets.map(p => p.id)
+
+  // 一次更新所有狀態
+  await prisma.property.updateMany({ where: { id: { in: targetIds } }, data: { status } })
+
+  // availableFrom：COMING_SOON 設日期、其餘清空（欄位確保存在 + 一次 UPDATE）
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE properties ADD COLUMN IF NOT EXISTS "availableFrom" TIMESTAMPTZ`)
+    const val = status === 'COMING_SOON' && availableFrom ? new Date(availableFrom) : null
+    const placeholders = targetIds.map((_, i) => `$${i + 2}`).join(',')
+    await prisma.$executeRawUnsafe(
+      `UPDATE properties SET "availableFrom"=$1 WHERE id IN (${placeholders})`,
+      val, ...targetIds
+    )
+  } catch (e) {
+    if (status === 'COMING_SOON') return res.status(500).json({ error: '即將釋出日期欄位建立失敗，請稍後再試' })
+  }
+
+  // 先回應，前台快取清除在背景進行（每個房東官網只清一次）
+  res.json({ ok: true, updated: targetIds.length })
+  const owners = [...new Set(targets.map(p => p.ownerId).filter(Boolean))]
+  revalidateSite(['/listings', ...owners.map(o => `/site/${o}`)]).catch(() => {})
+})
+
+// ── 批次設定/取消精選 ──
+router.post('/admin/api/properties/batch-featured', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  const { ids, featured } = req.body
+  if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids 必填' })
+
+  const where = { id: { in: ids } }
+  if (auth.role !== 'super') where.ownerId = auth.landlordId
+  const targets = await prisma.property.findMany({ where, select: { id: true, ownerId: true } })
+  if (!targets.length) return res.status(404).json({ error: '找不到可更新的房源' })
+  const targetIds = targets.map(p => p.id)
+
+  // 房東改官網精選(siteFeatured)、總管理員改主站精選(featured)
+  const data = auth.role === 'super' ? { featured: !!featured } : { siteFeatured: !!featured }
+  await prisma.property.updateMany({ where: { id: { in: targetIds } }, data })
+
+  res.json({ ok: true, updated: targetIds.length })
+  if (auth.role === 'super') {
+    revalidateSite(['/'], ['featured-properties']).catch(() => {})
+  } else {
+    const owners = [...new Set(targets.map(p => p.ownerId).filter(Boolean))]
+    revalidateSite(owners.map(o => `/site/${o}`)).catch(() => {})
+  }
+})
+
 module.exports = router
