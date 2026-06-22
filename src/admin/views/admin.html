@@ -1413,8 +1413,15 @@ async function toggleFeatured(id, currentFeatured) {
     body: JSON.stringify({ featured: newVal })
   })
   if (res.ok) {
+    var updated = await res.json()
+    // 只更新本地資料中的這一筆，不重抓全部後台資料
+    var p = (DATA.properties || []).find(function(x){ return x.id === id })
+    if (p) {
+      if ('featured' in updated) p.featured = updated.featured
+      if ('siteFeatured' in updated) p.siteFeatured = updated.siteFeatured
+    }
     showToast(newVal ? '⭐ 已設為精選' : '☆ 已取消精選')
-    reload()
+    if (currentTab === 'properties') { var el = document.getElementById('content'); if (el) { el.innerHTML = renderProperties(); setTimeout(renderImgPreview, 50) } }
   } else {
     showToast('❌ 操作失敗')
   }

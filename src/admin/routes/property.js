@@ -167,16 +167,14 @@ router.post('/admin/api/property/:id/featured', express.json(), async (req, res)
     select: { id: true, featured: true, siteFeatured: true, ownerId: true },
   })
 
-  // 立即清除前台快取，避免最多 2 分鐘延遲
-  if (auth.role === 'super') {
-    // 主站精選 → 重新驗證首頁精選快取
-    await revalidateSite(['/'], ['featured-properties'])
-  } else if (property.ownerId) {
-    // 房東官網精選 → 重新驗證該房東官網
-    await revalidateSite([`/site/${property.ownerId}`])
-  }
-
+  // 立即回應，前台快取清除在背景進行（不讓使用者等待外部網路請求）
   res.json(property)
+
+  if (auth.role === 'super') {
+    revalidateSite(['/'], ['featured-properties']).catch(() => {})
+  } else if (property.ownerId) {
+    revalidateSite([`/site/${property.ownerId}`]).catch(() => {})
+  }
 })
 
 router.post('/admin/api/property/:id/delete', express.json(), async (req, res) => {
