@@ -164,8 +164,18 @@ router.post('/admin/api/property/:id/featured', express.json(), async (req, res)
   const property = await prisma.property.update({
     where: { id: req.params.id },
     data,
-    select: { id: true, featured: true, siteFeatured: true },
+    select: { id: true, featured: true, siteFeatured: true, ownerId: true },
   })
+
+  // 立即清除前台快取，避免最多 2 分鐘延遲
+  if (auth.role === 'super') {
+    // 主站精選 → 重新驗證首頁精選快取
+    await revalidateSite(['/'], ['featured-properties'])
+  } else if (property.ownerId) {
+    // 房東官網精選 → 重新驗證該房東官網
+    await revalidateSite([`/site/${property.ownerId}`])
+  }
+
   res.json(property)
 })
 
