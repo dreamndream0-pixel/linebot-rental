@@ -251,7 +251,7 @@
   .admin-toolbar-left, .admin-toolbar-right { display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
   .admin-primary { background:var(--deep-sage)!important;color:white!important;border:none!important;box-shadow:0 10px 24px rgba(47,107,70,.22); }
   .property-table { background:white;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);overflow:hidden; }
-  .property-table-head, .property-row, .property-filter-row { display:grid;grid-template-columns:34px 112px minmax(190px,1.35fr) minmax(118px,.72fr) minmax(104px,.62fr) minmax(118px,.72fr) minmax(84px,.5fr) minmax(116px,.66fr) minmax(150px,.82fr);gap:12px;align-items:center; }
+  .property-table-head, .property-row, .property-filter-row { display:grid;grid-template-columns:34px 44px 112px minmax(190px,1.35fr) minmax(118px,.72fr) minmax(104px,.62fr) minmax(118px,.72fr) minmax(84px,.5fr) minmax(116px,.66fr) 86px;gap:12px;align-items:center; }
   .property-table-head { padding:14px 18px;background:#FAFBFA;font-size:13px;font-weight:900;color:#111827;border-bottom:1px solid var(--line); }
   .property-filter-row { padding:10px 18px;background:#F8FAF8;border-bottom:1px solid var(--line); }
   .property-filter-row input, .property-filter-row select { width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:white;padding:7px 9px;font-size:12px; }
@@ -266,6 +266,12 @@
   .property-release-input { width:100%;max-width:112px;border:1px solid var(--line);border-radius:8px;padding:6px 7px;font-size:12px; }
   .property-actions { display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap; }
   .property-actions select { max-width:120px; }
+  .featured-star-btn { width:34px;height:34px;border-radius:50%;border:1px solid #E5E0D5;background:white;color:#B8B1A4;font-size:18px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s; }
+  .featured-star-btn:hover { background:#FFF8E1;color:#A87400;border-color:#F5D574; }
+  .featured-star-btn.active { background:#FFF3CD;color:#A87400;border-color:#F5D574;box-shadow:0 8px 20px rgba(168,116,0,.12); }
+  .prop-danger-zone { margin-top:18px;padding:16px;border:1.5px solid #F1B8B8;border-radius:12px;background:#FFF7F7;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap; }
+  .prop-danger-zone strong { display:block;color:#A33E3E;font-size:14px;margin-bottom:4px; }
+  .prop-danger-zone span { color:#8A6B6B;font-size:12px;line-height:1.45; }
   @media(max-width:1180px) {
     .property-table-head { display:none; }
     .property-row, .property-filter-row { grid-template-columns:1fr;gap:10px; }
@@ -826,15 +832,16 @@ function renderPropCard(p, showCheckbox) {
     : ''
   // 精選按鈕：房東＝官網精選(siteFeatured)，總管理員＝主站精選(featured)
   var featOn = DATA.role !== 'super' ? !!p.siteFeatured : !!p.featured
-  var featOnLabel  = '★ 精選中'
-  var featOffLabel = '☆ 設精選'
+  var featTitle = DATA.role !== 'super' ? '官網精選' : '主站精選'
+  var featButton = '<button class="featured-star-btn ' + (featOn ? 'active' : '') + '" title="' + featTitle + '" onclick="toggleFeatured(\'' + p.id + '\', ' + (featOn ? 'true' : 'false') + ', this)">★</button>'
   var statusSelect = '<select class="property-status-select" onchange="changePropertyStatus(\'' + p.id + '\', this.value, this)">' + statusOptions + '</select>'
   var releaseDateInput = p.status === 'COMING_SOON'
     ? '<input class="property-release-input" type="date" value="' + esc(dateInputValue(p.availableFrom)) + '" onchange="changeAvailableFrom(\'' + p.id + '\', this.value)">'
     : ''
   return '<div class="property-row" id="propertyRow_' + esc(p.id) + '">' +
     '<div>' + cbHtml + '</div>' +
-    '<div class="property-status-cell">' + statusSelect + releaseDateInput + '</div>' +
+    '<div>' + featButton + '</div>' +
+    '<div class="property-status-cell">' + statusSelect + releaseDateInput + onlineBadgeHtml(p.status) + '</div>' +
     '<a class="property-main" href="' + propUrl(p) + '" target="_blank" style="gap:14px;min-width:0;">' + thumb +
       '<div style="min-width:0;"><h3>' + esc(p.title) + '</h3><div class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div></div>' +
     '</a>' +
@@ -842,12 +849,9 @@ function renderPropCard(p, showCheckbox) {
     '<div class="property-meta">' + (TYPE_LABEL[p.type] || p.type || '-') + '</div>' +
     '<div class="property-meta">NT$ ' + Number(p.price || 0).toLocaleString() + ' / 月</div>' +
     '<div class="property-meta">' + (p.size ? p.size + ' 坪' : '-') + '</div>' +
-    '<div><span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span><div style="margin-top:6px;">' + onlineBadgeHtml(p.status) + '</div></div>' +
     '<div class="property-meta">' + fmtDate(p.updatedAt || p.createdAt) + '</div>' +
     '<div class="property-actions">' +
       '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">編輯</button>' +
-      '<button class="action-btn" onclick="toggleFeatured(\'' + p.id + '\', ' + (featOn ? 'true' : 'false') + ', this)" style="' + (featOn ? 'background:#FFF3CD;color:#856404;border-color:#FFEAA7;' : '') + '">' + (featOn ? featOnLabel : featOffLabel) + '</button>' +
-      '<button class="action-btn danger" onclick="deleteProperty(\'' + p.id + '\')">刪除</button>' +
     '</div>' +
   '</div>'
 }
@@ -1120,7 +1124,7 @@ function propertyTableHtml(list, showCheckbox, groupKey) {
     filteredList = list.filter(function(p){ return matchPropFilters(p, gf) })
   }
   return '<div class="property-table">' +
-    '<div class="property-table-head"><div></div><div>狀態</div><div>房源</div><div>地點</div><div>類型</div><div>租金</div><div>坪數</div><div>更新時間</div><div style="text-align:right;">操作</div></div>' +
+    '<div class="property-table-head"><div></div><div>精選</div><div>狀態</div><div>房源</div><div>地點</div><div>類型</div><div>租金</div><div>坪數</div><div>更新時間</div><div style="text-align:right;">操作</div></div>' +
     (groupKey ? propertyGroupFilterRowHtml(list, groupKey) : '') +
     (filteredList.length ? filteredList.map(function(p){ return renderPropCard(p, showCheckbox) }).join('') : '<div style="padding:22px;color:var(--muted);font-size:13px;">此房東沒有符合欄位篩選的房源</div>') +
   '</div>'
@@ -1148,6 +1152,7 @@ function propertyGroupFilterRowHtml(list, groupKey) {
   var clearActive = Object.keys(gf).some(function(k){ return gf[k] })
   return '<div class="property-filter-row">' +
     '<div style="font-size:12px;color:var(--muted);font-weight:800;">篩選</div>' +
+    '<div></div>' +
     '<select onchange="' + prefix + '\'status\', this.value)"><option value="">全部狀態</option>' + statuses.map(function(o){ return '<option value="' + o.value + '"' + (gf.status === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
     '<div></div>' +
     '<select onchange="' + prefix + '\'location\', this.value)"><option value="">全部地點</option>' + locations.map(function(v){ return '<option value="' + esc(v) + '"' + (gf.location === v ? ' selected' : '') + '>' + esc(v) + '</option>' }).join('') + '</select>' +
@@ -1515,6 +1520,10 @@ async function startEditProperty(id) {
     '<div class="modal-header"><h3>✏️ 編輯房源</h3>' +
     '<button class="modal-close" onclick="closeAddPropertyModal()">×</button></div>' +
     propertyFormHtml(p, true) +
+    '<div class="prop-danger-zone">' +
+      '<div><strong>刪除此房源</strong><span>刪除後房源會下架並從前台隱藏，照片也會一併清除。</span></div>' +
+      '<button class="action-btn danger" onclick="deleteProperty(\'' + p.id + '\')">刪除房源</button>' +
+    '</div>' +
     '<div style="display:flex;gap:8px;margin-top:16px;position:sticky;bottom:0;background:white;padding-top:12px;">' +
     '<button class="btn" style="flex:1;background:var(--deep-sage);" onclick="saveProperty()">儲存修改</button>' +
     '<button class="action-btn" style="flex:0 0 auto;" onclick="cancelEdit()">取消</button>' +
@@ -1812,11 +1821,15 @@ async function changeAvailableFrom(id, date) {
 }
 
 async function deleteProperty(id) {
-  if (!confirm('確定要刪除這個房源嗎？')) return
-  await fetch('/admin/api/property/' + id + '/delete?key=' + encodeURIComponent(KEY), {
+  var p = (DATA.properties || []).find(function(x){ return x.id === id }) || {}
+  if (!confirm('確定要刪除「' + (p.title || '這個房源') + '」嗎？\n\n刪除後會從前台下架並清除照片，這個動作無法直接從後台復原。')) return
+  var res = await fetch('/admin/api/property/' + id + '/delete?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}'
   })
+  if (!res.ok) { showToast('❌ 刪除失敗'); return }
   showToast('🗑️ 已刪除')
+  closeAddPropertyModal()
+  editingPropertyId = null
   reload()
 }
 
@@ -1838,11 +1851,9 @@ async function toggleFeatured(id, currentFeatured, btn) {
     showToast(newVal ? '⭐ 已設為精選' : '☆ 已取消精選')
     if (btn) {
       btn.disabled = false
-      btn.textContent = newVal ? '★ 精選中' : '☆ 設精選'
+      btn.textContent = '★'
       btn.setAttribute('onclick', "toggleFeatured('" + id + "', " + (newVal ? 'true' : 'false') + ', this)')
-      btn.style.background = newVal ? '#FFF3CD' : ''
-      btn.style.color = newVal ? '#856404' : ''
-      btn.style.borderColor = newVal ? '#FFEAA7' : ''
+      btn.classList.toggle('active', newVal)
     }
   } else {
     if (btn) btn.disabled = false
