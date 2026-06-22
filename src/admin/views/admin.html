@@ -711,6 +711,45 @@ function renderPendingSection() {
     '</div></div>'
 }
 
+// ── 房源篩選（狀態 / 精選）─────────────────────────────
+var propStatusFilter = ''
+var propFeaturedFilter = ''
+
+function filterPropList(list) {
+  return list.filter(function(p) {
+    if (propStatusFilter && p.status !== propStatusFilter) return false
+    if (propFeaturedFilter === 'yes' && !p.featured) return false
+    if (propFeaturedFilter === 'no' && p.featured) return false
+    return true
+  })
+}
+
+function propFilterBarHtml() {
+  var statusOpts = ['', 'AVAILABLE', 'RENTED', 'COMING_SOON', 'INACTIVE'].map(function(s) {
+    var label = s === '' ? '全部狀態' : (PROP_STATUS_LABEL[s] || s)
+    return '<option value="' + s + '"' + (propStatusFilter === s ? ' selected' : '') + '>' + label + '</option>'
+  }).join('')
+  var featPairs = [['', '全部'], ['yes', '⭐ 精選中'], ['no', '非精選']]
+  var featOpts = featPairs.map(function(o) {
+    return '<option value="' + o[0] + '"' + (propFeaturedFilter === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'
+  }).join('')
+  var selStyle = 'padding:8px 12px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;background:white;cursor:pointer;'
+  return '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">' +
+    '<span style="font-size:13px;color:var(--gray-mid);font-weight:600;">🔍 篩選</span>' +
+    '<select onchange="setPropStatusFilter(this.value)" style="' + selStyle + '">' + statusOpts + '</select>' +
+    '<select onchange="setPropFeaturedFilter(this.value)" style="' + selStyle + '">' + featOpts + '</select>' +
+    (propStatusFilter || propFeaturedFilter ? '<button onclick="clearPropFilter()" style="padding:8px 14px;border-radius:8px;border:1.5px solid #E5E0D5;background:white;font-size:13px;cursor:pointer;">✕ 清除篩選</button>' : '') +
+    '</div>'
+}
+
+function setPropStatusFilter(v) { propStatusFilter = v; rerenderPropertiesTab() }
+function setPropFeaturedFilter(v) { propFeaturedFilter = v; rerenderPropertiesTab() }
+function clearPropFilter() { propStatusFilter = ''; propFeaturedFilter = ''; rerenderPropertiesTab() }
+function rerenderPropertiesTab() {
+  var el = document.getElementById('content')
+  if (el) { el.innerHTML = renderProperties(); setTimeout(renderImgPreview, 50) }
+}
+
 function renderProperties() {
   var csvBtns = feat('csvImport')
     ? '<button onclick="exportProperties()" style="padding:9px 18px;border-radius:8px;border:1.5px solid var(--sage);background:white;color:var(--deep-sage);font-size:13px;font-weight:600;cursor:pointer;">⬇️ 匯出 CSV</button>' +
@@ -723,13 +762,18 @@ function renderProperties() {
     '</div>' +
     '<div id="importResult" style="display:none;margin-bottom:12px;padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.7;"></div>'
   var pendingSection = renderPendingSection()
-  if (!DATA.properties.filter(function(p){ return p.status !== 'PENDING' }).length) {
+  var allNonPending = DATA.properties.filter(function(p){ return p.status !== 'PENDING' })
+  if (!allNonPending.length) {
     return addBtn + pendingSection + (pendingSection ? '' : '<div class="empty">還沒有房源，按上方按鈕新增第一間！</div>')
   }
+  var filterBar = propFilterBarHtml()
   var toolbar = batchToolbarHtml()
-  var nonPending = DATA.properties.filter(function(p){ return p.status !== 'PENDING' })
+  var nonPending = filterPropList(allNonPending)
+  if (!nonPending.length) {
+    return addBtn + pendingSection + filterBar + '<div class="empty">沒有符合篩選條件的房源</div>'
+  }
   if (DATA.role !== 'super') {
-    return addBtn + pendingSection + toolbar + nonPending.map(function(p){ return renderPropCard(p, true) }).join('')
+    return addBtn + pendingSection + filterBar + toolbar + nonPending.map(function(p){ return renderPropCard(p, true) }).join('')
   }
   // 總管理員：依房東分組，開合式
   var landlordMap = {}
@@ -739,11 +783,12 @@ function renderProperties() {
   })
   var groups = {}   // key = ownerId
   var groupOrder = []
-  DATA.properties.filter(function(p){ return p.status !== 'PENDING' }).forEach(function(p) {
+  nonPending.forEach(function(p) {
     var lid = p.ownerId || '__none__'
     if (!groups[lid]) { groups[lid] = []; groupOrder.push(lid) }
     groups[lid].push(p)
   })
+  var filterActive = !!(propStatusFilter || propFeaturedFilter)
   var groupHtml = groupOrder.map(function(lid) {
     var l = landlordMap[lid] || {}
     var displayName = l.name || '未分類'
@@ -765,15 +810,15 @@ function renderProperties() {
       '<span style="font-size:12px;color:var(--gray-mid);">共 <strong>' + props.length + '</strong> 間</span>' +
       '<span style="font-size:11px;padding:2px 8px;border-radius:99px;background:#E8F5E9;color:#388E3C;font-weight:600;">可租/即將 ' + available + ' 間</span>' +
       '</div>' +
-      '<span class="toggle-arrow" style="font-size:14px;color:var(--gray-mid);font-weight:700;">▸</span>' +
+      '<span class="toggle-arrow" style="font-size:14px;color:var(--gray-mid);font-weight:700;">' + (filterActive ? '▾' : '▸') + '</span>' +
       '</div>' +
-      // 展開內容（帶淡底色）
-      '<div id="' + groupId + '" style="display:none;padding:14px;background:#FAFAF8;">' +
+      // 展開內容（帶淡底色）；篩選啟用時自動展開
+      '<div id="' + groupId + '" style="display:' + (filterActive ? 'block' : 'none') + ';padding:14px;background:#FAFAF8;">' +
       props.map(function(p){ return renderPropCard(p, true) }).join('') +
       '</div>' +
       '</div>'
   }).join('')
-  return addBtn + pendingSection + toolbar + groupHtml
+  return addBtn + pendingSection + filterBar + toolbar + groupHtml
 }
 
 function toggleGroup(id, headerEl) {
