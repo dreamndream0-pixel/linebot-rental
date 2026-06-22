@@ -19,7 +19,7 @@ check_schema_sync() {
   bot_normalized=$(mktemp)
 
   sed '/^[[:space:]]*directUrl[[:space:]]*=/d' \
-    "$ROOT/xiaowo/prisma/schema.prisma" > "$website_normalized"
+    "$ROOT/xiaowo-rental/prisma/schema.prisma" > "$website_normalized"
   sed '/^[[:space:]]*directUrl[[:space:]]*=/d' \
     "$ROOT/linebot-rental/prisma/schema.prisma" > "$bot_normalized"
 
@@ -61,7 +61,8 @@ check_env_example() {
 
 show_repo_status() {
   project="$1"
-  changes=$(git -C "$ROOT/$project" status --short)
+  repo="$ROOT/$project"
+  changes=$(git -c safe.directory="$repo" -C "$repo" status --short)
 
   if [ -n "$changes" ]; then
     printf '\nINFO %s 尚未提交的變更：\n%s\n' "$project" "$changes"
@@ -72,9 +73,9 @@ show_repo_status() {
 
 printf '小蝸系統維護檢查\n\n'
 check_schema_sync
-check_env_example "xiaowo"
+check_env_example "xiaowo-rental"
 check_env_example "linebot-rental"
-show_repo_status "xiaowo"
+show_repo_status "xiaowo-rental"
 show_repo_status "linebot-rental"
 
 printf '\n'

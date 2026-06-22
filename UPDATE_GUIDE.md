@@ -21,7 +21,7 @@
 
 | 更新內容 | 主要修改位置 | 是否需同步另一專案 |
 |---|---|---|
-| 網站頁面、網站 API | `xiaowo/` | 通常不用 |
+| 網站頁面、網站 API | `xiaowo-rental/` | 通常不用 |
 | LINE 對話、後台、排程 | `linebot-rental/` | 通常不用 |
 | 資料表、欄位、關聯、enum | 任一 `prisma/schema.prisma` | **一定要同步兩份 schema** |
 | 房源更新後網站快取 | Bot `admin.js` + 網站 `api/revalidate` | 兩邊都要確認 |
@@ -40,7 +40,7 @@
 
 ```bash
 ./linebot-rental/scripts/maintenance-check.sh
-(cd xiaowo && npm run build)
+(cd xiaowo-rental && npm run build)
 (cd linebot-rental && npm start)
 ```
 
