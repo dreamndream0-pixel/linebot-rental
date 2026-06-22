@@ -26,6 +26,8 @@ router.post('/admin/api/landlord/:id/features', express.json(), async (req, res)
   try {
     const features = req.body.features || {}
     await prisma.$queryRawUnsafe(`UPDATE landlords SET features = $1, "updatedAt" = NOW() WHERE id = $2`, JSON.stringify(features), req.params.id)
+    try { require('../../landlordWebhook').clearConfigCache(req.params.id) } catch (e) {}
+    try { require('../../botText').clearTextCache(req.params.id) } catch (e) {}
     res.json({ ok: true, features })
   } catch(e) { res.status(500).json({ error: e.message }) }
 })

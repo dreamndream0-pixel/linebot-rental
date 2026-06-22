@@ -225,6 +225,7 @@ router.post('/admin/api/landlord/:id/bot-toggle', express.json(), async (req, re
 
   await prisma.landlord.update({ where: { id: req.params.id }, data: { botEnabled: !!req.body.enabled } })
   try { require('../../botText').clearTextCache(req.params.id) } catch (e) {}
+  try { require('../../landlordWebhook').clearConfigCache(req.params.id) } catch (e) {}
   res.json({ ok: true, enabled: !!req.body.enabled })
 })
 
@@ -242,6 +243,7 @@ router.post('/admin/api/landlord/:id/bottext', express.json(), async (req, res) 
 
   await prisma.landlord.update({ where: { id: req.params.id }, data })
   try { require('../../botText').clearTextCache(req.params.id) } catch (e) {}
+  try { require('../../landlordWebhook').clearConfigCache(req.params.id) } catch (e) {}
   res.json({ ok: true })
 })
 

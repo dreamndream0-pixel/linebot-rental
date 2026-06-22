@@ -19,10 +19,19 @@ async function getLandlordConfig(landlordId) {
 
   const landlord = await prisma.landlord.findUnique({
     where: { id: landlordId },
-    select: { id: true, name: true, lineChannelSecret: true, lineChannelToken: true, isActive: true }
+    select: { id: true, name: true, lineChannelSecret: true, lineChannelToken: true, isActive: true, botEnabled: true, features: true }
   })
   configCache.set(landlordId, { at: Date.now(), data: landlord })
   return landlord
+}
+
+function isLandlordBotEnabled(landlord) {
+  if (!landlord || landlord.botEnabled === false) return false
+  try {
+    const features = landlord.features ? JSON.parse(landlord.features) : {}
+    if (features.bot === false) return false
+  } catch (_) {}
+  return true
 }
 
 // 驗證 LINE 簽章
@@ -60,6 +69,11 @@ function registerLandlordWebhooks(app) {
       }
 
       res.json({ status: 'ok' })
+
+      if (!isLandlordBotEnabled(landlord)) {
+        console.log(`ℹ️ 房東 ${landlord.name} Bot 已關閉，略過 LINE 自動回覆`)
+        return
+      }
 
       // 建立該房東專屬的 client
       const client = new Client({
