@@ -211,17 +211,16 @@ const TYPE_MAP = [
   ['整層', 'WHOLE_FLOOR'], ['套房', 'SUITE'], ['雅房', 'ROOM'],
   ['店面', 'STORE'], ['住辦', 'LIVE_OFFICE'], ['辦公', 'OFFICE'], ['廠房', 'FACTORY'],
 ]
-// 純關鍵字（無城市/區域/價格/坪數/房型）時，需命中這些常見房源特徵詞才觸發搜尋，避免把閒聊當搜尋
-const SEARCH_HINT_WORDS = [
-  '冷氣','洗衣','冰箱','熱水','電視','網路','wifi','第四台','衣櫃','書桌','沙發','陽台','頂樓','加蓋',
-  '電梯','車位','機車','停車','寵物','貓','狗','開伙','煮','租補','仲介','洗曬','曬衣','垃圾','管理','監視','保全',
-  '捷運','火車','高鐵','學校','學區','夜市','公園','市場','醫院','新','採光','獨衛','獨立衛浴',
-]
 // 過濾掉非實質的功能詞
 const KW_STOP = ['我要','想要','想找','請問','有沒有','有無','幫我','可以','麻煩','謝謝','你好','哈囉',
   '租屋','找房','房子','房間','租金','預算','左右','附近','以下','以上','以內','元']
 
-function parseSearchQuery(text) {
+// 明確搜尋指令：/搜尋 xxx、搜尋 xxx、/search xxx（slash 可省略）
+const SEARCH_CMD_RE = /^[\/／]?\s*(搜尋|搜索|search)\s*[:：]?\s*([\s\S]*)$/i
+
+// force=true（使用者明確下「搜尋」指令）時，有任何條件或關鍵字即搜尋；
+// force=false（一般訊息）時，只有結構化條件(地區/租金/坪數/房型)才自動觸發，避免單打設備詞就跳房源卡
+function parseSearchQuery(text, force = false) {
   const result = { city: null, district: null, minPrice: null, maxPrice: null, minSize: null, maxSize: null, type: null, keywords: [] }
   let rest = text
 
@@ -286,14 +285,15 @@ function parseSearchQuery(text) {
   const kwMatches = rest.match(/[\u4e00-\u9fa5a-zA-Z]{2,}/g) || []
   result.keywords = [...new Set(kwMatches.filter(w => !KW_STOP.includes(w)))]
 
-  // 觸發判斷：有結構化條件 → 一定是搜尋；只有純關鍵字 → 需命中常見特徵詞才觸發，避免閒聊誤判
+  // 觸發判斷
   const hasStructured = result.city || result.district || result.minPrice || result.maxPrice
     || result.minSize != null || result.maxSize != null || result.type
-  if (hasStructured) return result
-  if (result.keywords.length && result.keywords.some(kw => SEARCH_HINT_WORDS.some(h => kw.includes(h)))) {
-    return result
+  if (force) {
+    // 明確指令：有任何條件或關鍵字就搜尋
+    return (hasStructured || result.keywords.length) ? result : null
   }
-  return null
+  // 一般訊息：只有結構化條件才自動觸發，避免單打設備詞就跳房源卡
+  return hasStructured ? result : null
 }
 
 // ── 關鍵字搜尋房源 ────────────────────────────────────────────────
@@ -624,13 +624,25 @@ async function handleMessage(event, client, landlordId = null) {
     reply = mainMenu(t)
   }
   else {
-    // 嘗試把訊息當作搜尋關鍵字解析
-    const parsed = parseSearchQuery(text)
-    if (parsed) {
-      reply = await searchRooms(parsed, landlordId, t)
+    const cmdMatch = text.match(SEARCH_CMD_RE)
+    if (cmdMatch) {
+      // 明確搜尋指令（/搜尋 …）：即使只有設備關鍵字也搜尋
+      const query = (cmdMatch[2] || '').trim()
+      const parsed = query ? parseSearchQuery(query, true) : null
+      if (parsed) {
+        reply = await searchRooms(parsed, landlordId, t)
+      } else {
+        reply = { type: 'text', text: '🔍 請在指令後輸入搜尋條件，例如：\n・/搜尋 沙鹿 套房 5000以下\n・/搜尋 10坪以上 電梯\n・/搜尋 寵物 近火車站\n\n可用條件：地區、房型、租金、坪數、設備／機能關鍵字' }
+      }
     } else {
-      // 看不懂的訊息：不回應，讓對話自然進行（底部圖文選單已固定顯示）
-      reply = null
+      // 一般訊息：只有「結構化條件」(地區/租金/坪數/房型)才自動視為搜尋
+      const parsed = parseSearchQuery(text)
+      if (parsed) {
+        reply = await searchRooms(parsed, landlordId, t)
+      } else {
+        // 看不懂的訊息：不回應，讓對話自然進行（底部圖文選單已固定顯示）
+        reply = null
+      }
     }
   }
 
