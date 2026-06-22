@@ -262,9 +262,18 @@
   .traffic-card .traffic-num { font-size:25px;font-weight:900;color:#111827;line-height:1; }
   .traffic-card .traffic-note { font-size:11px;color:#8A948E;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
   .traffic-leader { grid-column:span 2; }
-  .traffic-leader-row { display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:#4B5563;border-top:1px solid #F0F3F0;padding-top:7px;margin-top:7px; }
-  .traffic-leader-row:first-of-type { border-top:none;padding-top:0;margin-top:0; }
-  .traffic-leader-row strong { color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .traffic-leader-details summary { cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px; }
+  .traffic-leader-details summary::-webkit-details-marker { display:none; }
+  .traffic-leader-details summary::after { content:'展開';font-size:11px;color:var(--deep-sage);font-weight:900;background:#EEF6EF;border-radius:999px;padding:3px 8px; }
+  .traffic-leader-details[open] summary::after { content:'收起'; }
+  .traffic-leader-summary { min-width:0; }
+  .traffic-leader-table { width:100%;border-collapse:collapse;margin-top:10px;font-size:12px; }
+  .traffic-leader-table th { text-align:left;color:var(--muted);font-size:11px;padding:7px 6px;border-bottom:1px solid #EEF1EE;font-weight:900; }
+  .traffic-leader-table td { padding:8px 6px;border-bottom:1px solid #F2F4F2;color:#4B5563; }
+  .traffic-leader-table tr:last-child td { border-bottom:none; }
+  .traffic-leader-rank { width:44px;font-weight:900;color:#111827; }
+  .traffic-leader-title { color:#111827;font-weight:800;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .traffic-leader-views { text-align:right;font-weight:900;color:var(--deep-sage); }
   .group-traffic-summary { display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px; }
   .group-traffic-pill { background:white;border:1px solid var(--line);border-radius:999px;padding:7px 11px;font-size:12px;color:#52615A;font-weight:800; }
   .group-traffic-pill strong { color:var(--deep-sage);margin-left:5px; }
@@ -1044,17 +1053,21 @@ function trafficSummary(list) {
 
 function trafficDashboardHtml(list) {
   var s = trafficSummary(list)
-  var leaderRows = s.top7d.length
-    ? s.top7d.map(function(p, i) {
-        return '<div class="traffic-leader-row"><strong>' + (i + 1) + '. ' + esc(p.title) + '</strong><span>' + Number(p.views7d || 0).toLocaleString() + ' / 7日</span></div>'
-      }).join('')
+  var topList = (list || []).slice().sort(function(a,b){ return Number(b.views7d || 0) - Number(a.views7d || 0) }).slice(0, 10)
+  var first = topList[0]
+  var leaderTable = topList.length
+    ? '<table class="traffic-leader-table"><thead><tr><th>排名</th><th>房源</th><th style="text-align:right;">瀏覽量</th></tr></thead><tbody>' +
+      topList.map(function(p, i) {
+        return '<tr><td class="traffic-leader-rank">#' + (i + 1) + '</td><td class="traffic-leader-title">' + esc(p.title) + '</td><td class="traffic-leader-views">' + Number(p.views7d || 0).toLocaleString() + '</td></tr>'
+      }).join('') +
+      '</tbody></table>'
     : '<div class="traffic-note">目前尚無瀏覽資料</div>'
   return '<div class="traffic-dashboard">' +
     '<div class="traffic-card"><div class="traffic-label">今日瀏覽</div><div class="traffic-num">' + s.totalToday.toLocaleString() + '</div><div class="traffic-note">同房源 6 小時內只計一次</div></div>' +
     '<div class="traffic-card"><div class="traffic-label">7 日瀏覽</div><div class="traffic-num">' + s.total7d.toLocaleString() + '</div><div class="traffic-note">近期熱度</div></div>' +
     '<div class="traffic-card"><div class="traffic-label">30 日瀏覽</div><div class="traffic-num">' + s.total30d.toLocaleString() + '</div><div class="traffic-note">月流量</div></div>' +
     '<div class="traffic-card"><div class="traffic-label">平均每房 7 日</div><div class="traffic-num">' + s.avg7d.toLocaleString() + '</div><div class="traffic-note">用來抓低曝光房源</div></div>' +
-    '<div class="traffic-card traffic-leader"><div class="traffic-label">7 日熱門房源</div>' + leaderRows + '</div>' +
+    '<div class="traffic-card traffic-leader"><details class="traffic-leader-details"><summary><div class="traffic-leader-summary"><div class="traffic-label">7 日熱門房源</div><div class="traffic-note">' + (first ? '目前第一：' + esc(first.title) + ' · ' + Number(first.views7d || 0).toLocaleString() : '目前尚無瀏覽資料') + '</div></div></summary>' + leaderTable + '</details></div>' +
     '</div>'
 }
 
