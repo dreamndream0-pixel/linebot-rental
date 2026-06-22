@@ -17,6 +17,8 @@ router.use(require('./admin/routes/contactNotify'))
 router.use(require('./admin/routes/internalLandlord'))
 router.use(require('./admin/routes/webusers'))
 
+router.use('/admin/assets', express.static(path.join(__dirname, 'admin/assets')))
+
 router.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin/views/admin.html'))
 })
