@@ -229,7 +229,7 @@
       </div>
       <div style="display:flex;gap:8px;">
         <a id="siteLink" href="#" target="_blank" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;">🌐 網站</a>
-        <a id="mainSiteLink" href="#" target="_blank" style="display:none;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;text-decoration:none;align-items:center;">🐌 小蝸主站</a>
+        <a id="mainSiteLink" href="#" target="_blank" style="display:none;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;text-decoration:none;align-items:center;">前往首頁</a>
         <button onclick="logout()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;">登出</button>
       </div>
     </div>
@@ -319,7 +319,7 @@ async function login(savedKey) {
         } else {
           // 總管理員：只需要主站
           sl.href = DATA.siteUrl
-          sl.textContent = '🐌 小蝸主站'
+          sl.textContent = '前往首頁'
           if (msl) msl.style.display = 'none'
         }
       }
@@ -373,6 +373,9 @@ function renderTabBar() {
   if (DATA.role === 'super' || feat('community')) {
     tabs.push({ id: 'community', label: '🏘️ 社區' })
   }
+  if (DATA.role === 'super') {
+    tabs.push({ id: 'footerSettings', label: '📄 頁尾設定' })
+  }
   document.getElementById('tabBar').innerHTML = tabs.map(function(t) {
     return '<button class="tab' + (currentTab === t.id ? ' active' : '') + '" data-tab="' + t.id + '" onclick="switchTab(this.dataset.tab)">' + t.label + '</button>'
   }).join('')
@@ -407,6 +410,7 @@ function renderTab() {
   if (currentTab === 'botSettings') el.innerHTML = renderBotSettings()
   if (currentTab === 'heroSettings') renderHeroSettings()
   if (currentTab === 'community') renderCommunityTab()
+  if (currentTab === 'footerSettings') renderFooterSettings()
 }
 
 function esc(s) {
@@ -2503,6 +2507,95 @@ async function saveHeroSlides(silent) {
     if (!silent) showToast('✅ 已儲存 ' + data.count + ' 張輪播圖')
     return true
   } catch(e) {
+    showToast('❌ 連線失敗，請確認網站是否運行中')
+    return false
+  }
+}
+
+// ── 頁尾設定（關於我們／租屋須知／隱私權政策／服務條款）─────
+var footerPages = { about: {}, guide: {}, privacy: {}, terms: {} }
+var footerTab = 'about'
+var FOOTER_TABS = [
+  { key: 'about',   label: '關於我們' },
+  { key: 'guide',   label: '租屋須知' },
+  { key: 'privacy', label: '隱私權政策' },
+  { key: 'terms',   label: '服務條款' },
+]
+
+async function renderFooterSettings() {
+  var el = document.getElementById('content')
+  el.innerHTML = '<div class="form-box"><p style="color:#888;font-size:14px;">載入中...</p></div>'
+  try {
+    var siteBase = (DATA.siteUrl || '').replace(/\/$/, '')
+    var res = await fetch(siteBase + '/api/admin/pages?key=' + encodeURIComponent(KEY))
+    if (res.ok) {
+      var data = await res.json()
+      footerPages = {
+        about:   data.about   || {},
+        guide:   data.guide   || {},
+        privacy: data.privacy || {},
+        terms:   data.terms   || {},
+      }
+    }
+  } catch (e) {}
+  drawFooterSettings()
+}
+
+function drawFooterSettings() {
+  var el = document.getElementById('content')
+  var current = footerPages[footerTab] || {}
+  el.innerHTML = [
+    '<div class="form-box">',
+    '<h3 style="font-size:16px;font-weight:700;margin-bottom:6px;">📄 頁尾頁面設定</h3>',
+    '<p style="font-size:13px;color:#aaa;margin-bottom:20px;">編輯網站頁尾連結的頁面內容（關於我們、租屋須知、隱私權政策、服務條款）</p>',
+
+    '<div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">',
+    FOOTER_TABS.map(function(t) {
+      var active = footerTab === t.key
+      return '<button onclick="switchFooterTab(\'' + t.key + '\')" style="padding:8px 18px;border-radius:99px;border:1.5px solid ' + (active ? 'var(--sage)' : 'var(--oat-mid)') + ';background:' + (active ? 'var(--sage)' : 'white') + ';color:' + (active ? 'white' : 'var(--charcoal)') + ';font-size:13px;font-weight:700;cursor:pointer;">' + t.label + '</button>'
+    }).join(''),
+    '</div>',
+
+    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">頁面標題</label>',
+    '<input id="footerTitleInput" value="' + esc(current.title || '') + '" placeholder="' + esc((FOOTER_TABS.find(function(t){ return t.key === footerTab }) || {}).label || '') + '" style="width:100%;padding:12px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:15px;margin-bottom:16px;">',
+
+    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">頁面內容</label>',
+    '<textarea id="footerBodyInput" rows="14" placeholder="輸入頁面內容..." style="width:100%;padding:12px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;line-height:1.8;resize:vertical;">' + esc(current.body || '') + '</textarea>',
+
+    '<div style="margin-top:16px;">',
+    '<button class="btn" onclick="btnLoad(this, saveFooterPages)" style="width:auto;padding:12px 32px;">💾 儲存所有頁面</button>',
+    '</div>',
+    '</div>',
+  ].join('')
+}
+
+function switchFooterTab(key) {
+  syncFooterCurrentFromInputs()
+  footerTab = key
+  drawFooterSettings()
+}
+
+function syncFooterCurrentFromInputs() {
+  var titleEl = document.getElementById('footerTitleInput')
+  var bodyEl = document.getElementById('footerBodyInput')
+  if (!titleEl || !bodyEl) return
+  footerPages[footerTab] = { title: titleEl.value, body: bodyEl.value }
+}
+
+async function saveFooterPages() {
+  syncFooterCurrentFromInputs()
+  try {
+    var siteBase = (DATA && DATA.siteUrl ? DATA.siteUrl : 'https://xiaowo-rental.vercel.app').replace(/\/$/, '')
+    var res = await fetch(siteBase + '/api/admin/pages?key=' + encodeURIComponent(KEY), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(footerPages)
+    })
+    var data = await res.json()
+    if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || '')); return false }
+    showToast('✅ 已儲存頁尾設定')
+    return true
+  } catch (e) {
     showToast('❌ 連線失敗，請確認網站是否運行中')
     return false
   }
