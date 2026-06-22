@@ -4,40 +4,9 @@ const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole, landlordFilter } = require('../helpers')
 
-// 確保 communities 資料表和 properties.communityId 欄位存在
-let _migrated = false
-async function ensureMigrations() {
-  if (_migrated) return
-  try {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS communities (
-        id           TEXT PRIMARY KEY,
-        "ownerId"    TEXT NOT NULL,
-        name         TEXT NOT NULL,
-        description  TEXT NOT NULL DEFAULT '',
-        photos       TEXT NOT NULL DEFAULT '[]',
-        "mapUrl"     TEXT,
-        "createdAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        "updatedAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `)
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE properties ADD COLUMN IF NOT EXISTS "communityId" TEXT REFERENCES communities(id)
-    `)
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE properties ADD COLUMN IF NOT EXISTS "availableFrom" TIMESTAMPTZ
-    `)
-    _migrated = true
-  } catch (e) {
-    console.error('[data] migration error:', e.message)
-  }
-}
-
 router.get('/admin/api/data', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
-
-  await ensureMigrations()
 
   const f = landlordFilter(auth)
 
