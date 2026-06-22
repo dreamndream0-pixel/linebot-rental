@@ -148,10 +148,23 @@ router.post('/admin/api/property/:id/featured', express.json(), async (req, res)
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
   const { featured } = req.body
+
+  // 房東只能改自己房源的「官網精選(siteFeatured)」；總管理員改「主站精選(featured)」
+  if (auth.role !== 'super') {
+    const existing = await prisma.property.findUnique({
+      where: { id: req.params.id },
+      select: { ownerId: true },
+    })
+    if (!existing || existing.ownerId !== auth.landlordId) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+  }
+  const data = auth.role === 'super' ? { featured: !!featured } : { siteFeatured: !!featured }
+
   const property = await prisma.property.update({
     where: { id: req.params.id },
-    data: { featured: !!featured },
-    select: { id: true, featured: true },
+    data,
+    select: { id: true, featured: true, siteFeatured: true },
   })
   res.json(property)
 })

@@ -617,6 +617,10 @@ function renderPropCard(p, showCheckbox) {
   var cbHtml = showCheckbox
     ? '<input type="checkbox" class="prop-cb" data-id="' + p.id + '" style="width:16px;height:16px;cursor:pointer;accent-color:var(--sage);margin-right:6px;flex-shrink:0;" onclick="event.stopPropagation()">'
     : ''
+  // 精選按鈕：房東＝官網精選(siteFeatured)，總管理員＝主站精選(featured)
+  var featOn = DATA.role !== 'super' ? !!p.siteFeatured : !!p.featured
+  var featOnLabel  = DATA.role !== 'super' ? '⭐ 官網精選中'  : '⭐ 主站精選中'
+  var featOffLabel = DATA.role !== 'super' ? '☆ 設為官網精選' : '☆ 設為主站精選'
   return '<div class="card" style="position:relative;">' +
     '<div class="card-row" style="align-items:flex-start;">' +
     '<div style="display:flex;gap:10px;align-items:flex-start;flex:1;min-width:0;">' +
@@ -634,7 +638,7 @@ function renderPropCard(p, showCheckbox) {
     '<select onchange="changePropertyStatus(\'' + p.id + '\', this.value)" style="padding:6px 10px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;">' + statusOptions + '</select>' +
     '<a class="action-btn" href="' + (DATA.siteUrl || '') + '/property/' + p.id + (DATA.role === 'landlord' && DATA.landlordId ? '?site=' + DATA.landlordId : '') + '" target="_blank" style="text-decoration:none;">🔗 查看</a>' +
     '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">✏️ 編輯</button>' +
-    '<button class="action-btn" onclick="toggleFeatured(\'' + p.id + '\', ' + (p.featured ? 'true' : 'false') + ')" style="' + (p.featured ? 'background:#FFF3CD;color:#856404;border-color:#FFEAA7;' : '') + '">' + (p.featured ? '⭐ 精選中' : '☆ 設為精選') + '</button>' +
+    '<button class="action-btn" onclick="toggleFeatured(\'' + p.id + '\', ' + (featOn ? 'true' : 'false') + ')" style="' + (featOn ? 'background:#FFF3CD;color:#856404;border-color:#FFEAA7;' : '') + '">' + (featOn ? featOnLabel : featOffLabel) + '</button>' +
     '<button class="action-btn danger" onclick="deleteProperty(\'' + p.id + '\')">🗑️ 刪除</button>' +
     '</div></div>'
 }
@@ -716,10 +720,12 @@ var propStatusFilter = ''
 var propFeaturedFilter = ''
 
 function filterPropList(list) {
+  var isLandlord = DATA.role !== 'super'
   return list.filter(function(p) {
     if (propStatusFilter && p.status !== propStatusFilter) return false
-    if (propFeaturedFilter === 'yes' && !p.featured) return false
-    if (propFeaturedFilter === 'no' && p.featured) return false
+    var feat = isLandlord ? p.siteFeatured : p.featured
+    if (propFeaturedFilter === 'yes' && !feat) return false
+    if (propFeaturedFilter === 'no' && feat) return false
     return true
   })
 }

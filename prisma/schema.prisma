@@ -179,7 +179,8 @@ model Property {
   title       String
   type        PropertyType
   status      PropertyStatus @default(PENDING)
-  featured    Boolean        @default(false)
+  featured     Boolean       @default(false)  // 主站精選（總管理員控制，未來廣告欄位）
+  siteFeatured Boolean       @default(false)  // 房東官網精選（房東自己控制，與 featured 分開）
   description String         @db.Text
 
   city        String
@@ -242,6 +243,7 @@ model Property {
   @@index([price])
   @@index([type])
   @@index([featured])
+  @@index([siteFeatured])
   @@map("properties")
 }
 
