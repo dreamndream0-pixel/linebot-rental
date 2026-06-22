@@ -71,6 +71,18 @@ router.get('/admin/api/data', async (req, res) => {
     // communities 資料表尚未建立時忽略，不影響其他功能
   }
 
+  // availableFrom 不放進 Prisma schema，避免正式 DB 尚未補欄位時拖垮整站。
+  try {
+    const releaseRows = await prisma.$queryRawUnsafe(
+      `SELECT id, "availableFrom" FROM properties WHERE "deletedAt" IS NULL`
+    )
+    const releaseMap = {}
+    releaseRows.forEach(r => { releaseMap[r.id] = r.availableFrom })
+    propertiesWithCommunity = propertiesWithCommunity.map(p => ({ ...p, availableFrom: releaseMap[p.id] || null }))
+  } catch (e) {
+    // availableFrom 欄位尚未建立時忽略；狀態仍可正常管理。
+  }
+
   let selfLandlord = null
   if (auth.role === 'landlord') {
     try {

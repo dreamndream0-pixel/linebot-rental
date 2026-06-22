@@ -39,6 +39,15 @@ async function syncAmenities(propertyId, amenities) {
   }
 }
 
+async function updateAvailableFromRaw(propertyId, value) {
+  await prisma.$executeRawUnsafe(`ALTER TABLE properties ADD COLUMN IF NOT EXISTS "availableFrom" TIMESTAMPTZ`)
+  await prisma.$queryRawUnsafe(
+    `UPDATE properties SET "availableFrom"=$1 WHERE id=$2`,
+    value ? new Date(value) : null,
+    propertyId
+  )
+}
+
 router.post('/admin/api/property', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
@@ -121,6 +130,13 @@ router.post('/admin/api/property/:id', express.json(), async (req, res) => {
       `UPDATE properties SET "communityId"=$1 WHERE id=$2`,
       communityIdValue || null, req.params.id
     ).catch(() => {})
+  }
+  if (req.body.availableFrom !== undefined || (status !== undefined && status !== 'COMING_SOON')) {
+    try {
+      await updateAvailableFromRaw(req.params.id, status === 'COMING_SOON' ? req.body.availableFrom : null)
+    } catch (e) {
+      if (status === 'COMING_SOON') return res.status(500).json({ error: '即將釋出日期欄位建立失敗，請稍後再試' })
+    }
   }
   console.log('[property update] result mgmtFee:', property.mgmtFee, 'electricType:', property.electricType, 'electricRate:', property.electricRate, 'cleaningFee:', property.cleaningFee)
 
