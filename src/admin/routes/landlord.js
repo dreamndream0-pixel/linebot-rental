@@ -94,15 +94,17 @@ router.post('/admin/api/landlord/:id/bot', express.json(), async (req, res) => {
     }
   }
 
+  const data = {
+    lineBotName: lineBotName || null,
+    notifyLineUserId: notifyLineUserId || null,
+  }
+  if (lineChannelSecret) data.lineChannelSecret = lineChannelSecret
+  if (lineChannelToken) data.lineChannelToken = lineChannelToken
+  if (lineOfficialId) data.lineOfficialId = lineOfficialId
+
   const landlord = await prisma.landlord.update({
     where: { id: req.params.id },
-    data: {
-      lineChannelSecret: lineChannelSecret || null,
-      lineChannelToken: lineChannelToken || null,
-      lineBotName: lineBotName || null,
-      lineOfficialId,
-      notifyLineUserId: notifyLineUserId || null,
-    }
+    data
   })
 
   try {
