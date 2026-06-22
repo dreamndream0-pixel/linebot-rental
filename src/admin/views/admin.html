@@ -622,6 +622,7 @@ function esc(s) {
 
 function renderOverview() {
   var recentProps = (DATA.properties || []).slice(0, 5)
+  var allNonPending = DATA.properties.filter(function(p){ return p.status !== 'PENDING' })
   var pendingBookings = DATA.bookings.filter(function(b){ return b.status === 'PENDING' }).slice(0, 4)
   var pendingRepairs = DATA.repairs.filter(function(r){ return r.status === 'PENDING' }).slice(0, 4)
   var rows = recentProps.map(function(p) {
@@ -636,7 +637,8 @@ function renderOverview() {
   var repairs = pendingRepairs.map(function(r) {
     return '<div class="overview-row"><div><strong>' + esc(r.title) + '</strong><span>' + esc(r.property.title) + '</span></div><span class="badge PENDING">待處理</span></div>'
   }).join('')
-  return '<div class="overview-grid">' +
+  return trafficDashboardHtml(allNonPending) +
+  '<div class="overview-grid">' +
     '<section class="form-box"><div class="section-head"><h3>近期房源</h3><button class="action-btn" onclick="switchTab(\'properties\')">管理房源</button></div>' + (rows || '<div class="empty">目前沒有房源</div>') + '</section>' +
     '<section class="form-box"><div class="section-head"><h3>待確認預約</h3><button class="action-btn" onclick="switchTab(\'bookings\')">查看預約</button></div>' + (bookings || '<div class="empty">沒有待確認預約</div>') + '</section>' +
     '<section class="form-box"><div class="section-head"><h3>待處理維修</h3><button class="action-btn" onclick="switchTab(\'repairs\')">查看維修</button></div>' + (repairs || '<div class="empty">沒有待處理維修</div>') + '</section>' +
@@ -1177,7 +1179,6 @@ function renderProperties() {
     '<div id="importResult" style="display:none;margin-bottom:12px;padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.7;"></div>'
   var pendingSection = renderPendingSection()
   var allNonPending = DATA.properties.filter(function(p){ return p.status !== 'PENDING' })
-  var trafficDash = trafficDashboardHtml(allNonPending)
   var propertyTabs = propertyTabsHtml(allNonPending)
   if (!allNonPending.length) {
     return addBtn + pendingSection + (pendingSection ? '' : '<div class="empty">還沒有房源，按上方按鈕新增第一間！</div>')
@@ -1187,10 +1188,10 @@ function renderProperties() {
   var tabbedList = propertyTabList(allNonPending)
   var nonPending = filterPropList(tabbedList)
   if (!nonPending.length) {
-    return addBtn + trafficDash + pendingSection + propertyTabs + filterBar + '<div class="empty">沒有符合篩選條件的房源</div>'
+    return addBtn + pendingSection + propertyTabs + filterBar + '<div class="empty">沒有符合篩選條件的房源</div>'
   }
   if (DATA.role !== 'super') {
-    return addBtn + trafficDash + pendingSection + propertyTabs + filterBar + toolbar + propertyTableHtml(nonPending, true)
+    return addBtn + pendingSection + propertyTabs + filterBar + toolbar + propertyTableHtml(nonPending, true)
   }
   // 總管理員：依房東分組，開合式
   var landlordMap = {}
@@ -1241,7 +1242,7 @@ function renderProperties() {
       '</div>' +
       '</div>'
   }).join('')
-  return addBtn + trafficDash + pendingSection + propertyTabs + filterBar + toolbar + groupHtml
+  return addBtn + pendingSection + propertyTabs + filterBar + toolbar + groupHtml
 }
 
 function propertyTableHtml(list, showCheckbox, groupKey) {
