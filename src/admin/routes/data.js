@@ -24,6 +24,9 @@ async function ensureMigrations() {
     await prisma.$executeRawUnsafe(`
       ALTER TABLE properties ADD COLUMN IF NOT EXISTS "communityId" TEXT REFERENCES communities(id)
     `)
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE properties ADD COLUMN IF NOT EXISTS "availableFrom" TIMESTAMPTZ
+    `)
     _migrated = true
   } catch (e) {
     console.error('[data] migration error:', e.message)
