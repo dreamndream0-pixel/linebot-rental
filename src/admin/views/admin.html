@@ -939,6 +939,8 @@ function renderPendingSection() {
 // ── 房源篩選（總篩選 / 房東區塊篩選）─────────────────────────────
 var propertyViewTab = 'overview'
 var propFilters = { location: '', type: '', rent: '', size: '', status: '', featured: '' }
+var groupPropertyViewTabs = {}
+var openPropertyGroups = {}
 var groupPropFilters = {}
 
 var PROPERTY_VIEW_TABS = [
@@ -1005,16 +1007,29 @@ function propertyTabList(list, tab) {
   return list.filter(function(p) { return matchPropertyViewTab(p, tab || propertyViewTab) })
 }
 
-function propertyTabsHtml(list) {
+function propGroupId(groupKey) {
+  return 'propGroup_' + String(groupKey || '__none__').replace(/[^a-z0-9]/gi, '_')
+}
+
+function propertyTabsHtml(list, activeTab, onClickTemplate) {
+  activeTab = activeTab || propertyViewTab
+  onClickTemplate = onClickTemplate || "setPropertyViewTab('__TAB__')"
   return '<div class="property-tabs">' + PROPERTY_VIEW_TABS.map(function(t) {
     var count = propertyTabList(list, t.id).length
-    return '<button class="property-tab' + (propertyViewTab === t.id ? ' active' : '') + '" onclick="setPropertyViewTab(\'' + t.id + '\')">' +
+    var click = onClickTemplate.replace('__TAB__', t.id.replace(/'/g, "\\'"))
+    return '<button class="property-tab' + (activeTab === t.id ? ' active' : '') + '" onclick="' + click + '">' +
       esc(t.label) + '<span class="property-tab-count">' + count + '</span></button>'
   }).join('') + '</div>'
 }
 
 function setPropertyViewTab(tab) {
   propertyViewTab = tab || 'overview'
+  rerenderPropertiesTab()
+}
+
+function setGroupPropertyViewTab(groupKey, tab) {
+  groupPropertyViewTabs[groupKey] = tab || 'overview'
+  openPropertyGroups[propGroupId(groupKey)] = true
   rerenderPropertiesTab()
 }
 
@@ -1134,8 +1149,12 @@ function renderProperties() {
     var displayName = l.name || '未分類'
     var siteName = l.siteName ? '・' + l.siteName : ''
     var props = groups[lid]
+    var groupTab = groupPropertyViewTabs[lid] || propertyViewTab
+    var groupTabProps = propertyTabList(props, groupTab)
     var available = props.filter(function(p){ return p.status === 'AVAILABLE' || p.status === 'COMING_SOON' }).length
-    var groupId = 'propGroup_' + lid.replace(/[^a-z0-9]/gi, '_')
+    var groupId = propGroupId(lid)
+    var groupOpen = filterActive || !!openPropertyGroups[groupId] || !!groupPropertyViewTabs[lid]
+    var groupTabClick = "setGroupPropertyViewTab('" + lid.replace(/'/g, "\\'") + "', '__TAB__')"
     // 用顏色區分不同房東（依 index 循環）
     var colorPalette = ['#EAF3EB','#EBF0F8','#F5F0E8','#F0EBF5','#EBF5F3','#F8EEE8']
     var idx = groupOrder.indexOf(lid)
@@ -1150,11 +1169,12 @@ function renderProperties() {
       '<span style="font-size:12px;color:var(--gray-mid);">共 <strong>' + props.length + '</strong> 間</span>' +
       '<span style="font-size:11px;padding:2px 8px;border-radius:99px;background:#E8F5E9;color:#388E3C;font-weight:600;">可租/即將 ' + available + ' 間</span>' +
       '</div>' +
-      '<span class="toggle-arrow" style="font-size:14px;color:var(--gray-mid);font-weight:700;">' + (filterActive ? '▾' : '▸') + '</span>' +
+      '<span class="toggle-arrow" style="font-size:14px;color:var(--gray-mid);font-weight:700;">' + (groupOpen ? '▾' : '▸') + '</span>' +
       '</div>' +
       // 展開內容（帶淡底色）；篩選啟用時自動展開
-      '<div id="' + groupId + '" style="display:' + (filterActive ? 'block' : 'none') + ';padding:14px;background:#FAFAF8;">' +
-      propertyTableHtml(props, true, lid) +
+      '<div id="' + groupId + '" style="display:' + (groupOpen ? 'block' : 'none') + ';padding:14px;background:#FAFAF8;">' +
+      propertyTabsHtml(props, groupTab, groupTabClick) +
+      propertyTableHtml(groupTabProps, true, lid) +
       '</div>' +
       '</div>'
   }).join('')
@@ -1214,6 +1234,7 @@ function toggleGroup(id, headerEl) {
   if (!el) return
   var isOpen = el.style.display !== 'none'
   el.style.display = isOpen ? 'none' : 'block'
+  openPropertyGroups[id] = !isOpen
   var arrow = headerEl.querySelector('.toggle-arrow')
   if (arrow) arrow.textContent = isOpen ? '▸' : '▾'
 }
