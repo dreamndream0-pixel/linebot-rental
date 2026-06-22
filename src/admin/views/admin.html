@@ -256,7 +256,19 @@
   .property-tab.active { background:var(--deep-sage);border-color:var(--deep-sage);color:white;box-shadow:0 10px 22px rgba(47,107,70,.18); }
   .property-tab-count { font-size:11px;font-weight:900;border-radius:999px;padding:2px 7px;background:#F1F5F1;color:#52665A; }
   .property-tab.active .property-tab-count { background:rgba(255,255,255,.22);color:white; }
-  .property-table-head, .property-row, .property-filter-row { display:grid;grid-template-columns:34px 44px 112px minmax(190px,1.25fr) minmax(118px,.66fr) minmax(104px,.56fr) minmax(118px,.66fr) minmax(84px,.44fr) minmax(116px,.58fr) minmax(82px,.42fr) 86px;gap:12px;align-items:center; }
+  .traffic-dashboard { display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:12px;margin:0 0 16px; }
+  .traffic-card { background:white;border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 8px 22px rgba(20,40,28,.04); }
+  .traffic-card .traffic-label { font-size:12px;color:var(--muted);font-weight:800;margin-bottom:8px; }
+  .traffic-card .traffic-num { font-size:25px;font-weight:900;color:#111827;line-height:1; }
+  .traffic-card .traffic-note { font-size:11px;color:#8A948E;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .traffic-leader { grid-column:span 2; }
+  .traffic-leader-row { display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:#4B5563;border-top:1px solid #F0F3F0;padding-top:7px;margin-top:7px; }
+  .traffic-leader-row:first-of-type { border-top:none;padding-top:0;margin-top:0; }
+  .traffic-leader-row strong { color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .group-traffic-summary { display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px; }
+  .group-traffic-pill { background:white;border:1px solid var(--line);border-radius:999px;padding:7px 11px;font-size:12px;color:#52615A;font-weight:800; }
+  .group-traffic-pill strong { color:var(--deep-sage);margin-left:5px; }
+  .property-table-head, .property-row, .property-filter-row { display:grid;grid-template-columns:34px 44px 106px minmax(170px,1.08fr) minmax(105px,.54fr) minmax(82px,.42fr) minmax(105px,.54fr) minmax(64px,.34fr) minmax(96px,.48fr) minmax(52px,.26fr) minmax(52px,.26fr) minmax(52px,.26fr) minmax(62px,.3fr) 78px;gap:10px;align-items:center; }
   .property-table-head { padding:14px 18px;background:#FAFBFA;font-size:13px;font-weight:900;color:#111827;border-bottom:1px solid var(--line); }
   .property-filter-row { padding:10px 18px;background:#F8FAF8;border-bottom:1px solid var(--line); }
   .property-filter-row input, .property-filter-row select { width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:white;padding:7px 9px;font-size:12px; }
@@ -282,6 +294,8 @@
     .property-row, .property-filter-row { grid-template-columns:1fr;gap:10px; }
     .property-filter-row { display:grid; }
     .property-actions { justify-content:flex-start; }
+    .traffic-dashboard { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .traffic-leader { grid-column:1/-1; }
     .overview-grid { grid-template-columns:1fr; }
     .overview-grid section:first-child { grid-row:auto; }
   }
@@ -855,6 +869,9 @@ function renderPropCard(p, showCheckbox) {
     '<div class="property-meta">NT$ ' + Number(p.price || 0).toLocaleString() + ' / 月</div>' +
     '<div class="property-meta">' + (p.size ? p.size + ' 坪' : '-') + '</div>' +
     '<div class="property-meta">' + fmtDate(p.updatedAt || p.createdAt) + '</div>' +
+    '<div class="property-meta">' + Number(p.viewsToday || 0).toLocaleString() + '</div>' +
+    '<div class="property-meta">' + Number(p.views7d || 0).toLocaleString() + '</div>' +
+    '<div class="property-meta">' + Number(p.views30d || 0).toLocaleString() + '</div>' +
     '<div class="property-meta">' + Number(p.viewCount || 0).toLocaleString() + '</div>' +
     '<div class="property-actions">' +
       '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">編輯</button>' +
@@ -1007,6 +1024,50 @@ function propertyTabList(list, tab) {
   return list.filter(function(p) { return matchPropertyViewTab(p, tab || propertyViewTab) })
 }
 
+function trafficSummary(list) {
+  var totalToday = 0
+  var total7d = 0
+  var total30d = 0
+  var totalAll = 0
+  ;(list || []).forEach(function(p) {
+    totalToday += Number(p.viewsToday || 0)
+    total7d += Number(p.views7d || 0)
+    total30d += Number(p.views30d || 0)
+    totalAll += Number(p.viewCount || 0)
+  })
+  var avg7d = list && list.length ? Math.round(total7d / list.length) : 0
+  var top7d = (list || []).slice().sort(function(a,b){ return Number(b.views7d || 0) - Number(a.views7d || 0) }).slice(0, 3)
+  return { totalToday: totalToday, total7d: total7d, total30d: total30d, totalAll: totalAll, avg7d: avg7d, top7d: top7d }
+}
+
+function trafficDashboardHtml(list) {
+  var s = trafficSummary(list)
+  var leaderRows = s.top7d.length
+    ? s.top7d.map(function(p, i) {
+        return '<div class="traffic-leader-row"><strong>' + (i + 1) + '. ' + esc(p.title) + '</strong><span>' + Number(p.views7d || 0).toLocaleString() + ' / 7日</span></div>'
+      }).join('')
+    : '<div class="traffic-note">目前尚無瀏覽資料</div>'
+  return '<div class="traffic-dashboard">' +
+    '<div class="traffic-card"><div class="traffic-label">今日瀏覽</div><div class="traffic-num">' + s.totalToday.toLocaleString() + '</div><div class="traffic-note">同房源 6 小時內只計一次</div></div>' +
+    '<div class="traffic-card"><div class="traffic-label">7 日瀏覽</div><div class="traffic-num">' + s.total7d.toLocaleString() + '</div><div class="traffic-note">近期熱度</div></div>' +
+    '<div class="traffic-card"><div class="traffic-label">30 日瀏覽</div><div class="traffic-num">' + s.total30d.toLocaleString() + '</div><div class="traffic-note">月流量</div></div>' +
+    '<div class="traffic-card"><div class="traffic-label">平均每房 7 日</div><div class="traffic-num">' + s.avg7d.toLocaleString() + '</div><div class="traffic-note">用來抓低曝光房源</div></div>' +
+    '<div class="traffic-card traffic-leader"><div class="traffic-label">7 日熱門房源</div>' + leaderRows + '</div>' +
+    '</div>'
+}
+
+function groupTrafficSummaryHtml(list) {
+  var s = trafficSummary(list)
+  var top = s.top7d[0]
+  return '<div class="group-traffic-summary">' +
+    '<span class="group-traffic-pill">今日<strong>' + s.totalToday.toLocaleString() + '</strong></span>' +
+    '<span class="group-traffic-pill">7日<strong>' + s.total7d.toLocaleString() + '</strong></span>' +
+    '<span class="group-traffic-pill">30日<strong>' + s.total30d.toLocaleString() + '</strong></span>' +
+    '<span class="group-traffic-pill">總瀏覽<strong>' + s.totalAll.toLocaleString() + '</strong></span>' +
+    (top ? '<span class="group-traffic-pill">最高<strong>' + esc(top.title) + ' · ' + Number(top.views7d || 0).toLocaleString() + '</strong></span>' : '') +
+    '</div>'
+}
+
 function propGroupId(groupKey) {
   return 'propGroup_' + String(groupKey || '__none__').replace(/[^a-z0-9]/gi, '_')
 }
@@ -1116,6 +1177,7 @@ function renderProperties() {
     '<div id="importResult" style="display:none;margin-bottom:12px;padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.7;"></div>'
   var pendingSection = renderPendingSection()
   var allNonPending = DATA.properties.filter(function(p){ return p.status !== 'PENDING' })
+  var trafficDash = trafficDashboardHtml(allNonPending)
   var propertyTabs = propertyTabsHtml(allNonPending)
   if (!allNonPending.length) {
     return addBtn + pendingSection + (pendingSection ? '' : '<div class="empty">還沒有房源，按上方按鈕新增第一間！</div>')
@@ -1125,10 +1187,10 @@ function renderProperties() {
   var tabbedList = propertyTabList(allNonPending)
   var nonPending = filterPropList(tabbedList)
   if (!nonPending.length) {
-    return addBtn + pendingSection + propertyTabs + filterBar + '<div class="empty">沒有符合篩選條件的房源</div>'
+    return addBtn + trafficDash + pendingSection + propertyTabs + filterBar + '<div class="empty">沒有符合篩選條件的房源</div>'
   }
   if (DATA.role !== 'super') {
-    return addBtn + pendingSection + propertyTabs + filterBar + toolbar + propertyTableHtml(nonPending, true)
+    return addBtn + trafficDash + pendingSection + propertyTabs + filterBar + toolbar + propertyTableHtml(nonPending, true)
   }
   // 總管理員：依房東分組，開合式
   var landlordMap = {}
@@ -1173,12 +1235,13 @@ function renderProperties() {
       '</div>' +
       // 展開內容（帶淡底色）；篩選啟用時自動展開
       '<div id="' + groupId + '" style="display:' + (groupOpen ? 'block' : 'none') + ';padding:14px;background:#FAFAF8;">' +
+      groupTrafficSummaryHtml(props) +
       propertyTabsHtml(props, groupTab, groupTabClick) +
       propertyTableHtml(groupTabProps, true, lid) +
       '</div>' +
       '</div>'
   }).join('')
-  return addBtn + pendingSection + propertyTabs + filterBar + toolbar + groupHtml
+  return addBtn + trafficDash + pendingSection + propertyTabs + filterBar + toolbar + groupHtml
 }
 
 function propertyTableHtml(list, showCheckbox, groupKey) {
@@ -1188,7 +1251,7 @@ function propertyTableHtml(list, showCheckbox, groupKey) {
     filteredList = list.filter(function(p){ return matchPropFilters(p, gf) })
   }
   return '<div class="property-table">' +
-    '<div class="property-table-head"><div></div><div>精選</div><div>狀態</div><div>房源</div><div>地點</div><div>類型</div><div>租金</div><div>坪數</div><div>更新時間</div><div>瀏覽</div><div style="text-align:right;">操作</div></div>' +
+    '<div class="property-table-head"><div></div><div>精選</div><div>狀態</div><div>房源</div><div>地點</div><div>類型</div><div>租金</div><div>坪數</div><div>更新時間</div><div>今日</div><div>7日</div><div>30日</div><div>總瀏覽</div><div style="text-align:right;">操作</div></div>' +
     (groupKey ? propertyGroupFilterRowHtml(list, groupKey) : '') +
     (filteredList.length ? filteredList.map(function(p){ return renderPropCard(p, showCheckbox) }).join('') : '<div style="padding:22px;color:var(--muted);font-size:13px;">此房東沒有符合欄位篩選的房源</div>') +
   '</div>'
@@ -1223,6 +1286,9 @@ function propertyGroupFilterRowHtml(list, groupKey) {
     '<select onchange="' + prefix + '\'type\', this.value)"><option value="">全部類型</option>' + types.map(function(o){ return '<option value="' + o.value + '"' + (gf.type === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
     '<select onchange="' + prefix + '\'rent\', this.value)"><option value="">全部租金</option>' + rentOpts.map(function(o){ return '<option value="' + o.value + '"' + (gf.rent === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
     '<select onchange="' + prefix + '\'size\', this.value)"><option value="">全部坪數</option>' + sizeOpts.map(function(o){ return '<option value="' + o.value + '"' + (gf.size === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
+    '<div></div>' +
+    '<div></div>' +
+    '<div></div>' +
     '<div></div>' +
     '<div></div>' +
     '<div style="text-align:right;">' + (clearActive ? '<button class="action-btn" onclick="clearGroupPropFilter(\'' + groupKey.replace(/'/g, "\\'") + '\')">清除</button>' : '') + '</div>' +

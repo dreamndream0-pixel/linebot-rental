@@ -83,6 +83,51 @@ router.get('/admin/api/data', async (req, res) => {
     // availableFrom 欄位尚未建立時忽略；狀態仍可正常管理。
   }
 
+  // 房源每日瀏覽統計：今日 / 7日 / 30日，若資料表尚未建立則自動建立。
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS property_view_stats (
+        "propertyId" TEXT NOT NULL,
+        "date" DATE NOT NULL,
+        "count" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+        "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY ("propertyId", "date")
+      )
+    `)
+    const trafficRows = await prisma.$queryRawUnsafe(`
+      WITH today AS (SELECT (now() AT TIME ZONE 'Asia/Taipei')::date AS d)
+      SELECT
+        s."propertyId",
+        COALESCE(SUM(CASE WHEN s."date" = today.d THEN s."count" ELSE 0 END), 0)::int AS "viewsToday",
+        COALESCE(SUM(CASE WHEN s."date" >= today.d - INTERVAL '6 days' THEN s."count" ELSE 0 END), 0)::int AS "views7d",
+        COALESCE(SUM(CASE WHEN s."date" >= today.d - INTERVAL '29 days' THEN s."count" ELSE 0 END), 0)::int AS "views30d"
+      FROM property_view_stats s, today
+      GROUP BY s."propertyId"
+    `)
+    const trafficMap = {}
+    trafficRows.forEach(r => {
+      trafficMap[r.propertyId] = {
+        viewsToday: Number(r.viewsToday || 0),
+        views7d: Number(r.views7d || 0),
+        views30d: Number(r.views30d || 0),
+      }
+    })
+    propertiesWithCommunity = propertiesWithCommunity.map(p => ({
+      ...p,
+      viewsToday: trafficMap[p.id]?.viewsToday || 0,
+      views7d: trafficMap[p.id]?.views7d || 0,
+      views30d: trafficMap[p.id]?.views30d || 0,
+    }))
+  } catch (e) {
+    propertiesWithCommunity = propertiesWithCommunity.map(p => ({
+      ...p,
+      viewsToday: 0,
+      views7d: 0,
+      views30d: 0,
+    }))
+  }
+
   let selfLandlord = null
   if (auth.role === 'landlord') {
     try {
