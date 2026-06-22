@@ -215,11 +215,13 @@ const TYPE_MAP = [
 const KW_STOP = ['我要','想要','想找','請問','有沒有','有無','幫我','可以','麻煩','謝謝','你好','哈囉',
   '租屋','找房','房子','房間','租金','預算','左右','附近','以下','以上','以內','元']
 
-// 明確搜尋指令：/搜尋 xxx、搜尋 xxx、/search xxx（slash 可省略）
-const SEARCH_CMD_RE = /^[\/／]?\s*(搜尋|搜索|search)\s*[:：]?\s*([\s\S]*)$/i
+// 明確搜尋指令：/s xxx、/搜尋 xxx、搜尋 xxx、/search xxx
+// （/s 必須有斜線且後面非英文字母，避免吃掉 /search 或一般英文字）
+const SEARCH_CMD_RE = /^(?:[\/／]\s*s(?![a-zA-Z])|[\/／]?\s*(?:搜尋|搜索|search))\s*[:：]?\s*([\s\S]*)$/i
 
-// force=true（使用者明確下「搜尋」指令）時，有任何條件或關鍵字即搜尋；
-// force=false（一般訊息）時，只有結構化條件(地區/租金/坪數/房型)才自動觸發，避免單打設備詞就跳房源卡
+// force=true（使用者明確下「/s」搜尋指令）時，有任何 1 個條件或關鍵字即搜尋；
+// force=false（一般訊息）時，需至少 1 個結構化條件、且總條件數 ≥ 2 才自動觸發，
+// 避免單一條件（如只打價格、只打設備）就跳房源卡
 function parseSearchQuery(text, force = false) {
   const result = { city: null, district: null, minPrice: null, maxPrice: null, minSize: null, maxSize: null, type: null, keywords: [] }
   let rest = text
@@ -285,15 +287,22 @@ function parseSearchQuery(text, force = false) {
   const kwMatches = rest.match(/[\u4e00-\u9fa5a-zA-Z]{2,}/g) || []
   result.keywords = [...new Set(kwMatches.filter(w => !KW_STOP.includes(w)))]
 
-  // 觸發判斷
-  const hasStructured = result.city || result.district || result.minPrice || result.maxPrice
-    || result.minSize != null || result.maxSize != null || result.type
+  // 觸發判斷：計算條件數量
+  const structuredCount =
+    (result.city ? 1 : 0) +
+    (result.district ? 1 : 0) +
+    ((result.minPrice || result.maxPrice) ? 1 : 0) +
+    ((result.minSize != null || result.maxSize != null) ? 1 : 0) +
+    (result.type ? 1 : 0)
+  const totalCount = structuredCount + result.keywords.length
+
   if (force) {
-    // 明確指令：有任何條件或關鍵字就搜尋
-    return (hasStructured || result.keywords.length) ? result : null
+    // 明確 /s 指令：有任何 1 個條件或關鍵字就搜尋
+    return totalCount >= 1 ? result : null
   }
-  // 一般訊息：只有結構化條件才自動觸發，避免單打設備詞就跳房源卡
-  return hasStructured ? result : null
+  // 一般訊息：需至少 1 個結構化條件、且總條件數 ≥ 2 才自動觸發
+  // （單一條件不跳搜尋；純設備關鍵字也不會自動觸發）
+  return (structuredCount >= 1 && totalCount >= 2) ? result : null
 }
 
 // ── 關鍵字搜尋房源 ────────────────────────────────────────────────
@@ -626,13 +635,13 @@ async function handleMessage(event, client, landlordId = null) {
   else {
     const cmdMatch = text.match(SEARCH_CMD_RE)
     if (cmdMatch) {
-      // 明確搜尋指令（/搜尋 …）：即使只有設備關鍵字也搜尋
-      const query = (cmdMatch[2] || '').trim()
+      // 明確搜尋指令（/s …）：即使只有單一條件或設備關鍵字也搜尋
+      const query = (cmdMatch[1] || '').trim()
       const parsed = query ? parseSearchQuery(query, true) : null
       if (parsed) {
         reply = await searchRooms(parsed, landlordId, t)
       } else {
-        reply = { type: 'text', text: '🔍 請在指令後輸入搜尋條件，例如：\n・/搜尋 沙鹿 套房 5000以下\n・/搜尋 10坪以上 電梯\n・/搜尋 寵物 近火車站\n\n可用條件：地區、房型、租金、坪數、設備／機能關鍵字' }
+        reply = { type: 'text', text: '🔍 請在指令後輸入搜尋條件，例如：\n・/s 沙鹿 套房 5000以下\n・/s 10坪以上 電梯\n・/s 寵物 近火車站\n\n可用條件：地區、房型、租金、坪數、設備／機能關鍵字' }
       }
     } else {
       // 一般訊息：只有「結構化條件」(地區/租金/坪數/房型)才自動視為搜尋
