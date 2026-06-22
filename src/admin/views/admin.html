@@ -6,18 +6,22 @@
 <link rel="icon" type="image/png" href="https://xiaowo-rental.vercel.app/favicon.png">
 <style>
   :root {
-    --cream: #F0EDE6;
+    --cream: #F6F8F5;
     --sage: #7A9E7E;
-    --deep-sage: #4E7153;
-    --charcoal: #3D3D3D;
+    --deep-sage: #2F6B46;
+    --charcoal: #17211C;
     --white: #FFFFFF;
     --warn: #E8A87C;
     --danger: #D97070;
+    --line: #E7ECE7;
+    --muted: #6B7280;
+    --soft-sage: #EEF6EF;
+    --shadow: 0 16px 40px rgba(22, 38, 30, .08);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: "Noto Sans TC", -apple-system, sans-serif;
-    background: var(--cream);
+    background: linear-gradient(135deg, #F7FAF7 0%, #F2F5F1 100%);
     color: var(--charcoal);
     min-height: 100vh;
   }
@@ -86,37 +90,83 @@
     pointer-events: none;
   }
   @keyframes ripple { to { transform: scale(4); opacity: 0; } }
-  #mainView { display: none; }
-  header {
-    background: linear-gradient(135deg, var(--sage), var(--deep-sage));
-    color: white; padding: 24px 20px;
+  #mainView { display: none; min-height: 100vh; }
+  .app-shell { display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: 100vh; }
+  .sidebar {
+    background: rgba(255,255,255,.86);
+    border-right: 1px solid var(--line);
+    padding: 28px 18px;
+    display: flex; flex-direction: column; gap: 20px;
+    position: sticky; top: 0; height: 100vh;
+    backdrop-filter: blur(18px);
   }
-  header h1 { font-size: 22px; }
-  header p { font-size: 13px; opacity: .8; margin-top: 4px; }
-  .stats {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
-    padding: 16px 20px; max-width: 900px; margin: 0 auto;
-  }
-  .stat-card {
-    background: var(--white); border-radius: 14px; padding: 14px;
-    text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.04);
-  }
-  .stat-card .num { font-size: 26px; font-weight: 900; color: var(--deep-sage); }
-  .stat-card .label { font-size: 12px; color: #888; margin-top: 2px; }
+  .brand { display:flex;align-items:center;gap:10px;padding:4px 12px 18px;color:var(--deep-sage);font-weight:900;font-size:22px;letter-spacing:.02em; }
+  .brand-mark { width:34px;height:34px;border-radius:12px;background:var(--soft-sage);display:flex;align-items:center;justify-content:center;font-size:20px;border:1px solid #DCE8DE; }
   .tabs {
-    display: flex; gap: 8px; padding: 0 20px; max-width: 900px;
-    margin: 0 auto 16px; flex-wrap: wrap;
+    display: flex; flex-direction: column; gap: 6px; padding: 0; margin: 0; max-width: none;
   }
   .tab {
-    padding: 10px 18px; border-radius: 99px; border: none;
-    background: var(--white); color: var(--charcoal); font-size: 14px;
-    cursor: pointer; font-weight: 500;
+    width: 100%; display:flex;align-items:center;gap:12px;
+    padding: 13px 16px; border-radius: 8px; border: none;
+    background: transparent; color: #111827; font-size: 15px;
+    cursor: pointer; font-weight: 700; text-align: left;
+    transition: background .15s, color .15s, transform .08s;
   }
-  .tab.active { background: var(--charcoal); color: white; }
-  .content { max-width: 900px; margin: 0 auto; padding: 0 20px 60px; }
+  .tab:hover { background: #F3F7F3; }
+  .tab.active { background: linear-gradient(90deg, #EAF3EC, #F5F8F5); color: var(--deep-sage); }
+  .tab-icon { width:22px;text-align:center;font-size:16px; }
+  .quick-panel, .help-panel {
+    margin-top: auto;
+    background: linear-gradient(135deg, #F4FAF4, #FFFFFF);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+    box-shadow: 0 10px 24px rgba(20,40,28,.04);
+  }
+  .help-panel { margin-top: 0; }
+  .quick-panel h4, .help-panel h4 { font-size:13px;color:var(--deep-sage);margin-bottom:10px; }
+  .quick-actions { display:grid;grid-template-columns:1fr 1fr;gap:8px; }
+  .quick-actions button {
+    border:1px solid var(--line); background:white; border-radius:8px;
+    padding:8px 10px; font-size:12px; font-weight:700; cursor:pointer; color:#26362D;
+  }
+  .help-panel p { font-size:13px;line-height:1.5;color:#4B5563; }
+  .main-panel { min-width:0;padding:32px 36px 48px; }
+  header {
+    background: transparent; color: var(--charcoal); padding: 0; margin-bottom: 28px;
+    display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
+  }
+  .page-title h1 { font-size:28px;line-height:1.2;margin:0 0 8px;font-weight:900;letter-spacing:0; }
+  .page-title p { font-size:14px;color:var(--muted);margin:0;opacity:1; }
+  .top-actions { display:flex;align-items:center;gap:14px; }
+  .icon-button {
+    width:38px;height:38px;border-radius:12px;border:1px solid var(--line);background:white;
+    display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 18px rgba(20,40,28,.05);
+  }
+  .user-chip { display:flex;align-items:center;gap:10px;background:white;border:1px solid var(--line);border-radius:999px;padding:6px 12px 6px 6px;box-shadow:0 6px 18px rgba(20,40,28,.05); }
+  .user-avatar { width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#D9EADF,#B8D5C0);display:flex;align-items:center;justify-content:center;color:var(--deep-sage);font-weight:900; }
+  .top-actions a, .top-actions button { color:#26362D !important;background:white !important;border:1px solid var(--line) !important;border-radius:8px !important;text-decoration:none !important; }
+  .stats {
+    display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 18px;
+    padding: 0; max-width: none; margin: 0 0 26px;
+  }
+  .stat-card {
+    background: var(--white); border-radius: 8px; padding: 24px 22px;
+    text-align: left; box-shadow: var(--shadow); border:1px solid rgba(230,236,231,.8);
+    min-height: 122px; display:flex;align-items:center;gap:20px;
+  }
+  .stat-icon { width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0; }
+  .stat-card:nth-child(1) .stat-icon { background:#DCEEDF;color:#3F7A4E; }
+  .stat-card:nth-child(2) .stat-icon { background:#DCEBFF;color:#1D64B8; }
+  .stat-card:nth-child(3) .stat-icon { background:#FFE8BD;color:#B96D00; }
+  .stat-card:nth-child(4) .stat-icon { background:#E8D9FF;color:#6F3DCB; }
+  .stat-card .num { font-size: 30px; line-height:1; font-weight: 900; color: #111827; }
+  .stat-card .label { font-size: 14px; color: #374151; margin-top: 8px; }
+  .stat-card .delta { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .content { max-width: none; margin: 0; padding: 0; }
   .card {
-    background: var(--white); border-radius: 16px; padding: 18px;
-    margin-bottom: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+    background: var(--white); border-radius: 8px; padding: 18px;
+    margin-bottom: 12px; box-shadow: 0 6px 20px rgba(20,40,28,.04); border:1px solid var(--line);
   }
   .card-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
   .card h3 { font-size: 16px; margin-bottom: 6px; }
@@ -139,19 +189,47 @@
   .badge.COMING_SOON { background: #E3F0FB; color: #2979B8; }
   .actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
   .action-btn {
-    padding: 6px 14px; border-radius: 8px; border: 1.5px solid var(--sage);
-    background: transparent; color: var(--deep-sage); font-size: 13px;
+    padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line);
+    background: white; color: #1F2937; font-size: 13px;
     cursor: pointer; font-weight: 500;
     position: relative; overflow: hidden;
     transition: background .15s, color .15s, transform .08s;
   }
-  .action-btn:hover { background: var(--sage); color: white; }
+  .action-btn:hover { background: var(--soft-sage); color: var(--deep-sage); }
   .action-btn:active { transform: scale(0.94) !important; }
   .action-btn.danger { border-color: var(--danger); color: var(--danger); }
   .action-btn.danger:hover { background: var(--danger); color: white; }
   .empty { text-align: center; color: #aaa; padding: 50px 0; font-size: 14px; }
-  .form-box { background: var(--white); border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.04); }
+  .form-box { background: var(--white); border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); border:1px solid var(--line); }
   .form-box h3 { margin-bottom: 14px; }
+  .section-head { display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px; }
+  .section-head h3 { margin:0;font-size:17px; }
+  .overview-grid { display:grid;grid-template-columns:2fr 1fr;gap:18px;align-items:start; }
+  .overview-grid section:first-child { grid-row: span 2; }
+  .overview-row { display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-top:1px solid var(--line); }
+  .overview-row:first-of-type { border-top:none; }
+  .overview-row strong { display:block;font-size:14px;color:#111827;margin-bottom:4px; }
+  .overview-row span { font-size:12px;color:var(--muted); }
+  .admin-toolbar { display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap; }
+  .admin-toolbar-left, .admin-toolbar-right { display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
+  .admin-primary { background:var(--deep-sage)!important;color:white!important;border:none!important;box-shadow:0 10px 24px rgba(47,107,70,.22); }
+  .property-table { background:white;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);overflow:hidden; }
+  .property-table-head, .property-row { display:grid;grid-template-columns:minmax(240px,1.5fr) minmax(150px,.9fr) minmax(130px,.8fr) minmax(120px,.7fr) minmax(130px,.8fr) minmax(260px,1.1fr);gap:18px;align-items:center; }
+  .property-table-head { padding:14px 18px;background:#FAFBFA;font-size:13px;font-weight:900;color:#111827;border-bottom:1px solid var(--line); }
+  .property-row { padding:14px 18px;border-bottom:1px solid var(--line); }
+  .property-row:last-child { border-bottom:none; }
+  .property-main { display:flex;align-items:center;gap:14px;min-width:0; }
+  .property-main h3 { margin:0 0 4px;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .property-meta { font-size:13px;color:var(--muted);line-height:1.55; }
+  .property-actions { display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap; }
+  .property-actions select { max-width:120px; }
+  @media(max-width:1180px) {
+    .property-table-head { display:none; }
+    .property-row { grid-template-columns:1fr;gap:10px; }
+    .property-actions { justify-content:flex-start; }
+    .overview-grid { grid-template-columns:1fr; }
+    .overview-grid section:first-child { grid-row:auto; }
+  }
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .form-grid .full { grid-column: 1 / -1; }
   .form-box input, .form-box select, .form-box textarea {
@@ -168,8 +246,18 @@
     transition: opacity .3s; pointer-events: none; z-index: 99;
   }
   .toast.show { opacity: 1; }
-  @media (max-width: 600px) {
+  @media (max-width: 980px) {
+    .app-shell { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; padding: 18px; }
+    .tabs { flex-direction: row; overflow-x:auto; padding-bottom:4px; }
+    .tab { width:auto; white-space:nowrap; }
+    .quick-panel,.help-panel { display:none; }
+    .main-panel { padding:24px 18px 40px; }
     .stats { grid-template-columns: repeat(2, 1fr); }
+    header { flex-direction:column; }
+  }
+  @media (max-width: 600px) {
+    .stats { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
   }
   details.acc { border:1.5px solid #E5E0D5; border-radius:12px; margin-bottom:10px; overflow:hidden; }
@@ -221,25 +309,50 @@
 </div>
 
 <div id="mainView">
-  <header>
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <div style="display:flex;align-items:center;gap:14px;">
-        <img src="https://xiaowo-rental.vercel.app/logo-admin.png" alt="小蝸出租" style="height:42px;width:auto;object-fit:contain;" onerror="this.style.display='none'">
-        <p id="accountLabel" style="margin:0;opacity:.85;font-size:13px;">管理後台</p>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">⌂</span>
+        <span>小蝸出租</span>
       </div>
-      <div style="display:flex;gap:8px;">
-        <a id="siteLink" href="#" target="_blank" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;">🌐 網站</a>
-        <a id="mainSiteLink" href="#" target="_blank" style="display:none;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;text-decoration:none;align-items:center;">前往首頁</a>
-        <button onclick="logout()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:white;padding:8px 16px;border-radius:99px;font-size:13px;cursor:pointer;">登出</button>
+
+      <div class="tabs" id="tabBar"></div>
+
+      <div class="quick-panel">
+        <h4>快速連結</h4>
+        <div class="quick-actions">
+          <button onclick="exportProperties()">匯出 CSV</button>
+          <button onclick="downloadTemplate()">匯入範本</button>
+        </div>
       </div>
-    </div>
-  </header>
+      <div class="help-panel">
+        <h4>需要協助嗎？</h4>
+        <p>聯絡客服或回到網站查看目前公開頁面。</p>
+      </div>
+    </aside>
 
-  <div class="stats" id="stats"></div>
+    <main class="main-panel">
+      <header>
+        <div class="page-title">
+          <h1 id="pageTitle">房源管理</h1>
+          <p id="pageSubtitle">管理所有房源與狀態</p>
+        </div>
+        <div class="top-actions">
+          <button class="icon-button" type="button" title="重新整理" onclick="reload()">↻</button>
+          <a id="siteLink" href="#" target="_blank" style="padding:9px 14px;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;">網站</a>
+          <a id="mainSiteLink" href="#" target="_blank" style="display:none;padding:9px 14px;font-size:13px;cursor:pointer;align-items:center;">前往首頁</a>
+          <div class="user-chip">
+            <span class="user-avatar">管</span>
+            <span id="accountLabel" style="font-size:13px;font-weight:800;">管理員</span>
+          </div>
+          <button onclick="logout()" style="padding:9px 14px;font-size:13px;cursor:pointer;">登出</button>
+        </div>
+      </header>
 
-  <div class="tabs" id="tabBar"></div>
-
-  <div class="content" id="content"></div>
+      <div class="stats" id="stats"></div>
+      <div class="content" id="content"></div>
+    </main>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -247,7 +360,7 @@
 <script>
 var DATA = null
 var KEY = sessionStorage.getItem('adminKey') || ''
-var currentTab = 'tenants'
+var currentTab = 'overview'
 var editingPropertyId = null
 var _ownFeatures = {}   // 登入後由 refreshOwnFeatures() 設定
 
@@ -318,8 +431,8 @@ async function login(savedKey) {
         }
       }
     }
-    // 如果當前 tab 被功能模組關掉，切到 properties
-    if (currentTab === 'tenants' && DATA.role !== 'super' && !feat('tenants')) currentTab = 'properties'
+    // 如果當前 tab 被功能模組關掉，切到總覽
+    if (currentTab === 'tenants' && DATA.role !== 'super' && !feat('tenants')) currentTab = 'overview'
     renderTabBar()
     renderStats()
     renderTab()
@@ -351,39 +464,59 @@ async function reload() {
 
 function renderTabBar() {
   var tabs = []
-  if (DATA.role === 'super' || feat('tenants')) tabs.push({ id: 'tenants', label: '👥 用戶' })
-  if (DATA.role === 'super' || feat('booking')) tabs.push({ id: 'bookings', label: '📅 預約' })
-  if (DATA.role === 'super' || feat('repair')) tabs.push({ id: 'repairs', label: '🔧 維修' })
-  tabs.push({ id: 'properties', label: '🏠 房源管理' })
+  tabs.push({ id: 'overview', label: '總覽', icon: '⌂' })
+  if (DATA.role === 'super' || feat('tenants')) tabs.push({ id: 'tenants', label: DATA.role === 'super' ? '用戶管理' : '租客管理', icon: '♙' })
+  tabs.push({ id: 'properties', label: '房源管理', icon: '⌂' })
+  if (DATA.role === 'super' || feat('booking')) tabs.push({ id: 'bookings', label: '預約管理', icon: '▣' })
+  if (DATA.role === 'super' || feat('repair')) tabs.push({ id: 'repairs', label: '維修管理', icon: '⌘' })
   if (DATA.role === 'super') {
-    tabs.push({ id: 'landlords', label: '🏢 房東管理' })
+    tabs.push({ id: 'landlords', label: '房東管理', icon: '♢' })
   }
+  if (DATA.role === 'super' || feat('community')) tabs.push({ id: 'community', label: '社區管理', icon: '⌬' })
+  if (DATA.role === 'super' || feat('heroSlides')) tabs.push({ id: 'heroSettings', label: '首頁設定', icon: '▧' })
+  if (DATA.role === 'super') tabs.push({ id: 'footerSettings', label: '頁尾設定', icon: '☰' })
   if (DATA.role === 'landlord' && feat('bot')) {
-    tabs.push({ id: 'botSettings', label: '⚙️ Bot 設定' })
-  }
-  if (DATA.role === 'super' || feat('heroSlides')) {
-    tabs.push({ id: 'heroSettings', label: '🖼️ 首頁設定' })
-  }
-  if (DATA.role === 'super' || feat('community')) {
-    tabs.push({ id: 'community', label: '🏘️ 社區' })
-  }
-  if (DATA.role === 'super') {
-    tabs.push({ id: 'footerSettings', label: '📄 頁尾設定' })
+    tabs.push({ id: 'botSettings', label: '系統設定', icon: '⚙' })
   }
   document.getElementById('tabBar').innerHTML = tabs.map(function(t) {
-    return '<button class="tab' + (currentTab === t.id ? ' active' : '') + '" data-tab="' + t.id + '" onclick="switchTab(this.dataset.tab)">' + t.label + '</button>'
+    return '<button class="tab' + (currentTab === t.id ? ' active' : '') + '" data-tab="' + t.id + '" onclick="switchTab(this.dataset.tab)"><span class="tab-icon">' + t.icon + '</span><span>' + t.label + '</span></button>'
   }).join('')
+}
+
+function tabTitle(tab) {
+  var map = {
+    overview: ['總覽', '掌握今日房源、預約與維修狀態'],
+    tenants: [DATA && DATA.role === 'super' ? '用戶管理' : '租客管理', '管理租客、網站用戶與 LINE 用戶'],
+    properties: ['房源管理', '管理所有房源與狀態'],
+    bookings: ['預約管理', '處理租客看房預約'],
+    repairs: ['維修管理', '追蹤維修回報與處理進度'],
+    landlords: ['房東管理', '管理房東帳號、Bot 與功能權限'],
+    botSettings: ['系統設定', '設定 Bot、官網與選單內容'],
+    heroSettings: ['首頁設定', DATA && DATA.role === 'super' ? '管理主站首頁輪播與 Logo' : '管理房東官網首頁輪播與 Logo'],
+    community: ['社區管理', '管理社區資料與房源群組'],
+    footerSettings: ['頁尾設定', '管理主站頁尾內容頁面']
+  }
+  return map[tab] || ['管理後台', '小蝸出租後台管理']
+}
+
+function updatePageTitle() {
+  var title = tabTitle(currentTab)
+  var h = document.getElementById('pageTitle')
+  var p = document.getElementById('pageSubtitle')
+  if (h) h.textContent = title[0]
+  if (p) p.textContent = title[1]
 }
 
 function renderStats() {
   var pendingBookings = DATA.bookings.filter(function(b){ return b.status === 'PENDING' }).length
   var pendingRepairs = DATA.repairs.filter(function(r){ return r.status === 'PENDING' }).length
   var available = DATA.properties.filter(function(p){ return p.status === 'AVAILABLE' }).length
+  var rented = DATA.properties.filter(function(p){ return p.status === 'RENTED' }).length
   document.getElementById('stats').innerHTML =
-    '<div class="stat-card"><div class="num">' + DATA.tenants.length + '</div><div class="label">總用戶</div></div>' +
-    '<div class="stat-card"><div class="num">' + available + '</div><div class="label">可租房源</div></div>' +
-    '<div class="stat-card"><div class="num">' + pendingBookings + '</div><div class="label">待確認預約</div></div>' +
-    '<div class="stat-card"><div class="num">' + pendingRepairs + '</div><div class="label">待處理維修</div></div>'
+    '<div class="stat-card"><div class="stat-icon">♙</div><div><div class="num">' + DATA.tenants.length + '</div><div class="label">總用戶</div><div class="delta">目前管理名單</div></div></div>' +
+    '<div class="stat-card"><div class="stat-icon">⌂</div><div><div class="num">' + available + '</div><div class="label">可租房源</div><div class="delta">已出租 ' + rented + '</div></div></div>' +
+    '<div class="stat-card"><div class="stat-icon">▣</div><div><div class="num">' + pendingBookings + '</div><div class="label">待確認預約</div><div class="delta">需盡快處理</div></div></div>' +
+    '<div class="stat-card"><div class="stat-icon">⌘</div><div><div class="num">' + pendingRepairs + '</div><div class="label">待處理維修</div><div class="delta">尚未結案</div></div></div>'
 }
 
 function switchTab(tab) {
@@ -391,11 +524,14 @@ function switchTab(tab) {
   document.querySelectorAll('.tab').forEach(function(t) {
     t.classList.toggle('active', t.dataset.tab === tab)
   })
+  updatePageTitle()
   renderTab()
 }
 
 function renderTab() {
   var el = document.getElementById('content')
+  updatePageTitle()
+  if (currentTab === 'overview') el.innerHTML = renderOverview()
   if (currentTab === 'tenants') el.innerHTML = renderTenants()
   if (currentTab === 'bookings') el.innerHTML = renderBookings()
   if (currentTab === 'repairs') el.innerHTML = renderRepairs()
@@ -409,6 +545,29 @@ function renderTab() {
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+}
+
+function renderOverview() {
+  var recentProps = (DATA.properties || []).slice(0, 5)
+  var pendingBookings = DATA.bookings.filter(function(b){ return b.status === 'PENDING' }).slice(0, 4)
+  var pendingRepairs = DATA.repairs.filter(function(r){ return r.status === 'PENDING' }).slice(0, 4)
+  var rows = recentProps.map(function(p) {
+    return '<div class="overview-row">' +
+      '<div><strong>' + esc(p.title) + '</strong><span>' + esc(p.city || '') + esc(p.district || '') + ' · NT$ ' + Number(p.price || 0).toLocaleString() + '/月</span></div>' +
+      '<span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span>' +
+    '</div>'
+  }).join('')
+  var bookings = pendingBookings.map(function(b) {
+    return '<div class="overview-row"><div><strong>' + esc(b.property.title) + '</strong><span>' + fmtDate(b.date) + ' ' + esc(b.timeslot) + '</span></div><span class="badge PENDING">待確認</span></div>'
+  }).join('')
+  var repairs = pendingRepairs.map(function(r) {
+    return '<div class="overview-row"><div><strong>' + esc(r.title) + '</strong><span>' + esc(r.property.title) + '</span></div><span class="badge PENDING">待處理</span></div>'
+  }).join('')
+  return '<div class="overview-grid">' +
+    '<section class="form-box"><div class="section-head"><h3>近期房源</h3><button class="action-btn" onclick="switchTab(\'properties\')">管理房源</button></div>' + (rows || '<div class="empty">目前沒有房源</div>') + '</section>' +
+    '<section class="form-box"><div class="section-head"><h3>待確認預約</h3><button class="action-btn" onclick="switchTab(\'bookings\')">查看預約</button></div>' + (bookings || '<div class="empty">沒有待確認預約</div>') + '</section>' +
+    '<section class="form-box"><div class="section-head"><h3>待處理維修</h3><button class="action-btn" onclick="switchTab(\'repairs\')">查看維修</button></div>' + (repairs || '<div class="empty">沒有待處理維修</div>') + '</section>' +
+  '</div>'
 }
 
 // ── 房源 CSV 匯出 ──────────────────────────────────────────────────
@@ -621,26 +780,22 @@ function renderPropCard(p, showCheckbox) {
   var featOn = DATA.role !== 'super' ? !!p.siteFeatured : !!p.featured
   var featOnLabel  = DATA.role !== 'super' ? '⭐ 官網精選中'  : '⭐ 主站精選中'
   var featOffLabel = DATA.role !== 'super' ? '☆ 設為官網精選' : '☆ 設為主站精選'
-  return '<div class="card" style="position:relative;">' +
-    '<div class="card-row" style="align-items:flex-start;">' +
-    '<div style="display:flex;gap:10px;align-items:flex-start;flex:1;min-width:0;">' +
-    cbHtml + thumb +
-    '<div style="min-width:0;">' +
-    '<h3 style="margin:0 0 4px;">' + esc(p.title) + '</h3>' +
-    '<div class="meta">' + esc(p.city || '') + esc(p.district || '') + ' · ' + (TYPE_LABEL[p.type] || '') +
-    ' · NT$ ' + Number(p.price).toLocaleString() + '/月' +
-    (p.size ? ' · ' + p.size + '坪' : '') + '</div>' +
-    '<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' +
-    '<span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span>' +
-    onlineBadgeHtml(p.status) +
-    '</div></div></div></div>' +
-    '<div class="actions" style="margin-top:10px;">' +
-    '<select onchange="changePropertyStatus(\'' + p.id + '\', this.value)" style="padding:6px 10px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;">' + statusOptions + '</select>' +
-    '<a class="action-btn" href="' + (DATA.siteUrl || '') + '/property/' + p.id + (DATA.role === 'landlord' && DATA.landlordId ? '?site=' + DATA.landlordId : '') + '" target="_blank" style="text-decoration:none;">🔗 查看</a>' +
-    '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">✏️ 編輯</button>' +
-    '<button class="action-btn" onclick="toggleFeatured(\'' + p.id + '\', ' + (featOn ? 'true' : 'false') + ')" style="' + (featOn ? 'background:#FFF3CD;color:#856404;border-color:#FFEAA7;' : '') + '">' + (featOn ? featOnLabel : featOffLabel) + '</button>' +
-    '<button class="action-btn danger" onclick="deleteProperty(\'' + p.id + '\')">🗑️ 刪除</button>' +
-    '</div></div>'
+  return '<div class="property-row">' +
+    '<div class="property-main">' + cbHtml + thumb +
+      '<div style="min-width:0;"><h3>' + esc(p.title) + '</h3><div class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div></div>' +
+    '</div>' +
+    '<div class="property-meta">' + (TYPE_LABEL[p.type] || p.type || '-') + '<br>' + esc(p.city || '') + esc(p.district || '') + '</div>' +
+    '<div class="property-meta">NT$ ' + Number(p.price || 0).toLocaleString() + ' / 月<br>' + (p.size ? p.size + ' 坪' : '-') + '</div>' +
+    '<div><span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span><div style="margin-top:6px;">' + onlineBadgeHtml(p.status) + '</div></div>' +
+    '<div class="property-meta">' + fmtDate(p.updatedAt || p.createdAt) + '</div>' +
+    '<div class="property-actions">' +
+      '<select onchange="changePropertyStatus(\'' + p.id + '\', this.value)" style="padding:8px 10px;border-radius:8px;border:1px solid var(--line);font-size:13px;background:white;">' + statusOptions + '</select>' +
+      '<a class="action-btn" href="' + (DATA.siteUrl || '') + '/property/' + p.id + (DATA.role === 'landlord' && DATA.landlordId ? '?site=' + DATA.landlordId : '') + '" target="_blank" style="text-decoration:none;">查看</a>' +
+      '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">編輯</button>' +
+      '<button class="action-btn" onclick="toggleFeatured(\'' + p.id + '\', ' + (featOn ? 'true' : 'false') + ')" style="' + (featOn ? 'background:#FFF3CD;color:#856404;border-color:#FFEAA7;' : '') + '">' + (featOn ? featOnLabel : featOffLabel) + '</button>' +
+      '<button class="action-btn danger" onclick="deleteProperty(\'' + p.id + '\')">刪除</button>' +
+    '</div>' +
+  '</div>'
 }
 
 // 批次操作工具列
@@ -758,13 +913,13 @@ function rerenderPropertiesTab() {
 
 function renderProperties() {
   var csvBtns = feat('csvImport')
-    ? '<button onclick="exportProperties()" style="padding:9px 18px;border-radius:8px;border:1.5px solid var(--sage);background:white;color:var(--deep-sage);font-size:13px;font-weight:600;cursor:pointer;">⬇️ 匯出 CSV</button>' +
-      '<label style="padding:9px 18px;border-radius:8px;border:1.5px solid #b59a6a;background:white;color:#7a5c2e;font-size:13px;font-weight:600;cursor:pointer;">⬆️ 匯入 CSV<input type="file" accept=".csv,text/csv" style="display:none;" onchange="importProperties(this)"></label>' +
-      '<a onclick="downloadTemplate()" style="font-size:12px;color:var(--sage);cursor:pointer;text-decoration:underline;align-self:center;">📄 下載範本</a>'
+    ? '<button class="action-btn" onclick="exportProperties()">匯出 CSV</button>' +
+      '<label class="action-btn" style="cursor:pointer;">匯入 CSV<input type="file" accept=".csv,text/csv" style="display:none;" onchange="importProperties(this)"></label>' +
+      '<button class="action-btn" onclick="downloadTemplate()">下載範本</button>'
     : ''
-  var addBtn = '<div style="margin-bottom:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">' +
-    '<button class="btn" style="width:auto;padding:10px 24px;" onclick="openAddPropertyModal()">➕ 新增房源</button>' +
-    csvBtns +
+  var addBtn = '<div class="admin-toolbar">' +
+    '<div class="admin-toolbar-left"><button class="action-btn admin-primary" onclick="openAddPropertyModal()">＋ 新增房源</button>' + csvBtns + '</div>' +
+    '<div class="admin-toolbar-right"><button class="action-btn" onclick="reload()">重新整理</button></div>' +
     '</div>' +
     '<div id="importResult" style="display:none;margin-bottom:12px;padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.7;"></div>'
   var pendingSection = renderPendingSection()
@@ -779,7 +934,7 @@ function renderProperties() {
     return addBtn + pendingSection + filterBar + '<div class="empty">沒有符合篩選條件的房源</div>'
   }
   if (DATA.role !== 'super') {
-    return addBtn + pendingSection + filterBar + toolbar + nonPending.map(function(p){ return renderPropCard(p, true) }).join('')
+    return addBtn + pendingSection + filterBar + toolbar + propertyTableHtml(nonPending, true)
   }
   // 總管理員：依房東分組，開合式
   var landlordMap = {}
@@ -820,11 +975,18 @@ function renderProperties() {
       '</div>' +
       // 展開內容（帶淡底色）；篩選啟用時自動展開
       '<div id="' + groupId + '" style="display:' + (filterActive ? 'block' : 'none') + ';padding:14px;background:#FAFAF8;">' +
-      props.map(function(p){ return renderPropCard(p, true) }).join('') +
+      propertyTableHtml(props, true) +
       '</div>' +
       '</div>'
   }).join('')
   return addBtn + pendingSection + filterBar + toolbar + groupHtml
+}
+
+function propertyTableHtml(list, showCheckbox) {
+  return '<div class="property-table">' +
+    '<div class="property-table-head"><div>房源</div><div>地點 / 類型</div><div>租金 / 坪數</div><div>狀態</div><div>更新時間</div><div style="text-align:right;">操作</div></div>' +
+    list.map(function(p){ return renderPropCard(p, showCheckbox) }).join('') +
+  '</div>'
 }
 
 function toggleGroup(id, headerEl) {
