@@ -199,6 +199,28 @@
   .action-btn:active { transform: scale(0.94) !important; }
   .action-btn.danger { border-color: var(--danger); color: var(--danger); }
   .action-btn.danger:hover { background: var(--danger); color: white; }
+  .landlord-card { padding:0;overflow:hidden; }
+  .landlord-head { display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px;cursor:pointer;user-select:none; }
+  .landlord-title { display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0; }
+  .landlord-name { font-size:16px;font-weight:900;color:#111827; }
+  .landlord-status { display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;background:#F4F7F4;color:var(--deep-sage);font-size:12px;font-weight:800; }
+  .landlord-status.warn { background:#FFF5E7;color:#B76E13; }
+  .landlord-body { display:none;padding:0 20px 18px;border-top:1px solid var(--line); }
+  .landlord-info-grid { display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px;margin-top:16px; }
+  .landlord-info-item { background:#FAFBFA;border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0; }
+  .landlord-info-item.full { grid-column:1/-1; }
+  .landlord-info-item .label { font-size:12px;color:var(--muted);font-weight:800;margin-bottom:6px; }
+  .landlord-info-item .value { font-size:14px;color:#111827;font-weight:700;line-height:1.45;word-break:break-word; }
+  .landlord-tools { display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--line); }
+  .landlord-inline-form { display:none;margin-top:14px;background:#FAFBFA;border:1px solid var(--line);border-radius:8px;padding:16px; }
+  .landlord-inline-form.open { display:block; }
+  .landlord-inline-form h4 { margin:0 0 12px;font-size:15px;color:#111827; }
+  .landlord-form-grid { display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:12px; }
+  .landlord-form-grid .full { grid-column:1/-1; }
+  .landlord-inline-form label { display:block;font-size:12px;color:var(--muted);font-weight:800;margin-bottom:5px; }
+  .landlord-inline-form input { width:100%;border:1.5px solid #E5E0D5;border-radius:8px;padding:10px 12px;font-size:14px;outline:none;font-family:inherit; }
+  .landlord-inline-form input:focus { border-color:var(--sage); }
+  .landlord-form-actions { display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px; }
   .empty { text-align: center; color: #aaa; padding: 50px 0; font-size: 14px; }
   .form-box { background: var(--white); border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); border:1px solid var(--line); }
   .form-box h3 { margin-bottom: 14px; }
@@ -256,10 +278,14 @@
     .main-panel { padding:24px 18px 40px; }
     .stats { grid-template-columns: repeat(2, 1fr); }
     header { flex-direction:column; }
+    .landlord-info-grid { grid-template-columns:repeat(2,minmax(140px,1fr)); }
   }
   @media (max-width: 600px) {
     .stats { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
+    .landlord-head { align-items:flex-start; }
+    .landlord-info-grid, .landlord-form-grid { grid-template-columns:1fr; }
+    .landlord-tools { gap:6px; }
   }
   details.acc { border:1.5px solid #E5E0D5; border-radius:12px; margin-bottom:10px; overflow:hidden; }
   details.acc summary {
@@ -1667,11 +1693,13 @@ function renderLandlords() {
     var lProps = DATA.properties.filter(function(p){ return p.ownerId === l.id })
     var propCount = lProps.length
     var botStatus = l.botConfigured
-      ? '<span style="color:var(--deep-sage);font-size:12px;">🤖 Bot 已設定' + (l.lineBotName ? '：' + esc(l.lineBotName) : '') + '</span>'
-      : '<span style="color:var(--warn,#C9913A);font-size:12px;">🤖 Bot 未設定</span>'
+      ? '<span class="landlord-status">🤖 Bot 已設定' + (l.lineBotName ? '：' + esc(l.lineBotName) : '') + '</span>'
+      : '<span class="landlord-status warn">🤖 Bot 未設定</span>'
     var webhookUrl = location.origin + '/webhook/landlord/' + l.id
     var propListId = 'props_' + l.id
     var cardBodyId = 'landlordBody_' + l.id
+    var editFormId = 'landlordEdit_' + l.id
+    var botFormId = 'landlordBot_' + l.id
     var propListHtml = lProps.length === 0 ? '<div style="color:var(--gray-light);font-size:13px;padding:8px 0;">尚無房源</div>' :
       lProps.map(function(p) {
         var statusLabel = { AVAILABLE:'可租', RENTED:'已租', PAUSED:'暫停', PENDING:'審核中', REJECTED:'拒絕' }[p.status] || p.status
@@ -1683,28 +1711,29 @@ function renderLandlords() {
           '<a href="' + (DATA.siteUrl||'') + '/property/' + p.id + '?site=' + l.id + '" target="_blank" style="font-size:11px;color:var(--sage);text-decoration:none;flex-shrink:0;">查看</a>' +
         '</div>'
       }).join('')
-    return '<div class="card">' +
-      '<div onclick="toggleLandlordCard(\'' + cardBodyId + '\', this)" style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;cursor:pointer;user-select:none;">' +
-      '<div style="display:flex;align-items:center;gap:10px;">' +
-      '<span style="font-size:15px;font-weight:700;">' + esc(l.name) + (l.isActive ? '' : ' <span style="font-size:12px;color:var(--danger);">(已停用)</span>') + '</span>' +
-      '<span>' + botStatus + '</span>' +
+    return '<div class="card landlord-card">' +
+      '<div class="landlord-head" onclick="toggleLandlordCard(\'' + cardBodyId + '\', this)">' +
+      '<div class="landlord-title">' +
+      '<span class="landlord-name">' + esc(l.name) + '</span>' +
+      (l.isActive ? '' : '<span class="landlord-status warn">已停用</span>') +
+      botStatus +
       '</div>' +
       '<span class="landlord-arrow" style="font-size:14px;color:var(--gray-mid);">▸</span>' +
       '</div>' +
-      '<div id="' + cardBodyId + '" style="display:none;margin-top:10px;">' +
-      '<div class="card-row"><div>' +
-      '<div class="meta">📧 ' + esc(l.email) + (l.phone ? ' · 📞 ' + esc(l.phone) : '') +
-      '<br>加入：' + fmtDate(l.createdAt) + '</div>' +
-      '<div style="margin-top:6px;"><span style="font-size:12px;color:var(--gray-mid);">登入金鑰：</span>' +
-      '<span class="uid" onclick="copyText(\'' + l.adminKey + '\')" title="點擊複製">' + l.adminKey + '</span></div>' +
-      '<div style="margin-top:6px;"><span style="font-size:12px;color:var(--gray-mid);">Webhook URL：</span><br>' +
-      '<span class="uid" onclick="copyText(\'' + webhookUrl + '\')" title="點擊複製" style="font-size:11px;">' + webhookUrl + '</span></div>' +
-      '</div></div>' +
-      '<div class="actions">' +
-      '<button class="action-btn" onclick="editLandlord(\'' + l.id + '\')">✏️ 編輯</button>' +
+      '<div id="' + cardBodyId + '" class="landlord-body">' +
+      '<div class="landlord-info-grid">' +
+      '<div class="landlord-info-item"><div class="label">Email</div><div class="value">' + esc(l.email || '未填寫') + '</div></div>' +
+      '<div class="landlord-info-item"><div class="label">電話</div><div class="value">' + esc(l.phone || '未填寫') + '</div></div>' +
+      '<div class="landlord-info-item"><div class="label">加入日期</div><div class="value">' + fmtDate(l.createdAt) + '</div></div>' +
+      '<div class="landlord-info-item"><div class="label">房源數</div><div class="value">' + propCount + ' 間</div></div>' +
+      '<div class="landlord-info-item full"><div class="label">登入金鑰</div><div class="value"><span class="uid" onclick="copyText(\'' + l.adminKey + '\')" title="點擊複製">' + l.adminKey + '</span></div></div>' +
+      '<div class="landlord-info-item full"><div class="label">Webhook URL</div><div class="value"><span class="uid" onclick="copyText(\'' + webhookUrl + '\')" title="點擊複製" style="font-size:11px;">' + webhookUrl + '</span></div></div>' +
+      '</div>' +
+      '<div class="landlord-tools">' +
+      '<button class="action-btn" onclick="event.stopPropagation();toggleLandlordInlineForm(\'' + editFormId + '\')">✏️ 編輯</button>' +
       '<button class="action-btn" onclick="openSiteEditor(\'' + l.id + '\')">⚙️ 官網</button>' +
       '<button class="action-btn" onclick="viewLandlordSite(\'' + l.id + '\')">🌐 官網預覽</button>' +
-      '<button class="action-btn" onclick="setupBot(\'' + l.id + '\', \'' + esc(l.name).replace(/'/g, '') + '\', \'' + webhookUrl + '\')">🤖 Bot 設定</button>' +
+      '<button class="action-btn" onclick="event.stopPropagation();setupBot(\'' + l.id + '\', \'' + esc(l.name).replace(/'/g, '') + '\', \'' + webhookUrl + '\')">🤖 Bot 設定</button>' +
       '<button class="action-btn" onclick="openBotTextEditor(\'' + l.id + '\')">💬 Bot 文字</button>' +
       '<button class="action-btn ' + (l.botEnabled ? 'danger' : '') + '" onclick="toggleBotEnabled(\'' + l.id + '\', ' + (!l.botEnabled) + ')">' + (l.botEnabled ? '⏸️ 停用 Bot' : '▶️ 啟用 Bot') + '</button>' +
       '<button class="action-btn" onclick="openFeaturesEditor(\'' + l.id + '\')">⚙️ 功能</button>' +
@@ -1712,6 +1741,32 @@ function renderLandlords() {
       (l.hasRichMenu ? '<button class="action-btn ' + (l.richMenuEnabled ? 'danger' : '') + '" onclick="toggleMenu(\'' + l.id + '\', ' + (!l.richMenuEnabled) + ')">' + (l.richMenuEnabled ? '🔕 關閉選單' : '🔔 開啟選單') + '</button>' : '') +
       '<button class="action-btn" onclick="regenerateKey(\'' + l.id + '\')">🔑 重發金鑰</button>' +
       '<button class="action-btn ' + (l.isActive ? 'danger' : '') + '" onclick="toggleLandlord(\'' + l.id + '\', ' + (!l.isActive) + ')">' + (l.isActive ? '停用' : '啟用') + '</button>' +
+      '</div>' +
+      '<div id="' + editFormId + '" class="landlord-inline-form">' +
+      '<h4>編輯房東資料</h4>' +
+      '<div class="landlord-form-grid">' +
+      '<div><label>房東名稱</label><input id="' + editFormId + '_name" value="' + esc(l.name || '') + '"></div>' +
+      '<div><label>Email（登入帳號）</label><input id="' + editFormId + '_email" type="email" value="' + esc(l.email || '') + '"></div>' +
+      '<div class="full"><label>電話</label><input id="' + editFormId + '_phone" value="' + esc(l.phone || '') + '" placeholder="可留空"></div>' +
+      '</div>' +
+      '<div class="landlord-form-actions">' +
+      '<button class="action-btn" onclick="toggleLandlordInlineForm(\'' + editFormId + '\', false)">取消</button>' +
+      '<button class="action-btn admin-primary" onclick="saveLandlordInline(\'' + l.id + '\', \'' + editFormId + '\')">儲存</button>' +
+      '</div>' +
+      '</div>' +
+      '<div id="' + botFormId + '" class="landlord-inline-form">' +
+      '<h4>LINE Bot 設定</h4>' +
+      '<div class="landlord-form-grid">' +
+      '<div><label>Channel Secret</label><input id="' + botFormId + '_secret" placeholder="貼上 LINE Channel Secret"></div>' +
+      '<div><label>Channel Access Token</label><input id="' + botFormId + '_token" placeholder="貼上 Channel Access Token"></div>' +
+      '<div><label>Bot 名稱</label><input id="' + botFormId + '_name" value="' + esc(l.lineBotName || l.name || '') + '"></div>' +
+      '<div><label>通知 LINE User ID</label><input id="' + botFormId + '_notify" value="' + esc(l.notifyLineUserId || '') + '" placeholder="可留空"></div>' +
+      '<div class="full"><label>Webhook URL</label><input value="' + esc(webhookUrl) + '" readonly onclick="this.select();copyText(this.value)"></div>' +
+      '</div>' +
+      '<div class="landlord-form-actions">' +
+      '<button class="action-btn" onclick="toggleLandlordInlineForm(\'' + botFormId + '\', false)">取消</button>' +
+      '<button class="action-btn admin-primary" onclick="saveBotSetupForm(\'' + l.id + '\', \'' + botFormId + '\', \'' + webhookUrl + '\')">儲存 Bot 設定</button>' +
+      '</div>' +
       '</div>' +
       '<div style="margin-top:10px;border-top:1px solid var(--oat-mid);padding-top:10px;">' +
       '<button onclick="togglePropList(\'' + propListId + '\', this)" style="background:none;border:none;font-size:13px;font-weight:600;color:var(--deep-sage);cursor:pointer;padding:0;">🏠 房源（' + propCount + '）▾</button>' +
@@ -1732,18 +1787,37 @@ function toggleLandlordCard(bodyId, headerEl) {
   if (arrow) arrow.textContent = open ? '▸' : '▾'
 }
 
+function toggleLandlordInlineForm(formId, forceOpen) {
+  var form = document.getElementById(formId)
+  if (!form) return
+  var shouldOpen = forceOpen == null ? !form.classList.contains('open') : !!forceOpen
+  form.classList.toggle('open', shouldOpen)
+  if (shouldOpen) {
+    var input = form.querySelector('input:not([readonly])')
+    if (input) setTimeout(function(){ input.focus() }, 30)
+  }
+}
+
 // 設定房東的 LINE Bot
 async function setupBot(id, name, webhookUrl) {
-  var secret = prompt('【' + name + '】的 LINE Bot 設定\\n\\n步驟1/2：貼上 Channel Secret\\n（從房東的 LINE Developers Console → Basic settings）')
-  if (secret === null) return
-  var token = prompt('步驟2/2：貼上 Channel Access Token\\n（Messaging API 頁籤最下方 Issue）')
-  if (token === null) return
-  var botName = prompt('（選填）這個 Bot 的名稱，方便你辨識：', name) || ''
-  var notifyId = prompt('（選填）房東要接收「預約/維修通知」的 LINE User ID\\n\\n留空的話，通知會發給你（總管理員）。\\n房東的 User ID 可在他的 LINE Developers Console → Basic settings → Your user ID 取得。') || ''
+  toggleLandlordInlineForm('landlordBot_' + id)
+}
+
+async function saveBotSetupForm(id, formId, webhookUrl) {
+  var secretEl = document.getElementById(formId + '_secret')
+  var tokenEl = document.getElementById(formId + '_token')
+  var nameEl = document.getElementById(formId + '_name')
+  var notifyEl = document.getElementById(formId + '_notify')
+  var secret = secretEl ? secretEl.value.trim() : ''
+  var token = tokenEl ? tokenEl.value.trim() : ''
+  var botName = nameEl ? nameEl.value.trim() : ''
+  var notifyId = notifyEl ? notifyEl.value.trim() : ''
+
+  if (!secret || !token) { showToast('❌ Channel Secret 和 Access Token 為必填'); return }
 
   var res = await fetch('/admin/api/landlord/' + id + '/bot?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ lineChannelSecret: secret.trim(), lineChannelToken: token.trim(), lineBotName: botName.trim(), notifyLineUserId: notifyId.trim() })
+    body: JSON.stringify({ lineChannelSecret: secret, lineChannelToken: token, lineBotName: botName, notifyLineUserId: notifyId })
   })
   if (!res.ok) { showToast('❌ 設定失敗'); return }
 
@@ -2280,25 +2354,23 @@ async function regenerateKey(id) {
 }
 
 async function editLandlord(id) {
-  var landlord = (DATA.landlords || []).find(function(l){ return l.id === id })
-  if (!landlord) return
+  toggleLandlordInlineForm('landlordEdit_' + id)
+}
 
-  var name = prompt('編輯房東名稱', landlord.name || '')
-  if (name === null) return
-  name = name.trim()
+async function saveLandlordInline(id, formId) {
+  var nameEl = document.getElementById(formId + '_name')
+  var emailEl = document.getElementById(formId + '_email')
+  var phoneEl = document.getElementById(formId + '_phone')
+  var name = nameEl ? nameEl.value.trim() : ''
+  var email = emailEl ? emailEl.value.trim() : ''
+  var phone = phoneEl ? phoneEl.value.trim() : ''
+
   if (!name) { showToast('❌ 房東名稱不可空白'); return }
-
-  var email = prompt('編輯 Email（登入帳號）', landlord.email || '')
-  if (email === null) return
-  email = email.trim()
   if (!email) { showToast('❌ Email 不可空白'); return }
-
-  var phone = prompt('編輯電話（可留空）', landlord.phone || '')
-  if (phone === null) return
 
   var res = await fetch('/admin/api/landlord/' + id + '?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ name: name, email: email, phone: phone.trim() })
+    body: JSON.stringify({ name: name, email: email, phone: phone })
   })
   var data = await res.json()
   if (!res.ok) { showToast('❌ ' + (data.error || '更新失敗')); return }
