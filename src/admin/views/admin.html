@@ -536,8 +536,7 @@ function logout() {
 }
 
 async function reload() {
-  // 確保 communities 資料表存在（靜默執行）
-  fetch('/admin/api/migrate?key=' + encodeURIComponent(KEY)).catch(() => {})
+  // 不再每次重新整理都觸發 migrate（DDL）；資料表存在性由啟動檢查與各社區端點自行確保
   var res = await fetch('/admin/api/data?key=' + encodeURIComponent(KEY))
   DATA = await res.json()
   renderStats()
