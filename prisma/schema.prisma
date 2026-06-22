@@ -211,8 +211,6 @@ model Property {
   allowShortTerm Boolean     @default(false)
   welcomeStudent Boolean     @default(true)
 
-  availableFrom DateTime?    // 即將釋出日期（status=PAUSED 時使用）
-
   boostPlan   BoostPlan      @default(NONE)
   boostUntil  DateTime?
 

@@ -825,10 +825,6 @@ function renderPropCard(p, showCheckbox) {
   var featOn = DATA.role !== 'super' ? !!p.siteFeatured : !!p.featured
   var featOnLabel  = '★ 精選中'
   var featOffLabel = '☆ 設精選'
-  var soonDate = p.availableFrom ? fmtDate(p.availableFrom) : ''
-  var soonDateInput = p.status === 'COMING_SOON'
-    ? '<input type="date" value="' + esc(dateInputValue(p.availableFrom)) + '" onchange="changeAvailableFrom(\'' + p.id + '\', this.value)" style="margin-top:7px;width:126px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px;">'
-    : ''
   return '<div class="property-row">' +
     '<a class="property-main" href="' + propUrl(p) + '" target="_blank">' + cbHtml + thumb +
       '<div style="min-width:0;"><h3>' + esc(p.title) + '</h3><div class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div></div>' +
@@ -837,7 +833,7 @@ function renderPropCard(p, showCheckbox) {
     '<div class="property-meta">' + (TYPE_LABEL[p.type] || p.type || '-') + '</div>' +
     '<div class="property-meta">NT$ ' + Number(p.price || 0).toLocaleString() + ' / 月</div>' +
     '<div class="property-meta">' + (p.size ? p.size + ' 坪' : '-') + '</div>' +
-    '<div><span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span><div style="margin-top:6px;">' + onlineBadgeHtml(p.status) + '</div>' + soonDateInput + (p.status === 'COMING_SOON' && soonDate ? '<div style="font-size:11px;color:var(--muted);margin-top:4px;">釋出：' + soonDate + '</div>' : '') + '</div>' +
+    '<div><span class="badge ' + p.status + '">' + (PROP_STATUS_LABEL[p.status] || p.status) + '</span><div style="margin-top:6px;">' + onlineBadgeHtml(p.status) + '</div></div>' +
     '<div class="property-meta">' + fmtDate(p.updatedAt || p.createdAt) + '</div>' +
     '<div class="property-actions">' +
       '<select onchange="changePropertyStatus(\'' + p.id + '\', this.value)" style="padding:8px 10px;border-radius:8px;border:1px solid var(--line);font-size:13px;background:white;">' + statusOptions + '</select>' +
@@ -1191,13 +1187,6 @@ async function applyBatchStatus() {
   if (!checked.length) { showToast('請先勾選房源'); return }
   var newStatus = document.getElementById('batchStatus').value
   var label = PROP_STATUS_LABEL[newStatus] || newStatus
-  var availableFrom = null
-  if (newStatus === 'COMING_SOON') {
-    availableFrom = prompt('請輸入即將釋出日期（YYYY-MM-DD）')
-    if (availableFrom === null) return
-    availableFrom = availableFrom.trim()
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(availableFrom)) { showToast('❌ 日期格式請用 YYYY-MM-DD'); return }
-  }
   if (!confirm('確定將 ' + checked.length + ' 間房源改為「' + label + '」？')) return
   var ids = checked.map(function(cb){ return cb.dataset.id })
   var failed = 0
@@ -1205,7 +1194,7 @@ async function applyBatchStatus() {
     try {
       var res = await fetch('/admin/api/property/' + id + '?key=' + encodeURIComponent(KEY), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, availableFrom: availableFrom })
+        body: JSON.stringify({ status: newStatus })
       })
       if (!res.ok) failed++
     } catch(e) { failed++ }
@@ -1742,30 +1731,11 @@ async function saveProperty() {
 
 async function changePropertyStatus(id, status) {
   var body = { status: status }
-  if (status === 'COMING_SOON') {
-    var date = prompt('請輸入即將釋出日期（YYYY-MM-DD）')
-    if (date === null) return
-    date = date.trim()
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showToast('❌ 日期格式請用 YYYY-MM-DD'); return }
-    body.availableFrom = date
-  } else {
-    body.availableFrom = null
-  }
   await fetch('/admin/api/property/' + id + '?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify(body)
   })
   showToast('✅ 狀態已更新')
-  reload()
-}
-
-async function changeAvailableFrom(id, date) {
-  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) { showToast('❌ 日期格式錯誤'); return }
-  await fetch('/admin/api/property/' + id + '?key=' + encodeURIComponent(KEY), {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ availableFrom: date || null })
-  })
-  showToast('✅ 即將釋出日期已更新')
   reload()
 }
 

@@ -43,7 +43,7 @@ router.post('/admin/api/property', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status, ownerId, tags, amenities, availableFrom } = req.body
+  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status, ownerId, tags, amenities } = req.body
   if (!title || !price) return res.status(400).json({ error: 'title 和 price 為必填' })
 
   const targetOwnerId = auth.role === 'landlord' ? auth.landlordId : (ownerId || null)
@@ -62,7 +62,6 @@ router.post('/admin/api/property', express.json(), async (req, res) => {
       title,
       type: type || 'SUITE',
       status: status || 'AVAILABLE',
-      availableFrom: availableFrom ? new Date(availableFrom) : null,
       city: city || '台中市',
       district: district || '',
       address: address || '',
@@ -99,12 +98,11 @@ router.post('/admin/api/property/:id', express.json(), async (req, res) => {
     return res.status(403).json({ error: 'forbidden' })
   }
 
-  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status, tags, amenities, availableFrom } = req.body
+  const { title, type, city, district, address, size, price, deposit, description, imageUrls, status, tags, amenities } = req.body
   const data = { ...extractFeeFields(req.body) }
   if (title       !== undefined) data.title       = title
   if (type        !== undefined) data.type        = type
   if (status      !== undefined) data.status      = status
-  if (availableFrom !== undefined) data.availableFrom = availableFrom ? new Date(availableFrom) : null
   if (city        !== undefined) data.city        = city
   if (district    !== undefined) data.district    = district
   if (address     !== undefined) data.address     = address
