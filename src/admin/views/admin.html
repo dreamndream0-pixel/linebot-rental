@@ -569,6 +569,10 @@ function uiIconMarkup(emoji) {
   return '<span class="emoji-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + uiIconPath(name) + '</svg></span>'
 }
 
+function uiLineIcon(name, extraClass) {
+  return '<span class="emoji-icon ' + (extraClass || '') + '" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + uiIconPath(name) + '</svg></span>'
+}
+
 function createUiIconNode(emoji) {
   var span = document.createElement('span')
   span.innerHTML = uiIconMarkup(emoji)
@@ -677,7 +681,7 @@ async function login(savedKey) {
     document.getElementById('loadingView').style.display = 'none'
     document.getElementById('mainView').style.display = 'block'
     if (DATA.account) {
-      document.getElementById('accountLabel').textContent = '👤 ' + DATA.account
+      document.getElementById('accountLabel').innerHTML = uiLineIcon('user') + ' ' + esc(DATA.account)
     }
     refreshOwnFeatures()
     if (DATA.siteUrl) {
@@ -728,39 +732,39 @@ async function reload() {
 
 function renderTabBar() {
   var tabs = []
-  tabs.push({ id: 'overview', label: '總覽', icon: '⌂' })
-  if (DATA.role === 'super' || feat('tenants')) tabs.push({ id: 'tenants', label: DATA.role === 'super' ? '用戶管理' : '租客管理', icon: '♙' })
-  tabs.push({ id: 'properties', label: '房源管理', icon: '⌂' })
-  if (DATA.role === 'super' || feat('booking')) tabs.push({ id: 'bookings', label: '預約管理', icon: '▣' })
-  if (DATA.role === 'super' || feat('repair')) tabs.push({ id: 'repairs', label: '維修管理', icon: '⌘' })
+  tabs.push({ id: 'overview', label: '\u7e3d\u89bd', icon: 'chart' })
+  if (DATA.role === 'super' || feat('tenants')) tabs.push({ id: 'tenants', label: DATA.role === 'super' ? '\u7528\u6236\u7ba1\u7406' : '\u79df\u5ba2\u7ba1\u7406', icon: 'users' })
+  tabs.push({ id: 'properties', label: '\u623f\u6e90\u7ba1\u7406', icon: 'home' })
+  if (DATA.role === 'super' || feat('booking')) tabs.push({ id: 'bookings', label: '\u9810\u7d04\u7ba1\u7406', icon: 'calendar' })
+  if (DATA.role === 'super' || feat('repair')) tabs.push({ id: 'repairs', label: '\u7dad\u4fee\u7ba1\u7406', icon: 'wrench' })
   if (DATA.role === 'super') {
-    tabs.push({ id: 'landlords', label: '房東管理', icon: '♢' })
+    tabs.push({ id: 'landlords', label: '\u623f\u6771\u7ba1\u7406', icon: 'building' })
   }
-  if (DATA.role === 'super' || feat('community')) tabs.push({ id: 'community', label: '社區管理', icon: '⌬' })
-  if (DATA.role === 'super' || feat('heroSlides')) tabs.push({ id: 'heroSettings', label: '首頁設定', icon: '▧' })
-  if (DATA.role === 'super') tabs.push({ id: 'footerSettings', label: '頁尾設定', icon: '☰' })
+  if (DATA.role === 'super' || feat('community')) tabs.push({ id: 'community', label: '\u793e\u5340\u7ba1\u7406', icon: 'community' })
+  if (DATA.role === 'super' || feat('heroSlides')) tabs.push({ id: 'heroSettings', label: '\u9996\u9801\u8a2d\u5b9a', icon: 'image' })
+  if (DATA.role === 'super') tabs.push({ id: 'footerSettings', label: '\u9801\u5c3e\u8a2d\u5b9a', icon: 'clipboard' })
   if (DATA.role === 'landlord' && feat('bot')) {
-    tabs.push({ id: 'botSettings', label: '系統設定', icon: '⚙' })
+    tabs.push({ id: 'botSettings', label: '\u7cfb\u7d71\u8a2d\u5b9a', icon: 'wrench' })
   }
   document.getElementById('tabBar').innerHTML = tabs.map(function(t) {
-    return '<button class="tab' + (currentTab === t.id ? ' active' : '') + '" data-tab="' + t.id + '" onclick="switchTab(this.dataset.tab)"><span class="tab-icon">' + t.icon + '</span><span>' + t.label + '</span></button>'
+    return '<button class="tab' + (currentTab === t.id ? ' active' : '') + '" data-tab="' + t.id + '" onclick="switchTab(this.dataset.tab)"><span class="tab-icon">' + uiLineIcon(t.icon) + '</span><span>' + t.label + '</span></button>'
   }).join('')
 }
 
 function tabTitle(tab) {
   var map = {
-    overview: ['總覽', '掌握今日房源、預約與維修狀態'],
-    tenants: [DATA && DATA.role === 'super' ? '用戶管理' : '租客管理', '管理租客、網站用戶與 LINE 用戶'],
-    properties: ['房源管理', '管理所有房源與狀態'],
-    bookings: ['預約管理', '處理租客看房預約'],
-    repairs: ['維修管理', '追蹤維修回報與處理進度'],
-    landlords: ['房東管理', '管理房東帳號、Bot 與功能權限'],
-    botSettings: ['系統設定', '設定 Bot、官網與選單內容'],
-    heroSettings: ['首頁設定', DATA && DATA.role === 'super' ? '管理主站首頁輪播與 Logo' : '管理房東官網首頁輪播與 Logo'],
-    community: ['社區管理', '管理社區資料與房源群組'],
-    footerSettings: ['頁尾設定', '管理主站頁尾內容頁面']
+    overview: ['\u7e3d\u89bd', '\u638c\u63e1\u4eca\u65e5\u623f\u6e90\u3001\u9810\u7d04\u8207\u7dad\u4fee\u72c0\u614b'],
+    tenants: [DATA && DATA.role === 'super' ? '\u7528\u6236\u7ba1\u7406' : '\u79df\u5ba2\u7ba1\u7406', '\u7ba1\u7406\u79df\u5ba2\u3001\u7db2\u7ad9\u7528\u6236\u8207 LINE \u7528\u6236'],
+    properties: ['\u623f\u6e90\u7ba1\u7406', '\u7ba1\u7406\u6240\u6709\u623f\u6e90\u8207\u72c0\u614b'],
+    bookings: ['\u9810\u7d04\u7ba1\u7406', '\u8655\u7406\u79df\u5ba2\u770b\u623f\u9810\u7d04'],
+    repairs: ['\u7dad\u4fee\u7ba1\u7406', '\u8ffd\u8e64\u7dad\u4fee\u56de\u5831\u8207\u8655\u7406\u9032\u5ea6'],
+    landlords: ['\u623f\u6771\u7ba1\u7406', '\u7ba1\u7406\u623f\u6771\u5e33\u865f\u3001Bot \u8207\u529f\u80fd\u6b0a\u9650'],
+    botSettings: ['\u7cfb\u7d71\u8a2d\u5b9a', '\u8a2d\u5b9a Bot\u3001\u5b98\u7db2\u8207\u9078\u55ae\u5167\u5bb9'],
+    heroSettings: ['\u9996\u9801\u8a2d\u5b9a', DATA && DATA.role === 'super' ? '\u7ba1\u7406\u4e3b\u7ad9\u9996\u9801\u8f2a\u64ad\u8207 Logo' : '\u7ba1\u7406\u623f\u6771\u5b98\u7db2\u9996\u9801\u8f2a\u64ad\u8207 Logo'],
+    community: ['\u793e\u5340\u7ba1\u7406', '\u7ba1\u7406\u793e\u5340\u8cc7\u6599\u8207\u623f\u6e90\u7fa4\u7d44'],
+    footerSettings: ['\u9801\u5c3e\u8a2d\u5b9a', '\u7ba1\u7406\u4e3b\u7ad9\u9801\u5c3e\u5167\u5bb9\u9801\u9762']
   }
-  return map[tab] || ['管理後台', '小蝸出租後台管理']
+  return map[tab] || ['\u7ba1\u7406\u5f8c\u53f0', '\u5c0f\u8778\u51fa\u79df\u5f8c\u53f0\u7ba1\u7406']
 }
 
 function updatePageTitle() {
@@ -771,17 +775,19 @@ function updatePageTitle() {
   if (p) p.textContent = title[1]
 }
 
+
 function renderStats() {
-  var pendingBookings = DATA.bookings.filter(function(b){ return b.status === 'PENDING' }).length
-  var pendingRepairs = DATA.repairs.filter(function(r){ return r.status === 'PENDING' }).length
   var available = DATA.properties.filter(function(p){ return p.status === 'AVAILABLE' }).length
   var rented = DATA.properties.filter(function(p){ return p.status === 'RENTED' }).length
+  var pendingBookings = DATA.bookings.filter(function(b){ return b.status === 'PENDING' }).length
+  var pendingRepairs = DATA.repairs.filter(function(r){ return r.status === 'PENDING' }).length
   document.getElementById('stats').innerHTML =
-    '<div class="stat-card"><div class="stat-icon">♙</div><div><div class="num">' + DATA.tenants.length + '</div><div class="label">總用戶</div><div class="delta">目前管理名單</div></div></div>' +
-    '<div class="stat-card"><div class="stat-icon">⌂</div><div><div class="num">' + available + '</div><div class="label">可租房源</div><div class="delta">已出租 ' + rented + '</div></div></div>' +
-    '<div class="stat-card"><div class="stat-icon">▣</div><div><div class="num">' + pendingBookings + '</div><div class="label">待確認預約</div><div class="delta">需盡快處理</div></div></div>' +
-    '<div class="stat-card"><div class="stat-icon">⌘</div><div><div class="num">' + pendingRepairs + '</div><div class="label">待處理維修</div><div class="delta">尚未結案</div></div></div>'
+    '<div class="stat-card"><div class="stat-icon">' + uiLineIcon('users') + '</div><div><div class="num">' + DATA.tenants.length + '</div><div class="label">\u7e3d\u7528\u6236</div><div class="delta">\u76ee\u524d\u7ba1\u7406\u540d\u55ae</div></div></div>' +
+    '<div class="stat-card"><div class="stat-icon">' + uiLineIcon('home') + '</div><div><div class="num">' + available + '</div><div class="label">\u53ef\u79df\u623f\u6e90</div><div class="delta">\u5df2\u51fa\u79df ' + rented + '</div></div></div>' +
+    '<div class="stat-card"><div class="stat-icon">' + uiLineIcon('calendar') + '</div><div><div class="num">' + pendingBookings + '</div><div class="label">\u5f85\u78ba\u8a8d\u9810\u7d04</div><div class="delta">\u9700\u76e1\u5feb\u8655\u7406</div></div></div>' +
+    '<div class="stat-card"><div class="stat-icon">' + uiLineIcon('wrench') + '</div><div><div class="num">' + pendingRepairs + '</div><div class="label">\u5f85\u8655\u7406\u7dad\u4fee</div><div class="delta">\u5c1a\u672a\u7d50\u6848</div></div></div>'
 }
+
 
 function switchTab(tab) {
   currentTab = tab
@@ -3094,36 +3100,37 @@ function renderLineTenantList() {
 function renderLineTenantCard(t) {
   var safeId = domSafeId(t.id)
   var avatar = t.avatarUrl
-    ? '<img class="tenant-avatar" src="' + esc(t.avatarUrl) + '" onerror="this.outerHTML=\'<div class=&quot;tenant-avatar&quot;>👤</div>\'">'
-    : '<div class="tenant-avatar">👤</div>'
-  var originalName = t.name || '未命名用戶'
+    ? '<img class="tenant-avatar" src="' + esc(t.avatarUrl) + '" onerror="this.outerHTML=\'<div class=&quot;tenant-avatar&quot;>' + uiLineIcon('user') + '</div>\'">'
+    : '<div class="tenant-avatar">' + uiLineIcon('user') + '</div>'
+  var originalName = t.name || '\u672a\u547d\u540d\u7528\u6236'
   var note = t.customName
-    ? '<div class="tenant-note">備註名稱：' + esc(t.customName) + '</div>'
-    : '<div class="tenant-note">尚未設定備註名稱</div>'
+    ? '<div class="tenant-note">\u5099\u8a3b\u540d\u7a31\uff1a' + esc(t.customName) + '</div>'
+    : '<div class="tenant-note">\u5c1a\u672a\u8a2d\u5b9a\u5099\u8a3b\u540d\u7a31</div>'
   return '<div class="card tenant-card">' +
     avatar +
     '<div class="tenant-main">' +
       '<div class="tenant-name-row">' +
         '<div><h3 class="tenant-name">' + esc(originalName) + '</h3>' + note + '</div>' +
-        '<button class="action-btn" onclick="startTenantNameEdit(' + jsArg(t.id) + ')">編輯備註</button>' +
+        '<button class="action-btn" onclick="startTenantNameEdit(' + jsArg(t.id) + ')">' + uiLineIcon('edit') + ' \u7de8\u8f2f\u5099\u8a3b</button>' +
       '</div>' +
       '<div class="tenant-grid">' +
         '<div class="tenant-field"><div class="label">ID</div><div class="value">' + esc(t.id) + '</div></div>' +
-        '<div class="tenant-field"><div class="label">房東官網名</div><div class="value">' + esc(tenantSourceName(t)) + '</div></div>' +
-        '<div class="tenant-field"><div class="label">加入時間</div><div class="value">' + fmtDate(t.createdAt) + '</div></div>' +
-        '<div class="tenant-field"><div class="label">UID</div><div class="value"><span class="uid" onclick="copyText(' + jsArg(t.lineUserId) + ')" title="點擊複製">' + esc(t.lineUserId || '-') + '</span></div></div>' +
+        '<div class="tenant-field"><div class="label">\u623f\u6771\u5b98\u7db2\u540d</div><div class="value">' + esc(tenantSourceName(t)) + '</div></div>' +
+        '<div class="tenant-field"><div class="label">\u52a0\u5165\u6642\u9593</div><div class="value">' + fmtDate(t.createdAt) + '</div></div>' +
+        '<div class="tenant-field"><div class="label">UID</div><div class="value"><span class="uid" onclick="copyText(' + jsArg(t.lineUserId) + ')" title="\u9ede\u64ca\u8907\u88fd">' + esc(t.lineUserId || '-') + '</span></div></div>' +
       '</div>' +
       '<div class="tenant-inline-edit" id="tenantEdit_' + safeId + '">' +
-        '<label>編輯備註名稱</label>' +
+        '<label>\u7de8\u8f2f\u5099\u8a3b\u540d\u7a31</label>' +
         '<div class="tenant-edit-row">' +
-          '<input id="tenantEditInput_' + safeId + '" value="' + esc(t.customName || '') + '" placeholder="留空代表只顯示原 LINE 名稱">' +
-          '<button class="action-btn primary" onclick="saveTenantName(' + jsArg(t.id) + ')">儲存</button>' +
-          '<button class="action-btn" onclick="cancelTenantNameEdit(' + jsArg(t.id) + ')">取消</button>' +
+          '<input id="tenantEditInput_' + safeId + '" value="' + esc(t.customName || '') + '" placeholder="\u7559\u7a7a\u4ee3\u8868\u53ea\u986f\u793a\u539f LINE \u540d\u7a31">' +
+          '<button class="action-btn primary" onclick="saveTenantName(' + jsArg(t.id) + ')">\u5132\u5b58</button>' +
+          '<button class="action-btn" onclick="cancelTenantNameEdit(' + jsArg(t.id) + ')">\u53d6\u6d88</button>' +
         '</div>' +
       '</div>' +
     '</div>' +
     '</div>'
 }
+
 
 function startTenantNameEdit(tenantId) {
   var box = document.getElementById('tenantEdit_' + domSafeId(tenantId))
