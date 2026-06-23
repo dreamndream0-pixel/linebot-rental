@@ -83,7 +83,7 @@ router.get('/admin/api/data', async (req, res) => {
   const [tenants, bookings, repairs, properties, landlords, communityMap, releaseMap, trafficMap, selfLandlord] = await Promise.all([
     prisma.tenant.findMany({
       where: f,
-      include: { property: true, landlord: { select: { name: true } } },
+      include: { property: true, landlord: { select: { name: true, siteName: true } } },
       orderBy: { createdAt: 'desc' }
     }),
     prisma.booking.findMany({

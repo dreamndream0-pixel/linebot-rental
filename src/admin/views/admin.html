@@ -183,22 +183,23 @@
   .user-tab { border:none;background:transparent;padding:12px 14px 11px;border-bottom:3px solid transparent;cursor:pointer;font-weight:900;color:var(--muted);white-space:nowrap; }
   .user-tab.active { color:var(--deep-sage);border-bottom-color:var(--deep-sage); }
   .user-panel { display:grid;gap:12px; }
-  .tenant-card { display:grid;grid-template-columns:56px minmax(0,1fr);gap:14px;align-items:start; }
+  .tenant-card { display:grid;grid-template-columns:56px minmax(180px,1.2fr) minmax(140px,.8fr) minmax(120px,.6fr) minmax(220px,1fr);gap:14px;align-items:center; }
   .tenant-avatar { width:56px;height:56px;border-radius:50%;object-fit:cover;background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0; }
   .tenant-main { min-width:0; }
-  .tenant-name-row { display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px; }
+  .tenant-name-row { display:flex;align-items:flex-start;gap:8px;margin:0;min-width:0; }
   .tenant-name { margin:0;font-size:17px;font-weight:900;color:#111827;line-height:1.35;word-break:break-word; }
-  .tenant-note { margin-top:2px;font-size:12px;color:var(--muted);font-weight:700;word-break:break-word; }
-  .tenant-grid { display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px; }
+  .tenant-note { margin-left:4px;font-size:12px;color:var(--muted);font-weight:700;word-break:break-word;align-self:center; }
+  .tenant-edit-icon { border:none;background:transparent;color:var(--muted);cursor:pointer;padding:2px;display:inline-flex;align-items:center;justify-content:center;align-self:center; }
+  .tenant-edit-icon:hover { color:var(--deep-sage); }
   .tenant-field { min-width:0;background:#FAFBFA;border:1px solid var(--line);border-radius:8px;padding:10px 12px; }
   .tenant-field .label { font-size:11px;color:var(--muted);font-weight:900;margin-bottom:5px; }
   .tenant-field .value { font-size:13px;color:#111827;font-weight:800;line-height:1.45;word-break:break-word; }
   .tenant-field .uid { margin-top:0;max-width:100%; }
-  .tenant-inline-edit { display:none;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:8px;background:#FAFBFA; }
-  .tenant-inline-edit.open { display:block; }
-  .tenant-inline-edit label { display:block;font-size:12px;color:var(--muted);font-weight:900;margin-bottom:6px; }
+  .tenant-inline-edit { display:none;align-items:center;gap:6px;flex-wrap:wrap; }
+  .tenant-inline-edit.open { display:inline-flex; }
+  .tenant-inline-edit label { display:none; }
   .tenant-edit-row { display:flex;gap:8px;align-items:center;flex-wrap:wrap; }
-  .tenant-edit-row input { flex:1;min-width:220px;border:1.5px solid #E5E0D5;border-radius:8px;padding:9px 10px;font-size:14px;font-family:inherit;outline:none; }
+  .tenant-edit-row input { width:180px;border:1.5px solid #E5E0D5;border-radius:8px;padding:7px 9px;font-size:12px;font-family:inherit;outline:none; }
   .tenant-edit-row input:focus { border-color:var(--sage); }
   .web-user-card { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:start; }
   .web-user-grid { display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;margin-top:10px; }
@@ -401,10 +402,11 @@
     .admin-modal-foot { padding:14px 16px; }
     .stats { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
-    .tenant-card { grid-template-columns:1fr; }
+    .tenant-card { grid-template-columns:48px minmax(0,1fr);align-items:start; }
     .tenant-avatar { width:48px;height:48px; }
-    .tenant-name-row { flex-direction:column;align-items:stretch; }
-    .tenant-grid, .web-user-grid { grid-template-columns:1fr; }
+    .tenant-name-row { flex-wrap:wrap; }
+    .tenant-field { grid-column:1/-1; }
+    .web-user-grid { grid-template-columns:1fr; }
     .tenant-edit-row input { min-width:0;width:100%; }
     .tenant-edit-row .action-btn { flex:1; }
     .landlord-head { align-items:flex-start; }
@@ -3062,10 +3064,12 @@ function jsArg(value) {
 }
 
 function tenantSourceName(t) {
-  if (t.landlord && t.landlord.name) return t.landlord.name
+  if (t.landlord && t.landlord.siteName) return t.landlord.siteName
   if (t.source && t.source !== 'main') return t.source
-  return '小蝸主站'
+  if (t.landlord && t.landlord.name) return t.landlord.name
+  return '\u5c0f\u8778\u4e3b\u7ad9'
 }
+
 
 function setTenantUserTab(tab) {
   tenantUserTab = tab
@@ -3103,31 +3107,27 @@ function renderLineTenantCard(t) {
     ? '<img class="tenant-avatar" src="' + esc(t.avatarUrl) + '" onerror="this.outerHTML=\'<div class=&quot;tenant-avatar&quot;>' + uiLineIcon('user') + '</div>\'">'
     : '<div class="tenant-avatar">' + uiLineIcon('user') + '</div>'
   var originalName = t.name || '\u672a\u547d\u540d\u7528\u6236'
-  var note = t.customName
-    ? '<div class="tenant-note">\u5099\u8a3b\u540d\u7a31\uff1a' + esc(t.customName) + '</div>'
-    : '<div class="tenant-note">\u5c1a\u672a\u8a2d\u5b9a\u5099\u8a3b\u540d\u7a31</div>'
+  var noteText = t.customName || '\u672a\u8a2d\u5b9a\u5099\u8a3b'
   return '<div class="card tenant-card">' +
     avatar +
     '<div class="tenant-main">' +
       '<div class="tenant-name-row">' +
-        '<div><h3 class="tenant-name">' + esc(originalName) + '</h3>' + note + '</div>' +
-        '<button class="action-btn" onclick="startTenantNameEdit(' + jsArg(t.id) + ')">' + uiLineIcon('edit') + ' \u7de8\u8f2f\u5099\u8a3b</button>' +
-      '</div>' +
-      '<div class="tenant-grid">' +
-        '<div class="tenant-field"><div class="label">ID</div><div class="value">' + esc(t.id) + '</div></div>' +
-        '<div class="tenant-field"><div class="label">\u623f\u6771\u5b98\u7db2\u540d</div><div class="value">' + esc(tenantSourceName(t)) + '</div></div>' +
-        '<div class="tenant-field"><div class="label">\u52a0\u5165\u6642\u9593</div><div class="value">' + fmtDate(t.createdAt) + '</div></div>' +
-        '<div class="tenant-field"><div class="label">UID</div><div class="value"><span class="uid" onclick="copyText(' + jsArg(t.lineUserId) + ')" title="\u9ede\u64ca\u8907\u88fd">' + esc(t.lineUserId || '-') + '</span></div></div>' +
-      '</div>' +
-      '<div class="tenant-inline-edit" id="tenantEdit_' + safeId + '">' +
-        '<label>\u7de8\u8f2f\u5099\u8a3b\u540d\u7a31</label>' +
-        '<div class="tenant-edit-row">' +
-          '<input id="tenantEditInput_' + safeId + '" value="' + esc(t.customName || '') + '" placeholder="\u7559\u7a7a\u4ee3\u8868\u53ea\u986f\u793a\u539f LINE \u540d\u7a31">' +
-          '<button class="action-btn primary" onclick="saveTenantName(' + jsArg(t.id) + ')">\u5132\u5b58</button>' +
-          '<button class="action-btn" onclick="cancelTenantNameEdit(' + jsArg(t.id) + ')">\u53d6\u6d88</button>' +
+        '<h3 class="tenant-name">' + esc(originalName) + '</h3>' +
+        '<span class="tenant-note" id="tenantNote_' + safeId + '">' + esc(noteText) + '</span>' +
+        '<button class="tenant-edit-icon" title="\u7de8\u8f2f\u5099\u8a3b" onclick="startTenantNameEdit(' + jsArg(t.id) + ')">' + uiLineIcon('edit') + '</button>' +
+        '<div class="tenant-inline-edit" id="tenantEdit_' + safeId + '">' +
+          '<label>\u7de8\u8f2f\u5099\u8a3b\u540d\u7a31</label>' +
+          '<div class="tenant-edit-row">' +
+            '<input id="tenantEditInput_' + safeId + '" value="' + esc(t.customName || '') + '" placeholder="\u5099\u8a3b\u540d\u7a31">' +
+            '<button class="action-btn primary" onclick="saveTenantName(' + jsArg(t.id) + ')">\u5132\u5b58</button>' +
+            '<button class="action-btn" onclick="cancelTenantNameEdit(' + jsArg(t.id) + ')">\u53d6\u6d88</button>' +
+          '</div>' +
         '</div>' +
       '</div>' +
     '</div>' +
+    '<div class="tenant-field"><div class="label">\u623f\u6771\u5b98\u7db2\u540d</div><div class="value">' + esc(tenantSourceName(t)) + '</div></div>' +
+    '<div class="tenant-field"><div class="label">\u52a0\u5165\u6642\u9593</div><div class="value">' + fmtDate(t.createdAt) + '</div></div>' +
+    '<div class="tenant-field"><div class="label">UID</div><div class="value"><span class="uid" onclick="copyText(' + jsArg(t.lineUserId) + ')" title="\u9ede\u64ca\u8907\u88fd">' + esc(t.lineUserId || '-') + '</span></div></div>' +
     '</div>'
 }
 
@@ -3135,15 +3135,19 @@ function renderLineTenantCard(t) {
 function startTenantNameEdit(tenantId) {
   var box = document.getElementById('tenantEdit_' + domSafeId(tenantId))
   var input = document.getElementById('tenantEditInput_' + domSafeId(tenantId))
+  var note = document.getElementById('tenantNote_' + domSafeId(tenantId))
   if (!box || !input) return
   box.classList.add('open')
+  if (note) note.style.display = 'none'
   input.focus()
   input.select()
 }
 
 function cancelTenantNameEdit(tenantId) {
   var box = document.getElementById('tenantEdit_' + domSafeId(tenantId))
+  var note = document.getElementById('tenantNote_' + domSafeId(tenantId))
   if (box) box.classList.remove('open')
+  if (note) note.style.display = ''
 }
 
 async function editName(tenantId) {
