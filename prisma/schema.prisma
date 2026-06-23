@@ -17,26 +17,26 @@ datasource db {
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
-  emailVerified DateTime? @map("email_verified")
+  emailVerified DateTime?
   phone         String?   @unique
-  passwordHash  String?   @map("password_hash")
+  passwordHash  String?
   role          UserRole  @default(TENANT)
 
   name          String
   handle        String?   @unique
   avatar        String?
   bio           String?
-  lineId        String?   @map("line_id")
+  lineId        String?
   verified      Boolean   @default(false)
 
-  totalListings Int       @default(0) @map("total_listings")
-  avgRating     Float?    @map("avg_rating")
-  reviewCount   Int       @default(0) @map("review_count")
-  yearsActive   Int       @default(0) @map("years_active")
+  totalListings Int       @default(0)
+  avgRating     Float?
+  reviewCount   Int       @default(0)
+  yearsActive   Int       @default(0)
 
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  deletedAt     DateTime? @map("deleted_at")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
 
   properties    Property[]
   favorites     Favorite[]
@@ -138,10 +138,10 @@ model Tenant {
 // ─────────────────────────────────────────────
 model Account {
   id                String  @id @default(cuid())
-  userId            String  @map("user_id")
+  userId            String
   type              String
   provider          String
-  providerAccountId String  @map("provider_account_id")
+  providerAccountId String
   refresh_token     String? @db.Text
   access_token      String? @db.Text
   expires_at        Int?
@@ -158,8 +158,8 @@ model Account {
 
 model Session {
   id           String   @id @default(cuid())
-  sessionToken String   @unique @map("session_token")
-  userId       String   @map("user_id")
+  sessionToken String   @unique
+  userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@map("sessions")

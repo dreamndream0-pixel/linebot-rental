@@ -11,11 +11,9 @@ router.get('/admin/api/webusers', async (req, res) => {
 
   try {
     const users = await prisma.$queryRawUnsafe(`
-      SELECT id, name, email, phone, role, verified,
-             created_at AS "createdAt",
-             deleted_at AS "deletedAt"
+      SELECT id, name, email, phone, role, verified, "createdAt", "deletedAt"
       FROM users
-      ORDER BY created_at DESC
+      ORDER BY "createdAt" DESC
       LIMIT 200
     `)
     // 不回傳 passwordHash，確保密碼不外洩
