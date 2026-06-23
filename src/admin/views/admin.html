@@ -365,13 +365,18 @@
     #appView { overflow-x:hidden; }
     .app-shell { display:block;min-height:100vh; }
     .sidebar { padding:14px 12px;position:relative;border-right:none;border-bottom:1px solid var(--line); }
-    .brand-logo { width:132px;margin-bottom:12px; }
+    .brand { padding:4px 210px 14px 12px;min-height:72px; }
+    .brand-logo { width:132px;margin-bottom:0; }
     .tabs { display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin:0 -4px;scroll-snap-type:x proximity; }
     .tab { flex:0 0 auto;padding:10px 12px;font-size:13px;scroll-snap-align:start; }
     .main-panel { padding:18px 12px 32px;max-width:100%;overflow:hidden; }
     header { gap:12px;margin-bottom:18px; }
     .page-title h1 { font-size:24px; }
-    .top-actions { width:100%;justify-content:space-between; }
+    .top-actions { position:absolute;top:18px;right:12px;width:190px;justify-content:flex-end;align-content:flex-start;gap:6px;flex-wrap:wrap;z-index:5; }
+    .top-actions a, .top-actions button { padding:7px 10px !important;font-size:12px !important;line-height:1.2; }
+    .user-chip { padding:5px 9px 5px 5px;gap:6px; }
+    .user-avatar { width:28px;height:28px;font-size:13px; }
+    #accountLabel { font-size:12px !important; }
     .admin-toolbar { align-items:stretch;gap:10px; }
     .admin-toolbar-left, .admin-toolbar-right { width:100%;display:grid;grid-template-columns:1fr;gap:8px; }
     .admin-toolbar .action-btn, .admin-toolbar .admin-primary { width:100%;justify-content:center; }
@@ -481,7 +486,6 @@
           <p id="pageSubtitle">管理所有房源與狀態</p>
         </div>
         <div class="top-actions">
-          <button class="icon-button" type="button" title="重新整理" onclick="reload()">↻</button>
           <a id="siteLink" href="#" target="_blank" style="padding:9px 14px;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;">網站</a>
           <a id="mainSiteLink" href="#" target="_blank" style="display:none;padding:9px 14px;font-size:13px;cursor:pointer;align-items:center;">前往首頁</a>
           <div class="user-chip">
