@@ -184,7 +184,8 @@
   .user-tab.active { color:var(--deep-sage);border-bottom-color:var(--deep-sage); }
   .user-panel { display:grid;gap:12px; }
   .tenant-card { display:grid;grid-template-columns:56px minmax(180px,1.2fr) minmax(140px,.8fr) minmax(120px,.6fr) minmax(220px,1fr);gap:14px;align-items:center; }
-  .tenant-avatar { width:56px;height:56px;border-radius:50%;object-fit:cover;background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0; }
+  .tenant-avatar { width:56px;height:56px;border-radius:50%;background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;position:relative;overflow:hidden;color:var(--deep-sage); }
+  .tenant-avatar-img { position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%; }
   .tenant-main { min-width:0; }
   .tenant-name-row { display:flex;align-items:flex-start;gap:8px;margin:0;min-width:0; }
   .tenant-name { margin:0;font-size:17px;font-weight:900;color:#111827;line-height:1.35;word-break:break-word; }
@@ -3104,7 +3105,7 @@ function renderLineTenantList() {
 function renderLineTenantCard(t) {
   var safeId = domSafeId(t.id)
   var avatar = t.avatarUrl
-    ? '<img class="tenant-avatar" src="' + esc(t.avatarUrl) + '" onerror="this.outerHTML=\'<div class=&quot;tenant-avatar&quot;>' + uiLineIcon('user') + '</div>\'">'
+    ? '<div class="tenant-avatar">' + uiLineIcon('user') + '<img class="tenant-avatar-img" src="' + esc(t.avatarUrl) + '" onerror="this.style.display=\'none\'"></div>'
     : '<div class="tenant-avatar">' + uiLineIcon('user') + '</div>'
   var originalName = t.name || '\u672a\u547d\u540d\u7528\u6236'
   var noteText = t.customName || '\u672a\u8a2d\u5b9a\u5099\u8a3b'
