@@ -17,26 +17,26 @@ datasource db {
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
-  emailVerified DateTime?
+  emailVerified DateTime? @map("email_verified")
   phone         String?   @unique
-  passwordHash  String?
+  passwordHash  String?   @map("password_hash")
   role          UserRole  @default(TENANT)
 
   name          String
   handle        String?   @unique
   avatar        String?
   bio           String?
-  lineId        String?
+  lineId        String?   @map("line_id")
   verified      Boolean   @default(false)
 
-  totalListings Int       @default(0)
-  avgRating     Float?
-  reviewCount   Int       @default(0)
-  yearsActive   Int       @default(0)
+  totalListings Int       @default(0) @map("total_listings")
+  avgRating     Float?    @map("avg_rating")
+  reviewCount   Int       @default(0) @map("review_count")
+  yearsActive   Int       @default(0) @map("years_active")
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
 
   properties    Property[]
   favorites     Favorite[]
