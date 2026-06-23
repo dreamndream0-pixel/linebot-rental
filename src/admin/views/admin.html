@@ -177,6 +177,29 @@
     word-break: break-all; display: inline-block; margin-top: 4px;
   }
   .uid:hover { background: #E5E0D5; }
+  .user-tabs { display:flex;align-items:center;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--line);overflow-x:auto; }
+  .user-tab { border:none;background:transparent;padding:12px 14px 11px;border-bottom:3px solid transparent;cursor:pointer;font-weight:900;color:var(--muted);white-space:nowrap; }
+  .user-tab.active { color:var(--deep-sage);border-bottom-color:var(--deep-sage); }
+  .user-panel { display:grid;gap:12px; }
+  .tenant-card { display:grid;grid-template-columns:56px minmax(0,1fr);gap:14px;align-items:start; }
+  .tenant-avatar { width:56px;height:56px;border-radius:50%;object-fit:cover;background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0; }
+  .tenant-main { min-width:0; }
+  .tenant-name-row { display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px; }
+  .tenant-name { margin:0;font-size:17px;font-weight:900;color:#111827;line-height:1.35;word-break:break-word; }
+  .tenant-note { margin-top:2px;font-size:12px;color:var(--muted);font-weight:700;word-break:break-word; }
+  .tenant-grid { display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px; }
+  .tenant-field { min-width:0;background:#FAFBFA;border:1px solid var(--line);border-radius:8px;padding:10px 12px; }
+  .tenant-field .label { font-size:11px;color:var(--muted);font-weight:900;margin-bottom:5px; }
+  .tenant-field .value { font-size:13px;color:#111827;font-weight:800;line-height:1.45;word-break:break-word; }
+  .tenant-field .uid { margin-top:0;max-width:100%; }
+  .tenant-inline-edit { display:none;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:8px;background:#FAFBFA; }
+  .tenant-inline-edit.open { display:block; }
+  .tenant-inline-edit label { display:block;font-size:12px;color:var(--muted);font-weight:900;margin-bottom:6px; }
+  .tenant-edit-row { display:flex;gap:8px;align-items:center;flex-wrap:wrap; }
+  .tenant-edit-row input { flex:1;min-width:220px;border:1.5px solid #E5E0D5;border-radius:8px;padding:9px 10px;font-size:14px;font-family:inherit;outline:none; }
+  .tenant-edit-row input:focus { border-color:var(--sage); }
+  .web-user-card { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:start; }
+  .web-user-grid { display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;margin-top:10px; }
   .badge {
     display: inline-block; padding: 4px 12px; border-radius: 99px;
     font-size: 12px; font-weight: 700;
@@ -335,6 +358,7 @@
     .stats { grid-template-columns: repeat(2, 1fr); }
     header { flex-direction:column; }
     .landlord-info-grid { grid-template-columns:repeat(2,minmax(140px,1fr)); }
+    .tenant-grid, .web-user-grid { grid-template-columns:repeat(2,minmax(140px,1fr)); }
   }
   @media (max-width: 600px) {
     html, body { max-width:100%;overflow-x:hidden; }
@@ -370,6 +394,12 @@
     .admin-modal-foot { padding:14px 16px; }
     .stats { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
+    .tenant-card { grid-template-columns:1fr; }
+    .tenant-avatar { width:48px;height:48px; }
+    .tenant-name-row { flex-direction:column;align-items:stretch; }
+    .tenant-grid, .web-user-grid { grid-template-columns:1fr; }
+    .tenant-edit-row input { min-width:0;width:100%; }
+    .tenant-edit-row .action-btn { flex:1; }
     .landlord-head { align-items:flex-start; }
     .landlord-info-grid, .modal-form-grid, .modal-choice-grid { grid-template-columns:1fr; }
     .landlord-tools { grid-template-columns:repeat(2,minmax(0,1fr));gap:6px; }
@@ -474,6 +504,8 @@
 var DATA = null
 var KEY = sessionStorage.getItem('adminKey') || ''
 var currentTab = 'overview'
+var tenantUserTab = 'line'
+var webUsersCache = null
 var editingPropertyId = null
 var _ownFeatures = {}   // 登入後由 refreshOwnFeatures() 設定
 
@@ -2893,6 +2925,169 @@ async function editName(tenantId, currentName) {
   })
   showToast('✅ 名稱已更新')
   reload()
+}
+
+function domSafeId(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_')
+}
+
+function jsArg(value) {
+  return JSON.stringify(String(value == null ? '' : value)).replace(/</g, '\\u003c')
+}
+
+function tenantSourceName(t) {
+  if (t.landlord && t.landlord.name) return t.landlord.name
+  if (t.source && t.source !== 'main') return t.source
+  return '小蝸主站'
+}
+
+function setTenantUserTab(tab) {
+  tenantUserTab = tab
+  renderTab()
+  if (tab === 'web') setTimeout(loadWebUsers, 0)
+}
+
+function renderTenantTabs() {
+  var webTab = DATA.role === 'super'
+    ? '<button class="user-tab ' + (tenantUserTab === 'web' ? 'active' : '') + '" onclick="setTenantUserTab(\'web\')">網站註冊用戶' + (webUsersCache ? ' <span>(' + webUsersCache.length + ')</span>' : '') + '</button>'
+    : ''
+  return '<div class="user-tabs">' +
+    '<button class="user-tab ' + (tenantUserTab === 'line' ? 'active' : '') + '" onclick="setTenantUserTab(\'line\')">LINEBOT 用戶 <span>(' + DATA.tenants.length + ')</span></button>' +
+    webTab +
+    '</div>'
+}
+
+function renderTenants() {
+  if (tenantUserTab === 'web' && DATA.role !== 'super') tenantUserTab = 'line'
+  var body = tenantUserTab === 'web'
+    ? '<div id="webUsersList" class="user-panel">' + renderWebUsersContent() + '</div>'
+    : renderLineTenantList()
+  if (tenantUserTab === 'web') setTimeout(loadWebUsers, 0)
+  return renderTenantTabs() + body
+}
+
+function renderLineTenantList() {
+  if (!DATA.tenants.length) return '<div class="empty">目前沒有 LINEBOT 用戶資料</div>'
+  return '<div class="user-panel">' + DATA.tenants.map(renderLineTenantCard).join('') + '</div>'
+}
+
+function renderLineTenantCard(t) {
+  var safeId = domSafeId(t.id)
+  var avatar = t.avatarUrl
+    ? '<img class="tenant-avatar" src="' + esc(t.avatarUrl) + '" onerror="this.outerHTML=\'<div class=&quot;tenant-avatar&quot;>👤</div>\'">'
+    : '<div class="tenant-avatar">👤</div>'
+  var originalName = t.name || '未命名用戶'
+  var note = t.customName
+    ? '<div class="tenant-note">備註名稱：' + esc(t.customName) + '</div>'
+    : '<div class="tenant-note">尚未設定備註名稱</div>'
+  return '<div class="card tenant-card">' +
+    avatar +
+    '<div class="tenant-main">' +
+      '<div class="tenant-name-row">' +
+        '<div><h3 class="tenant-name">' + esc(originalName) + '</h3>' + note + '</div>' +
+        '<button class="action-btn" onclick="startTenantNameEdit(' + jsArg(t.id) + ')">編輯備註</button>' +
+      '</div>' +
+      '<div class="tenant-grid">' +
+        '<div class="tenant-field"><div class="label">ID</div><div class="value">' + esc(t.id) + '</div></div>' +
+        '<div class="tenant-field"><div class="label">房東官網名</div><div class="value">' + esc(tenantSourceName(t)) + '</div></div>' +
+        '<div class="tenant-field"><div class="label">加入時間</div><div class="value">' + fmtDate(t.createdAt) + '</div></div>' +
+        '<div class="tenant-field"><div class="label">UID</div><div class="value"><span class="uid" onclick="copyText(' + jsArg(t.lineUserId) + ')" title="點擊複製">' + esc(t.lineUserId || '-') + '</span></div></div>' +
+      '</div>' +
+      '<div class="tenant-inline-edit" id="tenantEdit_' + safeId + '">' +
+        '<label>編輯備註名稱</label>' +
+        '<div class="tenant-edit-row">' +
+          '<input id="tenantEditInput_' + safeId + '" value="' + esc(t.customName || '') + '" placeholder="留空代表只顯示原 LINE 名稱">' +
+          '<button class="action-btn primary" onclick="saveTenantName(' + jsArg(t.id) + ')">儲存</button>' +
+          '<button class="action-btn" onclick="cancelTenantNameEdit(' + jsArg(t.id) + ')">取消</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '</div>'
+}
+
+function startTenantNameEdit(tenantId) {
+  var box = document.getElementById('tenantEdit_' + domSafeId(tenantId))
+  var input = document.getElementById('tenantEditInput_' + domSafeId(tenantId))
+  if (!box || !input) return
+  box.classList.add('open')
+  input.focus()
+  input.select()
+}
+
+function cancelTenantNameEdit(tenantId) {
+  var box = document.getElementById('tenantEdit_' + domSafeId(tenantId))
+  if (box) box.classList.remove('open')
+}
+
+async function editName(tenantId) {
+  startTenantNameEdit(tenantId)
+}
+
+async function saveTenantName(tenantId) {
+  var input = document.getElementById('tenantEditInput_' + domSafeId(tenantId))
+  if (!input) return
+  var newName = input.value.trim()
+  var res = await fetch('/admin/api/tenant/' + tenantId + '/name?key=' + encodeURIComponent(KEY), {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ customName: newName })
+  })
+  if (!res.ok) {
+    showToast('備註名稱更新失敗')
+    return
+  }
+  DATA.tenants = DATA.tenants.map(function(t) {
+    if (t.id === tenantId) t.customName = newName
+    return t
+  })
+  showToast('備註名稱已更新')
+  renderTab()
+}
+
+function renderWebUsersContent() {
+  if (webUsersCache === null) return '<div class="empty">網站註冊用戶載入中...</div>'
+  if (!webUsersCache.length) return '<div class="empty">目前沒有網站註冊用戶</div>'
+  return webUsersCache.map(renderWebUserCard).join('')
+}
+
+function renderWebUserCard(u) {
+  var roleLabel = { TENANT: '租客', LANDLORD: '房東', ADMIN: '管理員' }[u.role] || u.role || '-'
+  var deleted = u.deletedAt ? '<span class="badge CANCELLED">已刪除</span>' : ''
+  return '<div class="card">' +
+    '<div class="web-user-card">' +
+      '<div>' +
+        '<h3 class="tenant-name">' + esc(u.name || '未命名網站用戶') + '</h3>' +
+        '<div class="tenant-note">' + esc(u.email || '未設定 Email') + '</div>' +
+      '</div>' +
+      deleted +
+    '</div>' +
+    '<div class="web-user-grid">' +
+      '<div class="tenant-field"><div class="label">ID</div><div class="value">' + esc(u.id || '-') + '</div></div>' +
+      '<div class="tenant-field"><div class="label">身份</div><div class="value">' + esc(roleLabel) + '</div></div>' +
+      '<div class="tenant-field"><div class="label">電話</div><div class="value">' + esc(u.phone || '-') + '</div></div>' +
+      '<div class="tenant-field"><div class="label">加入時間</div><div class="value">' + fmtDate(u.createdAt) + '</div></div>' +
+    '</div>' +
+    '</div>'
+}
+
+async function loadWebUsers() {
+  var list = document.getElementById('webUsersList')
+  if (webUsersCache !== null) {
+    if (list) list.innerHTML = renderWebUsersContent()
+    return
+  }
+  if (list) list.innerHTML = '<div class="empty">網站註冊用戶載入中...</div>'
+  try {
+    var res = await fetch('/admin/api/webusers?key=' + encodeURIComponent(KEY))
+    var users = await res.json()
+    if (!res.ok) throw new Error(users.error || 'load failed')
+    webUsersCache = users
+    var target = document.getElementById('webUsersList')
+    if (target) target.innerHTML = renderWebUsersContent()
+  } catch (e) {
+    var errorTarget = document.getElementById('webUsersList')
+    if (errorTarget) errorTarget.innerHTML = '<div class="empty">網站註冊用戶載入失敗：' + esc(e.message) + '</div>'
+  }
 }
 
 function copyText(text) {
