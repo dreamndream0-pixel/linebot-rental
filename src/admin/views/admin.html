@@ -337,6 +337,37 @@
     .landlord-info-grid { grid-template-columns:repeat(2,minmax(140px,1fr)); }
   }
   @media (max-width: 600px) {
+    html, body { max-width:100%;overflow-x:hidden; }
+    #appView { overflow-x:hidden; }
+    .app-shell { display:block;min-height:100vh; }
+    .sidebar { padding:14px 12px;position:relative;border-right:none;border-bottom:1px solid var(--line); }
+    .brand-logo { width:132px;margin-bottom:12px; }
+    .tabs { display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin:0 -4px;scroll-snap-type:x proximity; }
+    .tab { flex:0 0 auto;padding:10px 12px;font-size:13px;scroll-snap-align:start; }
+    .main-panel { padding:18px 12px 32px;max-width:100%;overflow:hidden; }
+    header { gap:12px;margin-bottom:18px; }
+    .page-title h1 { font-size:24px; }
+    .top-actions { width:100%;justify-content:space-between; }
+    .admin-toolbar { align-items:stretch;gap:10px; }
+    .admin-toolbar-left, .admin-toolbar-right { width:100%;display:grid;grid-template-columns:1fr;gap:8px; }
+    .admin-toolbar .action-btn, .admin-toolbar .admin-primary { width:100%;justify-content:center; }
+    .property-table { border:none;box-shadow:none;background:transparent;overflow:visible; }
+    .property-filter-row { background:white;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;padding:12px;box-shadow:0 8px 22px rgba(20,40,28,.04); }
+    .property-row { display:grid;grid-template-columns:1fr;background:white;border:1px solid var(--line);border-radius:14px;margin-bottom:12px;padding:14px;box-shadow:0 8px 22px rgba(20,40,28,.05); }
+    .property-row:last-child { border-bottom:1px solid var(--line); }
+    .property-row > div, .property-row > a { min-width:0; }
+    .property-row > [data-label] { display:grid;grid-template-columns:78px minmax(0,1fr);gap:10px;align-items:center;padding:8px 0;border-top:1px solid #F0EEE8; }
+    .property-row > [data-label]::before { content:attr(data-label);font-size:11px;font-weight:800;color:var(--muted); }
+    .property-row > [data-label="房源"] { display:flex;border-top:none;padding-top:0; }
+    .property-row > [data-label="房源"]::before { display:none; }
+    .property-main h3 { white-space:normal;line-height:1.35; }
+    .property-status-select, .property-release-input { max-width:none; }
+    .property-actions { justify-content:stretch; }
+    .property-actions .action-btn { width:100%; }
+    .traffic-dashboard { grid-template-columns:1fr; }
+    .modal-box, .admin-modal { max-width:calc(100vw - 24px);border-radius:14px; }
+    .admin-modal-body { padding:18px 16px; }
+    .admin-modal-foot { padding:14px 16px; }
     .stats { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
     .landlord-head { align-items:flex-start; }
@@ -868,22 +899,22 @@ function renderPropCard(p, showCheckbox) {
     ? '<input class="property-release-input" type="date" value="' + esc(dateInputValue(p.availableFrom)) + '" onchange="changeAvailableFrom(\'' + p.id + '\', this.value)">'
     : ''
   return '<div class="property-row" id="propertyRow_' + esc(p.id) + '">' +
-    '<div>' + cbHtml + '</div>' +
-    '<div>' + featButton + '</div>' +
-    '<div class="property-status-cell">' + statusSelect + releaseDateInput + onlineBadgeHtml(p.status) + '</div>' +
-    '<a class="property-main" href="' + propUrl(p) + '" target="_blank" style="gap:14px;min-width:0;">' + thumb +
+    '<div data-label="選取">' + cbHtml + '</div>' +
+    '<div data-label="精選">' + featButton + '</div>' +
+    '<div data-label="狀態" class="property-status-cell">' + statusSelect + releaseDateInput + onlineBadgeHtml(p.status) + '</div>' +
+    '<a data-label="房源" class="property-main" href="' + propUrl(p) + '" target="_blank" style="gap:14px;min-width:0;">' + thumb +
       '<div style="min-width:0;"><h3>' + esc(p.title) + '</h3><div class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div></div>' +
     '</a>' +
-    '<div class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div>' +
-    '<div class="property-meta">' + (TYPE_LABEL[p.type] || p.type || '-') + '</div>' +
-    '<div class="property-meta">NT$ ' + Number(p.price || 0).toLocaleString() + ' / 月</div>' +
-    '<div class="property-meta">' + (p.size ? p.size + ' 坪' : '-') + '</div>' +
-    '<div class="property-meta">' + fmtDate(p.updatedAt || p.createdAt) + '</div>' +
-    '<div class="property-meta">' + Number(p.viewsToday || 0).toLocaleString() + '</div>' +
-    '<div class="property-meta">' + Number(p.views7d || 0).toLocaleString() + '</div>' +
-    '<div class="property-meta">' + Number(p.views30d || 0).toLocaleString() + '</div>' +
-    '<div class="property-meta">' + Number(p.viewCount || 0).toLocaleString() + '</div>' +
-    '<div class="property-actions">' +
+    '<div data-label="地點" class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div>' +
+    '<div data-label="類型" class="property-meta">' + (TYPE_LABEL[p.type] || p.type || '-') + '</div>' +
+    '<div data-label="租金" class="property-meta">NT$ ' + Number(p.price || 0).toLocaleString() + ' / 月</div>' +
+    '<div data-label="坪數" class="property-meta">' + (p.size ? p.size + ' 坪' : '-') + '</div>' +
+    '<div data-label="更新" class="property-meta">' + fmtDate(p.updatedAt || p.createdAt) + '</div>' +
+    '<div data-label="今日" class="property-meta">' + Number(p.viewsToday || 0).toLocaleString() + '</div>' +
+    '<div data-label="7日" class="property-meta">' + Number(p.views7d || 0).toLocaleString() + '</div>' +
+    '<div data-label="30日" class="property-meta">' + Number(p.views30d || 0).toLocaleString() + '</div>' +
+    '<div data-label="總瀏覽" class="property-meta">' + Number(p.viewCount || 0).toLocaleString() + '</div>' +
+    '<div data-label="操作" class="property-actions">' +
       '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">編輯</button>' +
     '</div>' +
   '</div>'
