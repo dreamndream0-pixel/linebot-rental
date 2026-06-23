@@ -575,7 +575,8 @@ function uiIconPath(name) {
     pause:'<path d="M8 5v14M16 5v14"/>',
     play:'<path d="m8 5 12 7-12 7Z"/>',
     zap:'<path d="M13 2 4 14h7l-1 8 9-12h-7Z"/>',
-    sad:'<circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01M8 17a5 5 0 0 1 8 0"/>'
+    sad:'<circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01M8 17a5 5 0 0 1 8 0"/>',
+    share:'<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5 15.4 6.5M8.6 13.5 15.4 17.5"/>'
   }
   return paths[name] || paths.circle
 }
@@ -748,6 +749,7 @@ function renderTabBar() {
     tabs.push({ id: 'landlords', label: '\u623f\u6771\u7ba1\u7406', icon: 'building' })
   }
   if (DATA.role === 'super' || feat('community')) tabs.push({ id: 'community', label: '\u793e\u5340\u7ba1\u7406', icon: 'community' })
+  if (DATA.role === 'super' || feat('social')) tabs.push({ id: 'socialPosting', label: '\u793e\u7fa4\u7ba1\u7406', icon: 'share' })
   if (DATA.role === 'super' || feat('heroSlides')) tabs.push({ id: 'heroSettings', label: '\u9996\u9801\u8a2d\u5b9a', icon: 'image' })
   if (DATA.role === 'super') tabs.push({ id: 'footerSettings', label: '\u9801\u5c3e\u8a2d\u5b9a', icon: 'clipboard' })
   if (DATA.role === 'landlord' && feat('bot')) {
@@ -769,7 +771,8 @@ function tabTitle(tab) {
     botSettings: ['\u7cfb\u7d71\u8a2d\u5b9a', '\u8a2d\u5b9a Bot\u3001\u5b98\u7db2\u8207\u9078\u55ae\u5167\u5bb9'],
     heroSettings: ['\u9996\u9801\u8a2d\u5b9a', DATA && DATA.role === 'super' ? '\u7ba1\u7406\u4e3b\u7ad9\u9996\u9801\u8f2a\u64ad\u8207 Logo' : '\u7ba1\u7406\u623f\u6771\u5b98\u7db2\u9996\u9801\u8f2a\u64ad\u8207 Logo'],
     community: ['\u793e\u5340\u7ba1\u7406', '\u7ba1\u7406\u793e\u5340\u8cc7\u6599\u8207\u623f\u6e90\u7fa4\u7d44'],
-    footerSettings: ['\u9801\u5c3e\u8a2d\u5b9a', '\u7ba1\u7406\u4e3b\u7ad9\u9801\u5c3e\u5167\u5bb9\u9801\u9762']
+    footerSettings: ['\u9801\u5c3e\u8a2d\u5b9a', '\u7ba1\u7406\u4e3b\u7ad9\u9801\u5c3e\u5167\u5bb9\u9801\u9762'],
+    socialPosting: ['\u793e\u7fa4\u7ba1\u7406', '\u623f\u6e90\u4e00\u9375\u767c\u6587\u5230 Facebook\uff0fInstagram\uff0fThreads']
   }
   return map[tab] || ['\u7ba1\u7406\u5f8c\u53f0', '\u5c0f\u8778\u51fa\u79df\u5f8c\u53f0\u7ba1\u7406']
 }
@@ -818,6 +821,7 @@ function renderTab() {
   if (currentTab === 'heroSettings') renderHeroSettings()
   if (currentTab === 'community') renderCommunityTab()
   if (currentTab === 'footerSettings') renderFooterSettings()
+  if (currentTab === 'socialPosting') renderSocialTab()
 }
 
 function esc(s) {
@@ -2616,6 +2620,7 @@ var FEATURE_MODULES = [
   { key: 'repair',     label: '🔧 維修回報',           desc: '租客維修申請管理' },
   { key: 'community',  label: '🏘️ 社區管理',          desc: '社區環境介紹與照片' },
   { key: 'csvImport',  label: '📊 CSV 匯出/匯入',      desc: '批次新增、更新房源資料' },
+  { key: 'social',     label: '📣 社群發布',           desc: '房源一鍵發文到 Facebook／Instagram／Threads' },
 ]
 
 function openFeaturesEditor(landlordId) {
@@ -3620,6 +3625,123 @@ async function saveHeroSlides(silent) {
     return true
   } catch(e) {
     showToast('❌ 連線失敗，請確認網站是否運行中')
+    return false
+  }
+}
+
+// ── 社群管理（房源一鍵發文）──────────────────────────────
+var socialConfig = { instagram: { accountId: '', hasToken: false, tokenPreview: '' } }
+var socialSelectedPlatforms = { instagram: true, facebook: false, threads: false }
+var socialSelectedPropertyId = ''
+
+async function renderSocialTab() {
+  var el = document.getElementById('content')
+  el.innerHTML = '<div class="form-box"><p style="color:#888;font-size:14px;">載入中...</p></div>'
+  try {
+    var res = await fetch('/admin/api/social/config?key=' + encodeURIComponent(KEY))
+    if (res.ok) socialConfig = await res.json()
+  } catch (e) {}
+  drawSocialTab()
+}
+
+function drawSocialTab() {
+  var el = document.getElementById('content')
+  var ig = socialConfig.instagram || {}
+  var props = (DATA.properties || []).filter(function(p){ return p.status !== 'PENDING' })
+  var propOptions = props.map(function(p) {
+    return '<option value="' + p.id + '"' + (socialSelectedPropertyId === p.id ? ' selected' : '') + '>' + esc(p.title) + '</option>'
+  }).join('')
+
+  var platformRow = function(key, label, available) {
+    var checked = socialSelectedPlatforms[key]
+    var disabled = !available
+    return '<label style="display:flex;align-items:center;gap:10px;padding:10px 0;cursor:' + (disabled ? 'not-allowed' : 'pointer') + ';opacity:' + (disabled ? '0.5' : '1') + ';">' +
+      '<input type="checkbox" ' + (checked ? 'checked' : '') + (disabled ? ' disabled' : '') + ' onchange="socialSelectedPlatforms[\'' + key + '\']=this.checked" style="width:18px;height:18px;accent-color:var(--sage);">' +
+      '<span style="font-size:14px;font-weight:600;color:var(--charcoal);">' + label + '</span>' +
+      (disabled ? '<span style="font-size:11px;color:var(--gray-light);margin-left:auto;">尚未開放</span>' : '') +
+      '</label>'
+  }
+
+  el.innerHTML = [
+    '<div class="form-box" style="margin-bottom:20px;">',
+    '<h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">📷 Instagram 串接設定</h3>',
+    '<p style="font-size:12px;color:#aaa;margin-bottom:16px;">需先在 Meta 開發者後台建立 Instagram Business 帳號並取得 Access Token，才能一鍵發文。</p>',
+    '<label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">Instagram 商業帳號 ID</label>',
+    '<input id="igAccountId" value="' + esc(ig.accountId || '') + '" placeholder="例如：17841400000000000" style="width:100%;padding:11px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;margin-bottom:14px;">',
+    '<label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">Access Token' + (ig.hasToken ? '（目前：' + esc(ig.tokenPreview) + '，留空表示不更動）' : '') + '</label>',
+    '<input id="igAccessToken" type="password" placeholder="' + (ig.hasToken ? '輸入新權杖才會覆蓋' : '貼上長期存取權杖') + '" style="width:100%;padding:11px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;margin-bottom:14px;">',
+    '<button class="btn" style="width:auto;padding:11px 28px;" onclick="btnLoad(this, saveSocialConfig)">💾 儲存設定</button>',
+    (ig.accountId && ig.hasToken ? '<span style="margin-left:12px;font-size:12px;color:var(--sage-dark, var(--deep-sage));">✅ Instagram 已設定</span>' : '<span style="margin-left:12px;font-size:12px;color:var(--gray-light);">尚未設定</span>'),
+    '</div>',
+
+    '<div class="form-box">',
+    '<h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">🚀 房源一鍵發文</h3>',
+    '<p style="font-size:12px;color:#aaa;margin-bottom:16px;">選擇房源與要發布的平台，系統會自動帶入封面照片與簡介文字。</p>',
+
+    '<label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">選擇房源</label>',
+    '<select id="socialPropertySelect" onchange="socialSelectedPropertyId=this.value" style="width:100%;padding:11px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;margin-bottom:16px;">' +
+      '<option value="">請選擇房源</option>' + propOptions +
+    '</select>',
+
+    '<div style="border-top:1px solid var(--oat-mid);border-bottom:1px solid var(--oat-mid);margin-bottom:16px;">',
+    platformRow('instagram', '📷 Instagram', true),
+    platformRow('facebook', '📘 FB 粉專', false),
+    platformRow('threads', '🧵 Threads', false),
+    '</div>',
+
+    '<button class="btn" style="width:auto;padding:12px 32px;" onclick="btnLoad(this, submitSocialPost)">🚀 立即發布</button>',
+    '<div id="socialPostResult" style="margin-top:14px;font-size:13px;line-height:1.8;"></div>',
+    '</div>',
+  ].join('')
+}
+
+async function saveSocialConfig() {
+  var accountId = document.getElementById('igAccountId').value.trim()
+  var accessToken = document.getElementById('igAccessToken').value.trim()
+  try {
+    var res = await fetch('/admin/api/social/config?key=' + encodeURIComponent(KEY), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instagramAccountId: accountId, instagramAccessToken: accessToken || undefined }),
+    })
+    var data = await res.json()
+    if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || '')); return false }
+    socialConfig = data.config
+    showToast('✅ 已儲存 Instagram 設定')
+    drawSocialTab()
+    return true
+  } catch (e) {
+    showToast('❌ 連線失敗：' + e.message)
+    return false
+  }
+}
+
+async function submitSocialPost() {
+  var resultEl = document.getElementById('socialPostResult')
+  var platforms = Object.keys(socialSelectedPlatforms).filter(function(k){ return socialSelectedPlatforms[k] })
+  if (!socialSelectedPropertyId) { showToast('❌ 請先選擇房源'); return false }
+  if (!platforms.length) { showToast('❌ 請選擇至少一個發布平台'); return false }
+
+  resultEl.innerHTML = '發布中...'
+  try {
+    var res = await fetch('/admin/api/social/post?key=' + encodeURIComponent(KEY), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ propertyId: socialSelectedPropertyId, platforms: platforms }),
+    })
+    var data = await res.json()
+    if (!res.ok) { resultEl.innerHTML = '❌ ' + (data.error || '發布失敗'); return false }
+    var labels = { instagram: 'Instagram', facebook: 'FB 粉專', threads: 'Threads' }
+    resultEl.innerHTML = Object.keys(data.results).map(function(k) {
+      var r = data.results[k]
+      return r.ok
+        ? '<div>✅ ' + labels[k] + '：發布成功</div>'
+        : '<div>❌ ' + labels[k] + '：' + esc(r.error || '失敗') + '</div>'
+    }).join('')
+    showToast('已送出發布請求')
+    return true
+  } catch (e) {
+    resultEl.innerHTML = '❌ 連線失敗：' + e.message
     return false
   }
 }

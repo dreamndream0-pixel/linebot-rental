@@ -88,6 +88,7 @@ model Landlord {
   botTextConfig          String?   @db.Text   // Bot 自訂文字（JSON）
   botEnabled             Boolean   @default(true)   // Bot 是否啟用
   features               String?   @db.Text   // 功能模組開關（JSON）
+  socialConfig           String?   @db.Text   // 社群媒體串接設定（JSON：instagram/facebook/threads 帳號與權杖）
   source                 String    @unique @default(cuid())  // 該房東用戶的來源標記
 
   isActive      Boolean   @default(true)

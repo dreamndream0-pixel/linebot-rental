@@ -4,7 +4,7 @@ const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
 
-const DEFAULT_FEATURES = { bot: true, site: true, heroSlides: true, booking: true, repair: true, community: true, csvImport: true }
+const DEFAULT_FEATURES = { bot: true, site: true, heroSlides: true, booking: true, repair: true, community: true, csvImport: true, social: true }
 
 function parseFeatures(json) {
   if (!json) return { ...DEFAULT_FEATURES }

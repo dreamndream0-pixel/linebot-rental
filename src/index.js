@@ -111,6 +111,7 @@ prisma.$connect()
         `)
         await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS features TEXT`)
         await prisma.$executeRawUnsafe(`ALTER TABLE properties ADD COLUMN IF NOT EXISTS "siteFeatured" BOOLEAN NOT NULL DEFAULT false`)
+        await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "socialConfig" TEXT`)
         console.log('✅ 資料表結構已確認')
       } catch(e) {
         console.error('⚠️ 資料表確認時發生警告（通常可忽略）:', e.message)
