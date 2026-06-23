@@ -144,7 +144,6 @@
     display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 18px rgba(20,40,28,.05);
   }
   .user-chip { display:flex;align-items:center;gap:10px;background:white;border:1px solid var(--line);border-radius:999px;padding:6px 12px 6px 6px;box-shadow:0 6px 18px rgba(20,40,28,.05); }
-  .user-avatar { width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#D9EADF,#B8D5C0);display:flex;align-items:center;justify-content:center;color:var(--deep-sage);font-weight:900; }
   .top-actions a, .top-actions button { color:#26362D !important;background:white !important;border:1px solid var(--line) !important;border-radius:8px !important;text-decoration:none !important; }
   .stats {
     display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 18px;
@@ -196,14 +195,13 @@
   .tenant-field .label { font-size:11px;color:var(--muted);font-weight:900;margin-bottom:5px; }
   .tenant-field .value { font-size:13px;color:#111827;font-weight:800;line-height:1.45;word-break:break-word; }
   .tenant-field .uid { margin-top:0;max-width:100%; }
+  .tenant-mobile-caret { display:none;margin-left:auto;color:var(--muted);font-size:12px; }
   .tenant-inline-edit { display:none;align-items:center;gap:6px;flex-wrap:wrap; }
   .tenant-inline-edit.open { display:inline-flex; }
   .tenant-inline-edit label { display:none; }
   .tenant-edit-row { display:flex;gap:8px;align-items:center;flex-wrap:wrap; }
   .tenant-edit-row input { width:180px;border:1.5px solid #E5E0D5;border-radius:8px;padding:7px 9px;font-size:12px;font-family:inherit;outline:none; }
   .tenant-edit-row input:focus { border-color:var(--sage); }
-  .web-user-card { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:start; }
-  .web-user-grid { display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;margin-top:10px; }
   .badge {
     display: inline-block; padding: 4px 12px; border-radius: 99px;
     font-size: 12px; font-weight: 700;
@@ -362,24 +360,22 @@
     .stats { grid-template-columns: repeat(2, 1fr); }
     header { flex-direction:column; }
     .landlord-info-grid { grid-template-columns:repeat(2,minmax(140px,1fr)); }
-    .tenant-grid, .web-user-grid { grid-template-columns:repeat(2,minmax(140px,1fr)); }
   }
   @media (max-width: 600px) {
     html, body { max-width:100%;overflow-x:hidden; }
     #appView { overflow-x:hidden; }
     .app-shell { display:block;min-height:100vh; }
     .sidebar { padding:14px 12px;position:relative;border-right:none;border-bottom:1px solid var(--line); }
-    .brand { padding:4px 210px 14px 12px;min-height:72px; }
+    .brand { padding:4px 150px 14px 12px;min-height:72px; }
     .brand-logo { width:132px;margin-bottom:0; }
     .tabs { display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin:0 -4px;scroll-snap-type:x proximity; }
     .tab { flex:0 0 auto;padding:10px 12px;font-size:13px;scroll-snap-align:start; }
     .main-panel { padding:18px 12px 32px;max-width:100%;overflow:hidden; }
     header { gap:12px;margin-bottom:18px; }
     .page-title h1 { font-size:24px; }
-    .top-actions { position:absolute;top:18px;right:12px;width:190px;justify-content:flex-end;align-content:flex-start;gap:6px;flex-wrap:wrap;z-index:5; }
+    .top-actions { position:absolute;top:18px;right:12px;width:130px;justify-content:flex-end;align-content:flex-start;gap:6px;flex-wrap:wrap;z-index:5; }
     .top-actions a, .top-actions button { padding:7px 10px !important;font-size:12px !important;line-height:1.2; }
     .user-chip { padding:5px 9px 5px 5px;gap:6px; }
-    .user-avatar { width:28px;height:28px;font-size:13px; }
     #accountLabel { font-size:12px !important; }
     .admin-toolbar { align-items:stretch;gap:10px; }
     .admin-toolbar-left, .admin-toolbar-right { width:100%;display:grid;grid-template-columns:1fr;gap:8px; }
@@ -401,13 +397,21 @@
     .modal-box, .admin-modal { max-width:calc(100vw - 24px);border-radius:14px; }
     .admin-modal-body { padding:18px 16px; }
     .admin-modal-foot { padding:14px 16px; }
-    .stats { grid-template-columns: 1fr; }
+    .stats { display:flex;grid-template-columns:none;gap:8px;overflow-x:auto;margin:0 -4px 18px;padding:0 4px 4px; }
+    .stat-card { min-width:112px;padding:12px 10px;gap:8px;min-height:92px;box-shadow:0 6px 16px rgba(20,40,28,.04); }
+    .stat-icon { width:34px;height:34px;font-size:16px; }
+    .stat-card .num { font-size:22px; }
+    .stat-card .label { font-size:12px;margin-top:5px; }
+    .stat-card .delta { font-size:10px;margin-top:5px; }
     .form-grid { grid-template-columns: 1fr; }
     .tenant-card { grid-template-columns:48px minmax(0,1fr);align-items:start; }
     .tenant-avatar { width:48px;height:48px; }
     .tenant-name-row { flex-wrap:wrap; }
-    .tenant-field { grid-column:1/-1; }
-    .web-user-grid { grid-template-columns:1fr; }
+    .tenant-mobile-caret { display:inline-flex;align-items:center; }
+    .tenant-card { cursor:pointer; }
+    .tenant-card .tenant-field { display:none;grid-column:1/-1; }
+    .tenant-card.open .tenant-field { display:block; }
+    .tenant-card.open .tenant-mobile-caret { transform:rotate(180deg); }
     .tenant-edit-row input { min-width:0;width:100%; }
     .tenant-edit-row .action-btn { flex:1; }
     .landlord-head { align-items:flex-start; }
@@ -466,7 +470,9 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <img class="brand-logo" src="/admin/assets/xiaowo-logo.png" alt="小蝸出租">
+        <a id="brandHomeLink" href="#" target="_blank" style="display:inline-flex;align-items:center;text-decoration:none;">
+          <img class="brand-logo" src="/admin/assets/xiaowo-logo.png" alt="小蝸出租">
+        </a>
       </div>
 
       <div class="tabs" id="tabBar"></div>
@@ -491,10 +497,7 @@
           <p id="pageSubtitle">管理所有房源與狀態</p>
         </div>
         <div class="top-actions">
-          <a id="siteLink" href="#" target="_blank" style="padding:9px 14px;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;">網站</a>
-          <a id="mainSiteLink" href="#" target="_blank" style="display:none;padding:9px 14px;font-size:13px;cursor:pointer;align-items:center;">前往首頁</a>
           <div class="user-chip">
-            <span class="user-avatar">管</span>
             <span id="accountLabel" style="font-size:13px;font-weight:800;">管理員</span>
           </div>
           <button onclick="logout()" style="padding:9px 14px;font-size:13px;cursor:pointer;">登出</button>
@@ -684,26 +687,16 @@ async function login(savedKey) {
     document.getElementById('loadingView').style.display = 'none'
     document.getElementById('mainView').style.display = 'block'
     if (DATA.account) {
-      document.getElementById('accountLabel').innerHTML = uiLineIcon('user') + ' ' + esc(DATA.account)
+      document.getElementById('accountLabel').textContent = DATA.account
     }
     refreshOwnFeatures()
     if (DATA.siteUrl) {
-      var sl = document.getElementById('siteLink')
-      var msl = document.getElementById('mainSiteLink')
-      if (sl) {
-        if (DATA.role === 'landlord' && DATA.landlordId) {
-          // 房東：「前往首頁」連到自己的個人官網首頁（隱藏重複的舊按鈕）
-          sl.style.display = 'none'
-          if (msl) { msl.href = DATA.siteUrl + '/site/' + DATA.landlordId; msl.style.display = 'inline-flex' }
-        } else {
-          // 總管理員：只需要主站
-          sl.href = DATA.siteUrl
-          sl.textContent = '前往首頁'
-          if (msl) msl.style.display = 'none'
-        }
-      }
+      var brandLink = document.getElementById('brandHomeLink')
+      if (brandLink) brandLink.href = DATA.role === 'landlord' && DATA.landlordId
+        ? DATA.siteUrl + '/site/' + DATA.landlordId
+        : DATA.siteUrl
     }
-    // 如果當前 tab 被功能模組關掉，切到總覽
+    // \u5982\u679c\u7576\u524d tab \u88ab\u529f\u80fd\u6a21\u7d44\u95dc\u6389\uff0c\u5207\u5230\u7e3d\u89bd
     if (currentTab === 'tenants' && DATA.role !== 'super' && !feat('tenants')) currentTab = 'overview'
     renderTabBar()
     renderStats()
@@ -3109,14 +3102,15 @@ function renderLineTenantCard(t) {
     : '<div class="tenant-avatar">' + uiLineIcon('user') + '</div>'
   var originalName = t.name || '\u672a\u547d\u540d\u7528\u6236'
   var noteText = t.customName || '\u672a\u8a2d\u5b9a\u5099\u8a3b'
-  return '<div class="card tenant-card">' +
+  return '<div class="card tenant-card" id="tenantCard_' + safeId + '" onclick="toggleTenantCard(event, ' + jsArg(safeId) + ')">' +
     avatar +
     '<div class="tenant-main">' +
       '<div class="tenant-name-row">' +
         '<h3 class="tenant-name">' + esc(originalName) + '</h3>' +
         '<span class="tenant-note" id="tenantNote_' + safeId + '">' + esc(noteText) + '</span>' +
-        '<button class="tenant-edit-icon" title="\u7de8\u8f2f\u5099\u8a3b" onclick="startTenantNameEdit(' + jsArg(t.id) + ')">' + uiLineIcon('edit') + '</button>' +
-        '<div class="tenant-inline-edit" id="tenantEdit_' + safeId + '">' +
+        '<button class="tenant-edit-icon" title="\u7de8\u8f2f\u5099\u8a3b" onclick="event.stopPropagation();startTenantNameEdit(' + jsArg(t.id) + ')">' + uiLineIcon('edit') + '</button>' +
+        '<span class="tenant-mobile-caret">\u25be</span>' +
+        '<div class="tenant-inline-edit" id="tenantEdit_' + safeId + '" onclick="event.stopPropagation()">' +
           '<label>\u7de8\u8f2f\u5099\u8a3b\u540d\u7a31</label>' +
           '<div class="tenant-edit-row">' +
             '<input id="tenantEditInput_' + safeId + '" value="' + esc(t.customName || '') + '" placeholder="\u5099\u8a3b\u540d\u7a31">' +
@@ -3128,7 +3122,7 @@ function renderLineTenantCard(t) {
     '</div>' +
     '<div class="tenant-field"><div class="label">\u623f\u6771\u5b98\u7db2\u540d</div><div class="value">' + esc(tenantSourceName(t)) + '</div></div>' +
     '<div class="tenant-field"><div class="label">\u52a0\u5165\u6642\u9593</div><div class="value">' + fmtDate(t.createdAt) + '</div></div>' +
-    '<div class="tenant-field"><div class="label">UID</div><div class="value"><span class="uid" onclick="copyText(' + jsArg(t.lineUserId) + ')" title="\u9ede\u64ca\u8907\u88fd">' + esc(t.lineUserId || '-') + '</span></div></div>' +
+    '<div class="tenant-field"><div class="label">UID</div><div class="value"><span class="uid" onclick="event.stopPropagation();copyText(' + jsArg(t.lineUserId) + ')" title="\u9ede\u64ca\u8907\u88fd">' + esc(t.lineUserId || '-') + '</span></div></div>' +
     '</div>'
 }
 
@@ -3149,6 +3143,12 @@ function cancelTenantNameEdit(tenantId) {
   var note = document.getElementById('tenantNote_' + domSafeId(tenantId))
   if (box) box.classList.remove('open')
   if (note) note.style.display = ''
+}
+
+function toggleTenantCard(event, safeId) {
+  if (event && event.target && event.target.closest('button,input,a,.uid')) return
+  var card = document.getElementById('tenantCard_' + safeId)
+  if (card) card.classList.toggle('open')
 }
 
 async function editName(tenantId) {
@@ -3183,24 +3183,25 @@ function renderWebUsersContent() {
 }
 
 function renderWebUserCard(u) {
-  var roleLabel = { TENANT: '租客', LANDLORD: '房東', ADMIN: '管理員' }[u.role] || u.role || '-'
-  var deleted = u.deletedAt ? '<span class="badge CANCELLED">已刪除</span>' : ''
-  return '<div class="card">' +
-    '<div class="web-user-card">' +
-      '<div>' +
-        '<h3 class="tenant-name">' + esc(u.name || '未命名網站用戶') + '</h3>' +
-        '<div class="tenant-note">' + esc(u.email || '未設定 Email') + '</div>' +
+  var safeId = domSafeId(u.id || u.email || u.name)
+  var roleLabel = { TENANT: '\u79df\u5ba2', LANDLORD: '\u623f\u6771', ADMIN: '\u7ba1\u7406\u54e1' }[u.role] || u.role || '-'
+  var deleted = u.deletedAt ? '<span class="badge CANCELLED">\u5df2\u522a\u9664</span>' : ''
+  return '<div class="card tenant-card" id="tenantCard_' + safeId + '" onclick="toggleTenantCard(event, ' + jsArg(safeId) + ')">' +
+    '<div class="tenant-avatar">' + uiLineIcon('user') + '</div>' +
+    '<div class="tenant-main">' +
+      '<div class="tenant-name-row">' +
+        '<h3 class="tenant-name">' + esc(u.name || '\u672a\u547d\u540d\u7db2\u7ad9\u7528\u6236') + '</h3>' +
+        '<span class="tenant-note">' + esc(u.email || '\u672a\u8a2d\u5b9a Email') + '</span>' +
+        deleted +
+        '<span class="tenant-mobile-caret">\u25be</span>' +
       '</div>' +
-      deleted +
     '</div>' +
-    '<div class="web-user-grid">' +
-      '<div class="tenant-field"><div class="label">ID</div><div class="value">' + esc(u.id || '-') + '</div></div>' +
-      '<div class="tenant-field"><div class="label">身份</div><div class="value">' + esc(roleLabel) + '</div></div>' +
-      '<div class="tenant-field"><div class="label">電話</div><div class="value">' + esc(u.phone || '-') + '</div></div>' +
-      '<div class="tenant-field"><div class="label">加入時間</div><div class="value">' + fmtDate(u.createdAt) + '</div></div>' +
-    '</div>' +
+    '<div class="tenant-field"><div class="label">\u8eab\u4efd</div><div class="value">' + esc(roleLabel) + '</div></div>' +
+    '<div class="tenant-field"><div class="label">\u96fb\u8a71</div><div class="value">' + esc(u.phone || '-') + '</div></div>' +
+    '<div class="tenant-field"><div class="label">\u52a0\u5165\u6642\u9593</div><div class="value">' + fmtDate(u.createdAt) + '</div></div>' +
     '</div>'
 }
+
 
 async function loadWebUsers() {
   var list = document.getElementById('webUsersList')
