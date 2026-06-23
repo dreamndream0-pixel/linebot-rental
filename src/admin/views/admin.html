@@ -302,12 +302,14 @@
   .group-traffic-summary { display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px; }
   .group-traffic-pill { background:white;border:1px solid var(--line);border-radius:999px;padding:7px 11px;font-size:12px;color:#52615A;font-weight:800; }
   .group-traffic-pill strong { color:var(--deep-sage);margin-left:5px; }
-  .property-table-head, .property-row, .property-filter-row { display:grid;grid-template-columns:34px 44px 106px minmax(170px,1.08fr) minmax(105px,.54fr) minmax(82px,.42fr) minmax(105px,.54fr) minmax(64px,.34fr) minmax(96px,.48fr) minmax(52px,.26fr) minmax(52px,.26fr) minmax(52px,.26fr) minmax(62px,.3fr) 78px;gap:10px;align-items:center; }
+  .property-table-head, .property-row, .property-filter-row { display:grid;grid-template-columns:34px 44px 106px minmax(170px,1.08fr) minmax(105px,.54fr) minmax(105px,.54fr) minmax(82px,.42fr) minmax(64px,.34fr) minmax(96px,.48fr) minmax(52px,.26fr) minmax(52px,.26fr) minmax(52px,.26fr) minmax(62px,.3fr) 78px 24px;gap:10px;align-items:center; }
   .property-table-head { padding:14px 18px;background:#FAFBFA;font-size:13px;font-weight:900;color:#111827;border-bottom:1px solid var(--line); }
   .property-filter-row { padding:10px 18px;background:#F8FAF8;border-bottom:1px solid var(--line); }
   .property-filter-row input, .property-filter-row select { width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:white;padding:7px 9px;font-size:12px; }
   .property-row { padding:14px 18px;border-bottom:1px solid var(--line); }
   .property-row:last-child { border-bottom:none; }
+  .property-mobile-toggle { display:none;border:none;background:transparent;color:var(--muted);font-weight:900;cursor:pointer;padding:4px; }
+  .property-row.open .property-mobile-toggle { transform:rotate(180deg); }
   .property-main { display:flex;align-items:center;gap:14px;min-width:0;color:inherit;text-decoration:none; }
   .property-main:hover h3 { color:var(--deep-sage);text-decoration:underline; }
   .property-main h3 { margin:0 0 4px;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
@@ -328,8 +330,9 @@
     .property-row, .property-filter-row { grid-template-columns:1fr;gap:10px; }
     .property-filter-row { display:grid; }
     .property-actions { justify-content:flex-start; }
-    .traffic-dashboard { grid-template-columns:repeat(2,minmax(0,1fr)); }
-    .traffic-leader { grid-column:1/-1; }
+    .traffic-dashboard { display:flex;grid-template-columns:none;overflow-x:auto;gap:8px;padding:0 2px 4px;margin-bottom:12px; }
+    .traffic-card { min-width:118px;padding:12px; }
+    .traffic-leader { min-width:180px;grid-column:auto; }
     .overview-grid { grid-template-columns:1fr; }
     .overview-grid section:first-child { grid-row:auto; }
   }
@@ -381,19 +384,27 @@
     .admin-toolbar-left, .admin-toolbar-right { width:100%;display:grid;grid-template-columns:1fr;gap:8px; }
     .admin-toolbar .action-btn, .admin-toolbar .admin-primary { width:100%;justify-content:center; }
     .property-table { border:none;box-shadow:none;background:transparent;overflow:visible; }
-    .property-filter-row { background:white;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;padding:12px;box-shadow:0 8px 22px rgba(20,40,28,.04); }
-    .property-row { display:grid;grid-template-columns:1fr;background:white;border:1px solid var(--line);border-radius:14px;margin-bottom:12px;padding:14px;box-shadow:0 8px 22px rgba(20,40,28,.05); }
+    .property-filter-row { display:flex;overflow-x:auto;gap:8px;background:white;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;padding:10px;box-shadow:0 8px 22px rgba(20,40,28,.04); }
+    .property-filter-row > div { display:none; }
+    .property-filter-row select { min-width:132px;flex:0 0 auto; }
+    .property-global-filter { display:flex !important;flex-wrap:nowrap !important;overflow-x:auto;gap:8px;margin:0 -4px 12px !important;padding:0 4px 4px; }
+    .property-global-filter select { min-width:132px;flex:0 0 auto; }
+    .property-global-filter span { flex:0 0 auto;align-self:center; }
+    .property-row { display:grid;grid-template-columns:24px 34px minmax(92px,.8fr) minmax(0,1.2fr) minmax(86px,.75fr) 20px;background:white;border:1px solid var(--line);border-radius:14px;margin-bottom:12px;padding:12px;box-shadow:0 8px 22px rgba(20,40,28,.05); }
     .property-row:last-child { border-bottom:1px solid var(--line); }
     .property-row > div, .property-row > a { min-width:0; }
-    .property-row > [data-label] { display:grid;grid-template-columns:78px minmax(0,1fr);gap:10px;align-items:center;padding:8px 0;border-top:1px solid #F0EEE8; }
+    .property-row > [data-label] { display:none;grid-template-columns:78px minmax(0,1fr);gap:10px;align-items:center;padding:8px 0;border-top:1px solid #F0EEE8; }
     .property-row > [data-label]::before { content:attr(data-label);font-size:11px;font-weight:800;color:var(--muted); }
-    .property-row > [data-label="房源"] { display:flex;border-top:none;padding-top:0; }
-    .property-row > [data-label="房源"]::before { display:none; }
-    .property-main h3 { white-space:normal;line-height:1.35; }
+    .property-row > .prop-core,
+    .property-row > .property-mobile-toggle { display:flex;border-top:none;padding:0;align-items:center; }
+    .property-row > .prop-core::before { display:none; }
+    .property-row.open > [data-extra="1"] { display:grid;grid-column:1/-1; }
+    .property-mobile-toggle { display:inline-flex;align-items:center;justify-content:center; }
+    .property-main h3 { white-space:normal;line-height:1.35;font-size:14px; }
+    .prop-thumb { width:48px;height:42px; }
     .property-status-select, .property-release-input { max-width:none; }
     .property-actions { justify-content:stretch; }
     .property-actions .action-btn { width:100%; }
-    .traffic-dashboard { grid-template-columns:1fr; }
     .modal-box, .admin-modal { max-width:calc(100vw - 24px);border-radius:14px; }
     .admin-modal-body { padding:18px 16px; }
     .admin-modal-foot { padding:14px 16px; }
@@ -1035,46 +1046,51 @@ function onlineBadgeHtml(status) {
 function renderPropCard(p, showCheckbox) {
   var thumb = (p.images && p.images[0])
     ? '<img class="prop-thumb" src="' + esc(p.images[0].url) + '" onerror="this.style.display=\'none\'">'
-    : '<div class="prop-thumb" style="display:flex;align-items:center;justify-content:center;font-size:22px;">🏠</div>'
-  // 只顯示 4 個主要狀態供選擇
+    : '<div class="prop-thumb" style="display:flex;align-items:center;justify-content:center;font-size:18px;">' + uiLineIcon('home') + '</div>'
   var mainStatuses = ['AVAILABLE', 'RENTED', 'COMING_SOON', 'INACTIVE']
   var statusOptions = mainStatuses.map(function(s) {
     return '<option value="' + s + '"' + (p.status === s ? ' selected' : '') + '>' + PROP_STATUS_LABEL[s] + '</option>'
   }).join('')
   var cbHtml = showCheckbox
-    ? '<input type="checkbox" class="prop-cb" data-id="' + p.id + '" style="width:16px;height:16px;cursor:pointer;accent-color:var(--sage);margin-right:6px;flex-shrink:0;" onclick="event.preventDefault();event.stopPropagation();this.checked=!this.checked;updateBatchCount()">'
+    ? '<input type="checkbox" class="prop-cb" data-id="' + p.id + '" style="width:16px;height:16px;cursor:pointer;accent-color:var(--sage);margin-right:6px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="updateBatchCount()">'
     : ''
-  // 精選按鈕：房東＝官網精選(siteFeatured)，總管理員＝主站精選(featured)
   var featOn = DATA.role !== 'super' ? !!p.siteFeatured : !!p.featured
-  var featTitle = DATA.role !== 'super' ? '官網精選' : '主站精選'
-  var featButton = '<button class="featured-star-btn ' + (featOn ? 'active' : '') + '" title="' + featTitle + '" onclick="toggleFeatured(\'' + p.id + '\', ' + (featOn ? 'true' : 'false') + ', this)">★</button>'
-  var statusSelect = '<select class="property-status-select" onchange="changePropertyStatus(\'' + p.id + '\', this.value, this)">' + statusOptions + '</select>'
+  var featTitle = DATA.role !== 'super' ? '\u5b98\u7db2\u7cbe\u9078' : '\u4e3b\u7ad9\u7cbe\u9078'
+  var featButton = '<button class="featured-star-btn ' + (featOn ? 'active' : '') + '" title="' + featTitle + '" onclick="event.stopPropagation();toggleFeatured(\'' + p.id + '\', ' + (featOn ? 'true' : 'false') + ', this)">&#9733;</button>'
+  var statusSelect = '<select class="property-status-select" onclick="event.stopPropagation()" onchange="changePropertyStatus(\'' + p.id + '\', this.value, this)">' + statusOptions + '</select>'
   var releaseDateInput = p.status === 'COMING_SOON'
-    ? '<input class="property-release-input" type="date" value="' + esc(dateInputValue(p.availableFrom)) + '" onchange="changeAvailableFrom(\'' + p.id + '\', this.value)">'
+    ? '<input class="property-release-input" type="date" value="' + esc(dateInputValue(p.availableFrom)) + '" onclick="event.stopPropagation()" onchange="changeAvailableFrom(\'' + p.id + '\', this.value)">'
     : ''
-  return '<div class="property-row" id="propertyRow_' + esc(p.id) + '">' +
-    '<div data-label="選取">' + cbHtml + '</div>' +
-    '<div data-label="精選">' + featButton + '</div>' +
-    '<div data-label="狀態" class="property-status-cell">' + statusSelect + releaseDateInput + onlineBadgeHtml(p.status) + '</div>' +
-    '<a data-label="房源" class="property-main" href="' + propUrl(p) + '" target="_blank" style="gap:14px;min-width:0;">' + thumb +
+  return '<div class="property-row" id="propertyRow_' + esc(p.id) + '" onclick="togglePropertyRow(event, ' + jsArg(p.id) + ')">' +
+    '<div class="prop-core" data-label="\u9078\u53d6">' + cbHtml + '</div>' +
+    '<div class="prop-core" data-label="\u7cbe\u9078">' + featButton + '</div>' +
+    '<div class="prop-core property-status-cell" data-label="\u72c0\u614b">' + statusSelect + releaseDateInput + onlineBadgeHtml(p.status) + '</div>' +
+    '<a data-label="\u623f\u6e90" class="prop-core property-main" href="' + propUrl(p) + '" target="_blank" onclick="event.stopPropagation()" style="gap:14px;min-width:0;">' + thumb +
       '<div style="min-width:0;"><h3>' + esc(p.title) + '</h3><div class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div></div>' +
     '</a>' +
-    '<div data-label="地點" class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div>' +
-    '<div data-label="類型" class="property-meta">' + (TYPE_LABEL[p.type] || p.type || '-') + '</div>' +
-    '<div data-label="租金" class="property-meta">NT$ ' + Number(p.price || 0).toLocaleString() + ' / 月</div>' +
-    '<div data-label="坪數" class="property-meta">' + (p.size ? p.size + ' 坪' : '-') + '</div>' +
-    '<div data-label="更新" class="property-meta">' + fmtDate(p.updatedAt || p.createdAt) + '</div>' +
-    '<div data-label="今日" class="property-meta">' + Number(p.viewsToday || 0).toLocaleString() + '</div>' +
-    '<div data-label="7日" class="property-meta">' + Number(p.views7d || 0).toLocaleString() + '</div>' +
-    '<div data-label="30日" class="property-meta">' + Number(p.views30d || 0).toLocaleString() + '</div>' +
-    '<div data-label="總瀏覽" class="property-meta">' + Number(p.viewCount || 0).toLocaleString() + '</div>' +
-    '<div data-label="操作" class="property-actions">' +
-      '<button class="action-btn" onclick="startEditProperty(\'' + p.id + '\')">編輯</button>' +
+    '<div class="prop-core property-meta" data-label="\u79df\u91d1">NT$ ' + Number(p.price || 0).toLocaleString() + ' / \u6708</div>' +
+    '<button class="property-mobile-toggle" type="button" onclick="event.stopPropagation();togglePropertyRow(null, ' + jsArg(p.id) + ')">&#9662;</button>' +
+    '<div data-label="\u5730\u9ede" data-extra="1" class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div>' +
+    '<div data-label="\u985e\u578b" data-extra="1" class="property-meta">' + (TYPE_LABEL[p.type] || p.type || '-') + '</div>' +
+    '<div data-label="\u576a\u6578" data-extra="1" class="property-meta">' + (p.size ? p.size + ' \u576a' : '-') + '</div>' +
+    '<div data-label="\u66f4\u65b0" data-extra="1" class="property-meta">' + fmtDate(p.updatedAt || p.createdAt) + '</div>' +
+    '<div data-label="\u4eca\u65e5" data-extra="1" class="property-meta">' + Number(p.viewsToday || 0).toLocaleString() + '</div>' +
+    '<div data-label="7\u65e5" data-extra="1" class="property-meta">' + Number(p.views7d || 0).toLocaleString() + '</div>' +
+    '<div data-label="30\u65e5" data-extra="1" class="property-meta">' + Number(p.views30d || 0).toLocaleString() + '</div>' +
+    '<div data-label="\u7e3d\u700f\u89bd" data-extra="1" class="property-meta">' + Number(p.viewCount || 0).toLocaleString() + '</div>' +
+    '<div data-label="\u64cd\u4f5c" data-extra="1" class="property-actions">' +
+      '<button class="action-btn" onclick="event.stopPropagation();startEditProperty(\'' + p.id + '\')">\u7de8\u8f2f</button>' +
     '</div>' +
   '</div>'
 }
 
-// 批次操作工具列
+function togglePropertyRow(event, id) {
+  if (event && event.target && event.target.closest('button,input,select,a,.uid')) return
+  var row = document.getElementById('propertyRow_' + id)
+  if (row) row.classList.toggle('open')
+}
+
+
 function batchToolbarHtml() {
   var mainStatuses = ['AVAILABLE', 'RENTED', 'COMING_SOON', 'INACTIVE']
   var opts = mainStatuses.map(function(s) {
@@ -1338,7 +1354,7 @@ function propFilterBarHtml() {
   var featOpts = [{ value: 'yes', label: '⭐ 精選中' }, { value: 'no', label: '非精選' }]
   var selStyle = 'padding:8px 12px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;background:white;cursor:pointer;'
   var active = Object.keys(propFilters).some(function(k){ return propFilters[k] })
-  return '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">' +
+  return '<div class="property-global-filter" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">' +
     '<span style="font-size:13px;color:var(--gray-mid);font-weight:600;">🔍 篩選</span>' +
     '<select onchange="setPropFilter(\'location\', this.value)" style="' + selStyle + '"><option value="">全部地點</option>' + locations.map(function(v){ return '<option value="' + esc(v) + '"' + (propFilters.location === v ? ' selected' : '') + '>' + esc(v) + '</option>' }).join('') + '</select>' +
     '<select onchange="setPropFilter(\'type\', this.value)" style="' + selStyle + '"><option value="">全部類型</option>' + typeOpts.map(function(o){ return '<option value="' + o.value + '"' + (propFilters.type === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
@@ -1449,7 +1465,7 @@ function propertyTableHtml(list, showCheckbox, groupKey) {
     filteredList = list.filter(function(p){ return matchPropFilters(p, gf) })
   }
   return '<div class="property-table">' +
-    '<div class="property-table-head"><div></div><div>精選</div><div>狀態</div><div>房源</div><div>地點</div><div>類型</div><div>租金</div><div>坪數</div><div>更新時間</div><div>今日</div><div>7日</div><div>30日</div><div>總瀏覽</div><div style="text-align:right;">操作</div></div>' +
+    '<div class="property-table-head"><div></div><div>精選</div><div>狀態</div><div>房源</div><div>租金</div><div>地點</div><div>類型</div><div>坪數</div><div>更新時間</div><div>今日</div><div>7日</div><div>30日</div><div>總瀏覽</div><div style="text-align:right;">操作</div><div></div></div>' +
     (groupKey ? propertyGroupFilterRowHtml(list, groupKey) : '') +
     (filteredList.length ? filteredList.map(function(p){ return renderPropCard(p, showCheckbox) }).join('') : '<div style="padding:22px;color:var(--muted);font-size:13px;">此房東沒有符合欄位篩選的房源</div>') +
   '</div>'
