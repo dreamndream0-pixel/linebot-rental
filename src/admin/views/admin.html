@@ -1096,16 +1096,19 @@ function batchToolbarHtml() {
   var opts = mainStatuses.map(function(s) {
     return '<option value="' + s + '">' + PROP_STATUS_LABEL[s] + '</option>'
   }).join('')
+  var dividerSt = 'width:1px;align-self:stretch;background:var(--sage-light, #BFD9C4);margin:0 2px;'
   return '<div id="batchBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;background:#F0F7F1;border:1.5px solid var(--sage);border-radius:10px;margin-bottom:12px;">' +
     '<label style="font-size:13px;font-weight:600;color:var(--deep-sage);display:flex;align-items:center;gap:6px;cursor:pointer;">' +
     '<input type="checkbox" id="selectAllCb" style="width:16px;height:16px;accent-color:var(--sage);" onchange="toggleSelectAll(this.checked)"> 全選</label>' +
-    '<span style="color:#ccc;">|</span>' +
-    '<span style="font-size:13px;color:var(--gray-mid);">批次更改狀態：</span>' +
+    '<span id="batchCount" style="font-size:12px;font-weight:700;color:var(--deep-sage);background:white;border-radius:99px;padding:3px 12px;">已選 0 間</span>' +
+    '<span style="' + dividerSt + '"></span>' +
+    '<span style="font-size:13px;color:var(--gray-mid);">狀態：</span>' +
     '<select id="batchStatus" style="padding:6px 10px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;">' + opts + '</select>' +
-    '<button class="btn" style="width:auto;padding:6px 16px;font-size:13px;" onclick="applyBatchStatus()">套用</button>' +
-    '<button class="action-btn" style="padding:6px 14px;font-size:13px;" onclick="applyBatchFeatured(true)">☆ 批次設精選</button>' +
+    '<button class="action-btn" style="padding:6px 16px;font-size:13px;background:var(--sage);color:white;border-color:var(--sage);" onclick="applyBatchStatus()">套用</button>' +
+    '<span style="' + dividerSt + '"></span>' +
+    '<span style="font-size:13px;color:var(--gray-mid);">精選：</span>' +
+    '<button class="action-btn" style="padding:6px 14px;font-size:13px;" onclick="applyBatchFeatured(true)">☆ 設精選</button>' +
     '<button class="action-btn" style="padding:6px 14px;font-size:13px;" onclick="applyBatchFeatured(false)">取消精選</button>' +
-    '<span id="batchCount" style="font-size:12px;color:var(--gray-mid);margin-left:4px;">已選 0 間</span>' +
     '</div>'
 }
 
@@ -1337,7 +1340,6 @@ function propFilterBarHtml() {
   var list = DATA.properties.filter(function(p){ return p.status !== 'PENDING' })
   var locations = uniqueOptions(list, propLocationText)
   var typeOpts = Object.keys(TYPE_LABEL).map(function(t){ return { value: t, label: TYPE_LABEL[t] } })
-  var statusOpts = ['AVAILABLE', 'RENTED', 'COMING_SOON', 'INACTIVE'].map(function(s){ return { value: s, label: PROP_STATUS_LABEL[s] || s } })
   var rentOpts = [
     { value: '0-8000', label: '8K 以下' },
     { value: '8001-12000', label: '8K-12K' },
@@ -1351,7 +1353,6 @@ function propFilterBarHtml() {
     { value: '8.1-12', label: '8-12 坪' },
     { value: '12.1-', label: '12 坪以上' },
   ]
-  var featOpts = [{ value: 'yes', label: '⭐ 精選中' }, { value: 'no', label: '非精選' }]
   var selStyle = 'padding:8px 12px;border-radius:8px;border:1.5px solid #E5E0D5;font-size:13px;background:white;cursor:pointer;'
   var active = Object.keys(propFilters).some(function(k){ return propFilters[k] })
   return '<div class="property-global-filter" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">' +
@@ -1360,8 +1361,6 @@ function propFilterBarHtml() {
     '<select onchange="setPropFilter(\'type\', this.value)" style="' + selStyle + '"><option value="">全部類型</option>' + typeOpts.map(function(o){ return '<option value="' + o.value + '"' + (propFilters.type === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
     '<select onchange="setPropFilter(\'rent\', this.value)" style="' + selStyle + '"><option value="">全部租金</option>' + rentOpts.map(function(o){ return '<option value="' + o.value + '"' + (propFilters.rent === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
     '<select onchange="setPropFilter(\'size\', this.value)" style="' + selStyle + '"><option value="">全部坪數</option>' + sizeOpts.map(function(o){ return '<option value="' + o.value + '"' + (propFilters.size === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
-    '<select onchange="setPropFilter(\'status\', this.value)" style="' + selStyle + '"><option value="">全部狀態</option>' + statusOpts.map(function(o){ return '<option value="' + o.value + '"' + (propFilters.status === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
-    '<select onchange="setPropFilter(\'featured\', this.value)" style="' + selStyle + '"><option value="">全部精選</option>' + featOpts.map(function(o){ return '<option value="' + o.value + '"' + (propFilters.featured === o.value ? ' selected' : '') + '>' + o.label + '</option>' }).join('') + '</select>' +
     (active ? '<button onclick="clearPropFilter()" style="padding:8px 14px;border-radius:8px;border:1.5px solid #E5E0D5;background:white;font-size:13px;cursor:pointer;">✕ 清除篩選</button>' : '') +
     '</div>'
 }
