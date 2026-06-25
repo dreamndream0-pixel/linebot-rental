@@ -69,7 +69,7 @@ async function deleteCloudinaryImages(urls = []) {
 }
 
 // ── 預約狀態通知租客 ─────────────────────────────────────────────
-async function notifyBookingTenant(booking, status) {
+async function notifyBookingTenant(booking, status, rejectReason = null) {
   if (!booking.lineUser?.lineUserId) return { notified: false, reason: 'not-line-booking' }
 
   let config
@@ -94,9 +94,11 @@ async function notifyBookingTenant(booking, status) {
   if (!config) return { notified: false, reason: 'bot-not-configured' }
 
   const date = new Date(booking.date).toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' })
+  const rejectNote = rejectReason ? `\n\n📝 房東回覆：${rejectReason}` : ''
   const messages = {
     CONFIRMED: `✅ 看房預約已確認\n\n🏠 ${booking.property.title}\n📅 ${date} ${booking.timeslot}\n\n請準時抵達，如需調整請直接聯絡房東。`,
     CANCELLED: `❌ 看房預約已取消\n\n🏠 ${booking.property.title}\n📅 ${date} ${booking.timeslot}\n\n如需重新預約，請回到選單再次選擇。`,
+    REJECTED: `😢 看房預約未能成立\n\n🏠 ${booking.property.title}\n📅 ${date} ${booking.timeslot}${rejectNote}\n\n歡迎回到選單改約其他時段，謝謝您！`,
   }
   if (!messages[status]) return { notified: false, reason: 'status-does-not-notify' }
 

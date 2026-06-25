@@ -999,9 +999,13 @@ function renderBookings() {
       '<h3>' + esc(b.property.title) + '</h3>' +
       '<div class="meta">📅 ' + fmtDate(b.date) + ' ' + esc(b.timeslot) + '<br>用戶：' + esc(who) + '</div></div>' +
       '<span class="badge ' + b.status + '">' + (BOOKING_LABEL[b.status] || b.status) + '</span></div>'
+    if (b.status === 'REJECTED' && b.rejectReason) {
+      html += '<div class="meta" style="margin-top:6px;color:#c0392b">📝 退回理由：' + esc(b.rejectReason) + '</div>'
+    }
     if (b.status === 'PENDING') {
       html += '<div class="actions">' +
         '<button class="action-btn" onclick="updateBooking(\'' + b.id + '\',\'CONFIRMED\')">✅ 確認</button>' +
+        '<button class="action-btn" onclick="rejectBooking(\'' + b.id + '\')">↩️ 退回</button>' +
         '<button class="action-btn" onclick="updateBooking(\'' + b.id + '\',\'CANCELLED\')">❌ 取消</button></div>'
     } else if (b.status === 'CONFIRMED') {
       html += '<div class="actions">' +
@@ -3029,17 +3033,18 @@ async function toggleLandlord(id, isActive) {
   reload()
 }
 
-async function updateBooking(id, status) {
+async function updateBooking(id, status, rejectReason) {
   var res = await fetch('/admin/api/booking/' + id + '/status?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ status: status })
+    body: JSON.stringify({ status: status, rejectReason: rejectReason || undefined })
   })
   var data = await res.json()
   if (!res.ok) {
     showToast('❌ 更新失敗')
     return
   }
-  if ((status === 'CONFIRMED' || status === 'CANCELLED') && !data.notification.notified) {
+  var notifyStatuses = ['CONFIRMED', 'CANCELLED', 'REJECTED']
+  if (notifyStatuses.indexOf(status) !== -1 && !data.notification.notified) {
     showToast('⚠️ 狀態已更新，但 LINE 通知失敗')
   } else if (data.notification.notified) {
     showToast('✅ 已更新並通知租客')
@@ -3047,6 +3052,13 @@ async function updateBooking(id, status) {
     showToast('✅ 已更新')
   }
   reload()
+}
+
+// 退回預約：填寫理由後一併通知租客
+function rejectBooking(id) {
+  var reason = window.prompt('請輸入退回理由（會一併傳給租客）：\n例如「這個時段已額滿，歡迎改約其他時間」', '這個時段已額滿，歡迎改約其他時間')
+  if (reason === null) return            // 按取消
+  updateBooking(id, 'REJECTED', reason.trim())
 }
 
 async function updateRepair(id, status) {
