@@ -3645,6 +3645,30 @@ async function saveHeroSlides(silent) {
 var socialConfig = { instagram: { accountId: '', hasToken: false, tokenPreview: '' } }
 var socialSelectedPlatforms = { instagram: true, facebook: false, threads: false }
 var socialSelectedPropertyId = ''
+var socialCaptionEdited = false  // 使用者是否手動改過文案
+
+// 依房源資料組出預設發文文字（與後端 buildCaption 一致）
+function buildSocialCaption(p) {
+  if (!p) return ''
+  var price = p.price != null ? Number(p.price).toLocaleString() : ''
+  return [
+    '🏠 ' + (p.title || ''),
+    '📍 ' + (p.city || '') + (p.district || ''),
+    '💰 NT$ ' + price + '/月・' + (p.size || '') + ' 坪',
+  ].join('\n')
+}
+
+// 房源切換時，若使用者尚未手改文案，就自動帶入新房源的預設文字
+function onSocialPropertyChange(id) {
+  socialSelectedPropertyId = id
+  var ta = document.getElementById('socialCaption')
+  if (!ta) return
+  if (!socialCaptionEdited || ta.value.trim() === '') {
+    var p = (DATA.properties || []).filter(function(x){ return x.id === id })[0]
+    ta.value = buildSocialCaption(p)
+    socialCaptionEdited = false
+  }
+}
 
 async function renderSocialTab() {
   var el = document.getElementById('content')
@@ -3674,26 +3698,42 @@ function drawSocialTab() {
       '</label>'
   }
 
+  var connected = ig.accountId && ig.hasToken
+
   el.innerHTML = [
     '<div class="form-box" style="margin-bottom:20px;">',
     '<h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">📷 Instagram 串接設定</h3>',
-    '<p style="font-size:12px;color:#aaa;margin-bottom:16px;">需先在 Meta 開發者後台建立 Instagram Business 帳號並取得 Access Token，才能一鍵發文。</p>',
+    '<p style="font-size:12px;color:#aaa;margin-bottom:16px;">點下方按鈕用你的 Instagram 帳號登入授權，系統會自動取得帳號 ID 與權杖，不需手動填寫。</p>',
+
+    '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;">',
+    '<button class="btn" style="width:auto;padding:11px 24px;background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);color:#fff;border:none;" onclick="connectInstagram()">🔗 ' + (connected ? '重新連結 Instagram' : '連結 Instagram 帳號') + '</button>',
+    (connected
+      ? '<span style="font-size:13px;color:var(--deep-sage);font-weight:600;">✅ 已連結（帳號 ID：' + esc(ig.accountId) + '）</span>'
+      : '<span style="font-size:12px;color:var(--gray-light);">尚未連結</span>'),
+    '</div>',
+
+    '<details style="margin-top:10px;"><summary style="font-size:12px;color:var(--gray-light);cursor:pointer;">手動輸入（進階）</summary>',
+    '<div style="padding-top:12px;">',
     '<label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">Instagram 商業帳號 ID</label>',
     '<input id="igAccountId" value="' + esc(ig.accountId || '') + '" placeholder="例如：17841400000000000" style="width:100%;padding:11px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;margin-bottom:14px;">',
     '<label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">Access Token' + (ig.hasToken ? '（目前：' + esc(ig.tokenPreview) + '，留空表示不更動）' : '') + '</label>',
     '<input id="igAccessToken" type="password" placeholder="' + (ig.hasToken ? '輸入新權杖才會覆蓋' : '貼上長期存取權杖') + '" style="width:100%;padding:11px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;margin-bottom:14px;">',
     '<button class="btn" style="width:auto;padding:11px 28px;" onclick="btnLoad(this, saveSocialConfig)">💾 儲存設定</button>',
-    (ig.accountId && ig.hasToken ? '<span style="margin-left:12px;font-size:12px;color:var(--sage-dark, var(--deep-sage));">✅ Instagram 已設定</span>' : '<span style="margin-left:12px;font-size:12px;color:var(--gray-light);">尚未設定</span>'),
+    '</div></details>',
     '</div>',
 
     '<div class="form-box">',
     '<h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">🚀 房源一鍵發文</h3>',
-    '<p style="font-size:12px;color:#aaa;margin-bottom:16px;">選擇房源與要發布的平台，系統會自動帶入封面照片與簡介文字。</p>',
+    '<p style="font-size:12px;color:#aaa;margin-bottom:16px;">選擇房源後，下方會自動帶入封面照片與發文文字，你可以直接編輯文字再發布。</p>',
 
     '<label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">選擇房源</label>',
-    '<select id="socialPropertySelect" onchange="socialSelectedPropertyId=this.value" style="width:100%;padding:11px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;margin-bottom:16px;">' +
+    '<select id="socialPropertySelect" onchange="onSocialPropertyChange(this.value)" style="width:100%;padding:11px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;margin-bottom:16px;">' +
       '<option value="">請選擇房源</option>' + propOptions +
     '</select>',
+
+    '<label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">發文內容（可編輯）</label>',
+    '<textarea id="socialCaption" oninput="socialCaptionEdited=true" placeholder="選擇房源後會自動帶入文字，你也可以自由修改…" style="width:100%;min-height:140px;padding:12px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;line-height:1.7;resize:vertical;font-family:inherit;margin-bottom:8px;"></textarea>',
+    '<div style="display:flex;justify-content:flex-end;margin-bottom:16px;"><button onclick="resetSocialCaption()" style="background:none;border:none;color:var(--gray-light);font-size:12px;cursor:pointer;text-decoration:underline;">↺ 還原預設文字</button></div>',
 
     '<div style="border-top:1px solid var(--oat-mid);border-bottom:1px solid var(--oat-mid);margin-bottom:16px;">',
     platformRow('instagram', '📷 Instagram', true),
@@ -3705,6 +3745,30 @@ function drawSocialTab() {
     '<div id="socialPostResult" style="margin-top:14px;font-size:13px;line-height:1.8;"></div>',
     '</div>',
   ].join('')
+
+  // 若已選房源，重畫後補回文案
+  if (socialSelectedPropertyId) onSocialPropertyChange(socialSelectedPropertyId)
+}
+
+function resetSocialCaption() {
+  var ta = document.getElementById('socialCaption')
+  if (!ta) return
+  var p = (DATA.properties || []).filter(function(x){ return x.id === socialSelectedPropertyId })[0]
+  ta.value = buildSocialCaption(p)
+  socialCaptionEdited = false
+}
+
+// 開新視窗跑 Instagram OAuth 授權，完成後自動重新整理設定
+function connectInstagram() {
+  var url = '/admin/api/social/ig/connect?key=' + encodeURIComponent(KEY)
+  var w = window.open(url, 'ig_oauth', 'width=600,height=720')
+  var timer = setInterval(function() {
+    if (w && w.closed) {
+      clearInterval(timer)
+      renderSocialTab()
+      showToast('已更新 Instagram 連結狀態')
+    }
+  }, 1000)
 }
 
 async function saveSocialConfig() {
@@ -3731,15 +3795,17 @@ async function saveSocialConfig() {
 async function submitSocialPost() {
   var resultEl = document.getElementById('socialPostResult')
   var platforms = Object.keys(socialSelectedPlatforms).filter(function(k){ return socialSelectedPlatforms[k] })
+  var caption = (document.getElementById('socialCaption') || {}).value || ''
   if (!socialSelectedPropertyId) { showToast('❌ 請先選擇房源'); return false }
   if (!platforms.length) { showToast('❌ 請選擇至少一個發布平台'); return false }
+  if (!caption.trim()) { showToast('❌ 發文內容不可空白'); return false }
 
   resultEl.innerHTML = '發布中...'
   try {
     var res = await fetch('/admin/api/social/post?key=' + encodeURIComponent(KEY), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ propertyId: socialSelectedPropertyId, platforms: platforms }),
+      body: JSON.stringify({ propertyId: socialSelectedPropertyId, platforms: platforms, caption: caption }),
     })
     var data = await res.json()
     if (!res.ok) { resultEl.innerHTML = '❌ ' + (data.error || '發布失敗'); return false }

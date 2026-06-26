@@ -140,7 +140,10 @@ router.post('/admin/api/social/post', express.json(), async (req, res) => {
   }
 
   const config = await getConfig(auth)
-  const caption = buildCaption(property)
+  // 前端可傳入編輯過的文案；沒給才用預設組字
+  const caption = (typeof req.body.caption === 'string' && req.body.caption.trim())
+    ? req.body.caption.trim()
+    : buildCaption(property)
   const imageUrl = property.images[0]?.url || null
   const results = {}
 
@@ -162,6 +165,100 @@ router.post('/admin/api/social/post', express.json(), async (req, res) => {
   }
 
   res.json({ results })
+})
+
+// ── Instagram OAuth（一鍵連結，房東免手動填 token）──────────────────
+// Instagram API with Instagram Login 授權流程：
+//   connect → 導向 instagram.com 授權 → callback 換 token → 存進設定
+const IG_APP_ID = process.env.IG_APP_ID
+const IG_APP_SECRET = process.env.IG_APP_SECRET
+
+// state → { key, expires }，避免把後台金鑰直接帶過 Instagram
+const oauthStates = new Map()
+function makeState(key) {
+  const state = require('crypto').randomBytes(16).toString('hex')
+  oauthStates.set(state, { key, expires: Date.now() + 10 * 60 * 1000 })
+  // 順手清掉過期的
+  for (const [s, v] of oauthStates) if (v.expires < Date.now()) oauthStates.delete(s)
+  return state
+}
+
+function redirectUri(req) {
+  if (process.env.IG_REDIRECT_URI) return process.env.IG_REDIRECT_URI
+  const host = req.get('host')
+  const proto = /localhost|127\.0\.0\.1/.test(host) ? 'http' : 'https'
+  return `${proto}://${host}/admin/api/social/ig/callback`
+}
+
+function popupClose(message) {
+  return `<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;text-align:center;padding:40px;color:#444;">
+    <p>${message}</p><p style="color:#999;font-size:13px;">這個視窗即將自動關閉…</p>
+    <script>setTimeout(function(){ window.close() }, 1800)</script></body>`
+}
+
+router.get('/admin/api/social/ig/connect', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).send(popupClose('授權失敗：登入狀態無效，請重新登入後台。'))
+  if (!IG_APP_ID || !IG_APP_SECRET) {
+    return res.status(500).send(popupClose('系統尚未設定 Instagram 應用程式（IG_APP_ID / IG_APP_SECRET），請聯絡管理員。'))
+  }
+  const state = makeState(req.query.key)
+  const scope = 'instagram_business_basic,instagram_business_content_publish'
+  const url = 'https://www.instagram.com/oauth/authorize'
+    + '?client_id=' + encodeURIComponent(IG_APP_ID)
+    + '&redirect_uri=' + encodeURIComponent(redirectUri(req))
+    + '&response_type=code'
+    + '&scope=' + encodeURIComponent(scope)
+    + '&state=' + state
+  res.redirect(url)
+})
+
+router.get('/admin/api/social/ig/callback', async (req, res) => {
+  const { code, state, error, error_description } = req.query
+  if (error) return res.send(popupClose('授權未完成：' + (error_description || error)))
+  const entry = state && oauthStates.get(state)
+  if (!entry || entry.expires < Date.now()) {
+    return res.status(400).send(popupClose('授權連結已失效，請回後台重新點「連結 Instagram」。'))
+  }
+  oauthStates.delete(state)
+  const auth = await resolveRole(entry.key)
+  if (!auth) return res.status(401).send(popupClose('授權失敗：登入狀態無效。'))
+
+  try {
+    // 1) code 換短期 token（同時拿到 user_id）
+    const form = new URLSearchParams({
+      client_id: IG_APP_ID,
+      client_secret: IG_APP_SECRET,
+      grant_type: 'authorization_code',
+      redirect_uri: redirectUri(req),
+      code: String(code),
+    })
+    const shortRes = await fetch('https://api.instagram.com/oauth/access_token', { method: 'POST', body: form })
+    const shortData = await shortRes.json()
+    if (!shortData.access_token) {
+      throw new Error(shortData.error_message || JSON.stringify(shortData))
+    }
+    const userId = String(shortData.user_id)
+
+    // 2) 短期換長期 token（約 60 天）
+    const longUrl = 'https://graph.instagram.com/access_token'
+      + '?grant_type=ig_exchange_token'
+      + '&client_secret=' + encodeURIComponent(IG_APP_SECRET)
+      + '&access_token=' + encodeURIComponent(shortData.access_token)
+    const longData = await (await fetch(longUrl)).json()
+    const accessToken = longData.access_token || shortData.access_token
+
+    // 3) 存進該帳號的設定
+    const config = await getConfig(auth)
+    config.instagram = config.instagram || {}
+    config.instagram.accountId = userId
+    config.instagram.accessToken = accessToken
+    await saveConfig(auth, config)
+
+    res.send(popupClose('✅ Instagram 連結成功！'))
+  } catch (e) {
+    res.status(500).send(popupClose('連結失敗：' + e.message))
+  }
 })
 
 module.exports = router
