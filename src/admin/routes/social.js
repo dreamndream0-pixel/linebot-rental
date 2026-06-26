@@ -88,7 +88,23 @@ async function postToInstagram({ accountId, accessToken, imageUrl, caption }) {
   const createData = await createRes.json()
   if (!createData.id) throw new Error('建立貼文失敗：' + (createData.error?.message || JSON.stringify(createData)))
 
-  const publishUrl = `${IG_API_BASE}/${accountId}/media_publish?creation_id=${createData.id}&access_token=${encodeURIComponent(accessToken)}`
+  // Instagram 需要時間下載/處理圖片，要等容器狀態 FINISHED 才能發布，
+  // 否則會回「Media ID is not available」。最多輪詢約 30 秒。
+  const containerId = createData.id
+  let ready = false
+  for (let i = 0; i < 15; i++) {
+    await new Promise(r => setTimeout(r, 2000))
+    const statusUrl = `${IG_API_BASE}/${containerId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`
+    const statusData = await (await fetch(statusUrl)).json()
+    const code = statusData.status_code
+    if (code === 'FINISHED') { ready = true; break }
+    if (code === 'ERROR' || code === 'EXPIRED') {
+      throw new Error('圖片處理失敗（' + code + '）：請確認照片網址可公開存取、格式為 JPG，且比例介於 4:5 ~ 1.91:1')
+    }
+  }
+  if (!ready) throw new Error('圖片處理逾時，請稍後再試一次')
+
+  const publishUrl = `${IG_API_BASE}/${accountId}/media_publish?creation_id=${containerId}&access_token=${encodeURIComponent(accessToken)}`
   const publishRes = await fetch(publishUrl, { method: 'POST' })
   const publishData = await publishRes.json()
   if (!publishData.id) throw new Error('發布失敗：' + (publishData.error?.message || JSON.stringify(publishData)))
