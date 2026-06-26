@@ -248,10 +248,19 @@ router.get('/admin/api/social/ig/callback', async (req, res) => {
     const longData = await (await fetch(longUrl)).json()
     const accessToken = longData.access_token || shortData.access_token
 
-    // 3) 存進該帳號的設定
+    // 3) OAuth 的 user_id 是 app 範圍 ID，發文要用 IG 商業帳號 ID（17841…），
+    //    向 /me 查 user_id 欄位取得正確的發文帳號 ID
+    let publishId = userId
+    try {
+      const meUrl = `${IG_API_BASE}/me?fields=user_id&access_token=${encodeURIComponent(accessToken)}`
+      const me = await (await fetch(meUrl)).json()
+      if (me.user_id) publishId = String(me.user_id)
+    } catch (_) {}
+
+    // 4) 存進該帳號的設定
     const config = await getConfig(auth)
     config.instagram = config.instagram || {}
-    config.instagram.accountId = userId
+    config.instagram.accountId = publishId
     config.instagram.accessToken = accessToken
     await saveConfig(auth, config)
 
