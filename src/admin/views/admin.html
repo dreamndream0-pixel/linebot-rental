@@ -3711,15 +3711,6 @@ function drawSocialTab() {
       ? '<span style="font-size:13px;color:var(--deep-sage);font-weight:600;">✅ 已連結（帳號 ID：' + esc(ig.accountId) + '）</span>'
       : '<span style="font-size:12px;color:var(--gray-light);">尚未連結</span>'),
     '</div>',
-
-    '<details style="margin-top:10px;"><summary style="font-size:12px;color:var(--gray-light);cursor:pointer;">手動輸入（進階）</summary>',
-    '<div style="padding-top:12px;">',
-    '<label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">Instagram 商業帳號 ID</label>',
-    '<input id="igAccountId" value="' + esc(ig.accountId || '') + '" placeholder="例如：17841400000000000" style="width:100%;padding:11px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;margin-bottom:14px;">',
-    '<label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">Access Token' + (ig.hasToken ? '（目前：' + esc(ig.tokenPreview) + '，留空表示不更動）' : '') + '</label>',
-    '<input id="igAccessToken" type="password" placeholder="' + (ig.hasToken ? '輸入新權杖才會覆蓋' : '貼上長期存取權杖') + '" style="width:100%;padding:11px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;margin-bottom:14px;">',
-    '<button class="btn" style="width:auto;padding:11px 28px;" onclick="btnLoad(this, saveSocialConfig)">💾 儲存設定</button>',
-    '</div></details>',
     '</div>',
 
     '<div class="form-box">',
@@ -3769,27 +3760,6 @@ function connectInstagram() {
       showToast('已更新 Instagram 連結狀態')
     }
   }, 1000)
-}
-
-async function saveSocialConfig() {
-  var accountId = document.getElementById('igAccountId').value.trim()
-  var accessToken = document.getElementById('igAccessToken').value.trim()
-  try {
-    var res = await fetch('/admin/api/social/config?key=' + encodeURIComponent(KEY), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instagramAccountId: accountId, instagramAccessToken: accessToken || undefined }),
-    })
-    var data = await res.json()
-    if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || '')); return false }
-    socialConfig = data.config
-    showToast('✅ 已儲存 Instagram 設定')
-    drawSocialTab()
-    return true
-  } catch (e) {
-    showToast('❌ 連線失敗：' + e.message)
-    return false
-  }
 }
 
 async function submitSocialPost() {

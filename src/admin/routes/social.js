@@ -79,37 +79,61 @@ router.post('/admin/api/social/config', express.json(), async (req, res) => {
 })
 
 // ── Instagram 發文（Content Publishing API） ───────────────────────
-async function postToInstagram({ accountId, accessToken, imageUrl, caption }) {
-  if (!accountId || !accessToken) throw new Error('尚未設定 Instagram 帳號 ID 或 Access Token')
-  if (!imageUrl) throw new Error('此房源沒有照片，無法發布到 Instagram')
+// 建立媒體容器，回傳 container id（用 URLSearchParams 正確編碼 caption/換行/emoji）
+async function igCreateContainer(accountId, accessToken, params) {
+  const qs = new URLSearchParams({ ...params, access_token: accessToken })
+  const res = await fetch(`${IG_API_BASE}/${accountId}/media?${qs.toString()}`, { method: 'POST' })
+  const data = await res.json()
+  if (!data.id) throw new Error('建立貼文失敗：' + (data.error?.message || JSON.stringify(data)))
+  return data.id
+}
 
-  const createUrl = `${IG_API_BASE}/${accountId}/media?image_url=${encodeURIComponent(imageUrl)}&caption=${encodeURIComponent(caption)}&access_token=${encodeURIComponent(accessToken)}`
-  const createRes = await fetch(createUrl, { method: 'POST' })
-  const createData = await createRes.json()
-  if (!createData.id) throw new Error('建立貼文失敗：' + (createData.error?.message || JSON.stringify(createData)))
-
-  // Instagram 需要時間下載/處理圖片，要等容器狀態 FINISHED 才能發布，
-  // 否則會回「Media ID is not available」。最多輪詢約 30 秒。
-  const containerId = createData.id
-  let ready = false
+// Instagram 需要時間下載/處理圖片，要等容器狀態 FINISHED 才能發布，
+// 否則會回「Media ID is not available」。最多輪詢約 30 秒。
+async function igWaitFinished(containerId, accessToken) {
   for (let i = 0; i < 15; i++) {
     await new Promise(r => setTimeout(r, 2000))
     const statusUrl = `${IG_API_BASE}/${containerId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`
-    const statusData = await (await fetch(statusUrl)).json()
-    const code = statusData.status_code
-    if (code === 'FINISHED') { ready = true; break }
+    const code = (await (await fetch(statusUrl)).json()).status_code
+    if (code === 'FINISHED') return
     if (code === 'ERROR' || code === 'EXPIRED') {
       throw new Error('圖片處理失敗（' + code + '）：請確認照片網址可公開存取、格式為 JPG，且比例介於 4:5 ~ 1.91:1')
     }
   }
-  if (!ready) throw new Error('圖片處理逾時，請稍後再試一次')
+  throw new Error('圖片處理逾時，請稍後再試一次')
+}
 
-  const publishUrl = `${IG_API_BASE}/${accountId}/media_publish?creation_id=${containerId}&access_token=${encodeURIComponent(accessToken)}`
-  const publishRes = await fetch(publishUrl, { method: 'POST' })
-  const publishData = await publishRes.json()
-  if (!publishData.id) throw new Error('發布失敗：' + (publishData.error?.message || JSON.stringify(publishData)))
+async function igPublish(accountId, accessToken, creationId) {
+  const res = await fetch(`${IG_API_BASE}/${accountId}/media_publish?creation_id=${creationId}&access_token=${encodeURIComponent(accessToken)}`, { method: 'POST' })
+  const data = await res.json()
+  if (!data.id) throw new Error('發布失敗：' + (data.error?.message || JSON.stringify(data)))
+  return data.id
+}
 
-  return publishData.id
+async function postToInstagram({ accountId, accessToken, imageUrls, caption }) {
+  if (!accountId || !accessToken) throw new Error('尚未設定 Instagram 帳號 ID 或 Access Token')
+  const urls = (imageUrls || []).filter(Boolean).slice(0, 10) // IG 輪播上限 10 張
+  if (!urls.length) throw new Error('此房源沒有照片，無法發布到 Instagram')
+
+  // 單張：直接建立含文案的容器後發布
+  if (urls.length === 1) {
+    const id = await igCreateContainer(accountId, accessToken, { image_url: urls[0], caption })
+    await igWaitFinished(id, accessToken)
+    return igPublish(accountId, accessToken, id)
+  }
+
+  // 多張：每張先建子容器（is_carousel_item），再組成 CAROUSEL 母容器發布
+  const childIds = []
+  for (const url of urls) {
+    const childId = await igCreateContainer(accountId, accessToken, { image_url: url, is_carousel_item: 'true' })
+    await igWaitFinished(childId, accessToken)
+    childIds.push(childId)
+  }
+  const carouselId = await igCreateContainer(accountId, accessToken, {
+    media_type: 'CAROUSEL', caption, children: childIds.join(','),
+  })
+  await igWaitFinished(carouselId, accessToken)
+  return igPublish(accountId, accessToken, carouselId)
 }
 
 function buildCaption(property) {
@@ -132,7 +156,7 @@ router.post('/admin/api/social/post', express.json(), async (req, res) => {
 
   const property = await prisma.property.findUnique({
     where: { id: propertyId },
-    include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }], take: 1 } },
+    include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] } },
   })
   if (!property) return res.status(404).json({ error: '找不到此房源' })
   if (auth.role === 'landlord' && property.ownerId !== auth.landlordId) {
@@ -144,7 +168,7 @@ router.post('/admin/api/social/post', express.json(), async (req, res) => {
   const caption = (typeof req.body.caption === 'string' && req.body.caption.trim())
     ? req.body.caption.trim()
     : buildCaption(property)
-  const imageUrl = property.images[0]?.url || null
+  const imageUrls = property.images.map(i => i.url).filter(Boolean)
   const results = {}
 
   for (const platform of platforms) {
@@ -152,7 +176,7 @@ router.post('/admin/api/social/post', express.json(), async (req, res) => {
       if (platform === 'instagram') {
         const ig = config.instagram || {}
         const postId = await postToInstagram({
-          accountId: ig.accountId, accessToken: ig.accessToken, imageUrl, caption,
+          accountId: ig.accountId, accessToken: ig.accessToken, imageUrls, caption,
         })
         results.instagram = { ok: true, postId }
       } else {
