@@ -4,7 +4,9 @@ const router = express.Router()
 const { resolveRole } = require('../helpers')
 const prisma = require('../../db')
 
-const IG_API_BASE = 'https://graph.facebook.com/v19.0'
+// Instagram API with Instagram Login（token 以 IGAA 開頭，使用 graph.instagram.com）
+// 帳號 ID 填 Instagram 商業帳號的 user_id（17841... 開頭）
+const IG_API_BASE = 'https://graph.instagram.com/v21.0'
 
 // ── 設定讀寫 ──────────────────────────────────────────────────────
 // 房東：存在 Landlord.socialConfig；總管理員（主站）：存在 site_settings（key=social_config）
