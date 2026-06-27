@@ -191,6 +191,55 @@ router.post('/admin/api/social/post', express.json(), async (req, res) => {
   res.json({ results })
 })
 
+// ── IG 已發布貼文（總覽九宮格用，連動讀取）─────────────────────────
+async function fetchIgMedia(accessToken) {
+  const base = `${IG_API_BASE}/me/media?limit=30&access_token=${encodeURIComponent(accessToken)}`
+  const fullFields = 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{media_url,thumbnail_url}'
+  let data = await (await fetch(base + '&fields=' + encodeURIComponent(fullFields))).json()
+  // 部分欄位（讚數/留言數）在某些帳號會被擋，退回精簡欄位再抓一次，避免整批失敗
+  if (data.error) {
+    const slimFields = 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp'
+    data = await (await fetch(base + '&fields=' + encodeURIComponent(slimFields))).json()
+  }
+  return data
+}
+
+router.get('/admin/api/social/ig/feed', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const config = await getConfig(auth)
+    const ig = config.instagram || {}
+    if (!ig.accountId || !ig.accessToken) return res.json({ connected: false, media: [] })
+    const data = await fetchIgMedia(ig.accessToken)
+    if (data.error) return res.status(400).json({ error: data.error.message })
+    res.json({ connected: true, media: data.data || [] })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── 版面規劃：暫存「準備發布」的房源順序（property id 陣列）────────
+router.get('/admin/api/social/ig/plan', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const config = await getConfig(auth)
+    res.json({ plan: (config.instagram && config.instagram.plan) || [] })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.post('/admin/api/social/ig/plan', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const plan = Array.isArray(req.body.plan) ? req.body.plan.map(String).slice(0, 60) : []
+    const config = await getConfig(auth)
+    config.instagram = config.instagram || {}
+    config.instagram.plan = plan
+    await saveConfig(auth, config)
+    res.json({ ok: true, plan })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Instagram OAuth（一鍵連結，房東免手動填 token）──────────────────
 // Instagram API with Instagram Login 授權流程：
 //   connect → 導向 instagram.com 授權 → callback 換 token → 存進設定
