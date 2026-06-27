@@ -3747,6 +3747,8 @@ function drawSocialTab() {
     '.ig-cap,.ig-meta{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,rgba(0,0,0,.65));color:#fff;font-size:10px;padding:10px 5px 4px;}',
     '.ig-cap{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
     '.ig-pub{opacity:.95;}',
+    '.ig-rented{outline:2px solid #c0392b;outline-offset:-2px;}',
+    '.ig-rented img{opacity:.6;}',
     '</style>',
     '<div class="form-box">',
     '<h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">📐 IG 版面規劃</h3>',
@@ -3786,9 +3788,21 @@ function connectInstagram() {
 var igPlan = []          // 規劃中房源 id 陣列（index 0 ＝ 九宮格左上＝最新）
 var igFeed = []          // IG 已發布貼文
 var igDragFrom = -1
+var igShowRentedOnly = false  // 已發布區是否只顯示「已出租」對應的貼文
 
 function igPropThumb(p) {
   return (p && p.images && p.images[0] && p.images[0].url) || ''
+}
+
+// 用文案是否包含房源標題，比對已發布貼文對應到哪個房源（找出已出租的）
+function igMatchProperty(caption) {
+  if (!caption) return null
+  var props = DATA.properties || []
+  for (var i = 0; i < props.length; i++) {
+    var t = props[i].title
+    if (t && t.length > 1 && caption.indexOf(t) !== -1) return props[i]
+  }
+  return null
 }
 
 async function renderIgPlanner() {
@@ -3835,11 +3849,21 @@ function drawIgPlanner() {
       '</div>'
   }).join('')
 
-  var feedCells = igFeed.map(function(m) {
+  var rentedCount = 0
+  var feedItems = igFeed.map(function(m) {
+    var p = igMatchProperty(m.caption)
+    var rented = !!(p && p.status === 'RENTED')
+    if (rented) rentedCount++
+    return { m: m, rented: rented }
+  })
+  var shownFeed = igShowRentedOnly ? feedItems.filter(function(x){ return x.rented }) : feedItems
+  var feedCells = shownFeed.map(function(x) {
+    var m = x.m
     var thumb = m.media_url || m.thumbnail_url ||
       (m.children && m.children.data && m.children.data[0] && (m.children.data[0].media_url || m.children.data[0].thumbnail_url)) || ''
-    return '<a class="ig-cell ig-pub" href="' + esc(m.permalink || '#') + '" target="_blank" rel="noopener">' +
+    return '<a class="ig-cell ig-pub' + (x.rented ? ' ig-rented' : '') + '" href="' + esc(m.permalink || '#') + '" target="_blank" rel="noopener">' +
       (thumb ? '<img src="' + esc(thumb) + '" alt="">' : '<div class="ig-noimg">—</div>') +
+      (x.rented ? '<span class="ig-badge" style="background:#c0392b;">已出租 ⋯封存</span>' : '') +
       '<span class="ig-meta">❤ ' + (m.like_count || 0) + '　💬 ' + (m.comments_count || 0) + '</span>' +
       '</a>'
   }).join('')
@@ -3855,8 +3879,12 @@ function drawIgPlanner() {
     igPlan.length ? '<div style="font-size:12px;color:var(--gray-mid);margin-bottom:6px;">規劃中（拖曳排序・上方＝最新）</div>' : '<p style="color:var(--gray-light);font-size:13px;margin-bottom:14px;">尚未加入任何房源到規劃。</p>',
     igPlan.length ? '<div class="ig-grid">' + planCells + '</div>' : '',
     igPlan.length ? '<div style="margin:12px 0 20px;"><button class="btn" style="width:auto;padding:11px 26px;" onclick="btnLoad(this, igPublishPlan)">🚀 依序發布規劃（' + igPlan.length + '）</button><span id="igPlanResult" style="margin-left:12px;font-size:13px;"></span></div>' : '',
-    '<div style="font-size:12px;color:var(--gray-mid);margin:14px 0 6px;">IG 已發布（連動・唯讀）</div>',
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 6px;">',
+      '<span style="font-size:12px;color:var(--gray-mid);">IG 已發布（連動・唯讀）' + (rentedCount ? '　🔴 ' + rentedCount + ' 篇對應已出租房源' : '') + '</span>',
+      (rentedCount ? '<label style="font-size:12px;color:var(--charcoal);display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" ' + (igShowRentedOnly ? 'checked' : '') + ' onchange="igShowRentedOnly=this.checked;drawIgPlanner()" style="accent-color:var(--sage);width:16px;height:16px;"> 只看已出租的貼文</label>' : ''),
+    '</div>',
     igFeed.length ? '<div class="ig-grid">' + feedCells + '</div>' : '<p style="color:var(--gray-light);font-size:13px;">目前沒有抓到已發布貼文（帳號可能還沒發過文）。</p>',
+    rentedCount ? '<p style="font-size:11px;color:var(--gray-light);margin-top:10px;line-height:1.7;">🔴 紅框「已出租」的貼文＝該房源已出租。點一下會打開那篇 IG 貼文，在 IG 右上「⋯ → 封存」即可把它從版面隱藏（封存後可隨時還原）。<b>IG 不開放由系統自動封存</b>，需在 IG 上點一下完成。</p>' : '',
   ].join('')
 }
 
