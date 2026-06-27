@@ -7,6 +7,7 @@ const prisma = require('../../db')
 // Instagram API with Instagram Login（token 以 IGAA 開頭，使用 graph.instagram.com）
 // 帳號 ID 填 Instagram 商業帳號的 user_id（17841... 開頭）
 const IG_API_BASE = 'https://graph.instagram.com/v21.0'
+const FB_API_BASE = 'https://graph.facebook.com/v21.0'
 
 // ── 設定讀寫 ──────────────────────────────────────────────────────
 // 房東：存在 Landlord.socialConfig；總管理員（主站）：存在 site_settings（key=social_config）
@@ -45,11 +46,20 @@ async function saveConfig(auth, config) {
 // 回傳給前端用的設定（權杖遮蔽，只顯示後 4 碼）
 function maskConfig(config) {
   const ig = config.instagram || {}
+  const fb = config.facebook || {}
+  const pages = fb.pages || []
+  const activePage = pages.find(p => p.id === fb.pageId) || null
   return {
     instagram: {
       accountId: ig.accountId || '',
       hasToken: !!ig.accessToken,
       tokenPreview: ig.accessToken ? '••••' + ig.accessToken.slice(-4) : '',
+    },
+    facebook: {
+      connected: !!(pages.length && fb.pageId && activePage),
+      pageId: fb.pageId || '',
+      pageName: activePage ? activePage.name : '',
+      pages: pages.map(p => ({ id: p.id, name: p.name })),
     },
   }
 }
@@ -136,6 +146,39 @@ async function postToInstagram({ accountId, accessToken, imageUrls, caption }) {
   return igPublish(accountId, accessToken, carouselId)
 }
 
+// ── Facebook 粉專發文（Page Graph API） ────────────────────────────
+async function postToFacebook({ pageId, pageToken, imageUrls, message }) {
+  if (!pageId || !pageToken) throw new Error('尚未連結 Facebook 粉專')
+  const urls = (imageUrls || []).filter(Boolean)
+
+  // 沒照片：發純文字貼文
+  if (!urls.length) {
+    const res = await fetch(`${FB_API_BASE}/${pageId}/feed`, {
+      method: 'POST', body: new URLSearchParams({ message, access_token: pageToken }),
+    })
+    const d = await res.json()
+    if (!d.id) throw new Error('發布失敗：' + (d.error?.message || JSON.stringify(d)))
+    return d.id
+  }
+
+  // 有照片：先上傳未發布的照片取得 media_fbid，再用 attached_media 組成多圖貼文
+  const mediaFbids = []
+  for (const url of urls) {
+    const res = await fetch(`${FB_API_BASE}/${pageId}/photos`, {
+      method: 'POST', body: new URLSearchParams({ url, published: 'false', access_token: pageToken }),
+    })
+    const d = await res.json()
+    if (!d.id) throw new Error('上傳照片失敗：' + (d.error?.message || JSON.stringify(d)))
+    mediaFbids.push(d.id)
+  }
+  const body = new URLSearchParams({ message, access_token: pageToken })
+  mediaFbids.forEach((id, i) => body.append(`attached_media[${i}]`, JSON.stringify({ media_fbid: id })))
+  const res = await fetch(`${FB_API_BASE}/${pageId}/feed`, { method: 'POST', body })
+  const d = await res.json()
+  if (!d.id) throw new Error('發布失敗：' + (d.error?.message || JSON.stringify(d)))
+  return d.id
+}
+
 function buildCaption(property) {
   const lines = [
     `🏠 ${property.title}`,
@@ -179,8 +222,16 @@ router.post('/admin/api/social/post', express.json(), async (req, res) => {
           accountId: ig.accountId, accessToken: ig.accessToken, imageUrls, caption,
         })
         results.instagram = { ok: true, postId }
+      } else if (platform === 'facebook') {
+        const fb = config.facebook || {}
+        const page = (fb.pages || []).find(p => p.id === fb.pageId) || (fb.pages || [])[0]
+        if (!page) throw new Error('尚未連結 Facebook 粉專')
+        const postId = await postToFacebook({
+          pageId: page.id, pageToken: page.token, imageUrls, message: caption,
+        })
+        results.facebook = { ok: true, postId }
       } else {
-        // Facebook、Threads 尚未串接
+        // Threads 尚未串接
         results[platform] = { ok: false, error: '此平台尚未開放，敬請期待' }
       }
     } catch (e) {
@@ -256,11 +307,16 @@ function makeState(key) {
   return state
 }
 
-function redirectUri(req) {
-  if (process.env.IG_REDIRECT_URI) return process.env.IG_REDIRECT_URI
+function publicBase(req) {
   const host = req.get('host')
   const proto = /localhost|127\.0\.0\.1/.test(host) ? 'http' : 'https'
-  return `${proto}://${host}/admin/api/social/ig/callback`
+  return `${proto}://${host}`
+}
+function redirectUri(req) {
+  return process.env.IG_REDIRECT_URI || `${publicBase(req)}/admin/api/social/ig/callback`
+}
+function fbRedirectUri(req) {
+  return process.env.FB_REDIRECT_URI || `${publicBase(req)}/admin/api/social/fb/callback`
 }
 
 function popupClose(message) {
@@ -341,6 +397,93 @@ router.get('/admin/api/social/ig/callback', async (req, res) => {
   } catch (e) {
     res.status(500).send(popupClose('連結失敗：' + e.message))
   }
+})
+
+// ── Facebook OAuth（連結粉專，一鍵自動發文）─────────────────────────
+const FB_APP_ID = process.env.FB_APP_ID
+const FB_APP_SECRET = process.env.FB_APP_SECRET
+
+router.get('/admin/api/social/fb/connect', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).send(popupClose('授權失敗：登入狀態無效，請重新登入後台。'))
+  if (!FB_APP_ID || !FB_APP_SECRET) {
+    return res.status(500).send(popupClose('系統尚未設定 Facebook 應用程式（FB_APP_ID / FB_APP_SECRET），請聯絡管理員。'))
+  }
+  const state = makeState(req.query.key)
+  const scope = 'pages_show_list,pages_manage_posts,pages_read_engagement'
+  const url = 'https://www.facebook.com/v21.0/dialog/oauth'
+    + '?client_id=' + encodeURIComponent(FB_APP_ID)
+    + '&redirect_uri=' + encodeURIComponent(fbRedirectUri(req))
+    + '&response_type=code'
+    + '&scope=' + encodeURIComponent(scope)
+    + '&state=' + state
+  res.redirect(url)
+})
+
+router.get('/admin/api/social/fb/callback', async (req, res) => {
+  const { code, state, error, error_description } = req.query
+  if (error) return res.send(popupClose('授權未完成：' + (error_description || error)))
+  const entry = state && oauthStates.get(state)
+  if (!entry || entry.expires < Date.now()) {
+    return res.status(400).send(popupClose('授權連結已失效，請回後台重新點「連結 Facebook 粉專」。'))
+  }
+  oauthStates.delete(state)
+  const auth = await resolveRole(entry.key)
+  if (!auth) return res.status(401).send(popupClose('授權失敗：登入狀態無效。'))
+
+  try {
+    // 1) code 換短期 user token
+    const tokenUrl = `${FB_API_BASE}/oauth/access_token`
+      + '?client_id=' + encodeURIComponent(FB_APP_ID)
+      + '&client_secret=' + encodeURIComponent(FB_APP_SECRET)
+      + '&redirect_uri=' + encodeURIComponent(fbRedirectUri(req))
+      + '&code=' + encodeURIComponent(String(code))
+    const shortData = await (await fetch(tokenUrl)).json()
+    if (!shortData.access_token) throw new Error(shortData.error?.message || JSON.stringify(shortData))
+
+    // 2) 換長期 user token（約 60 天），連帶讓粉專 token 也長期
+    const longUrl = `${FB_API_BASE}/oauth/access_token`
+      + '?grant_type=fb_exchange_token'
+      + '&client_id=' + encodeURIComponent(FB_APP_ID)
+      + '&client_secret=' + encodeURIComponent(FB_APP_SECRET)
+      + '&fb_exchange_token=' + encodeURIComponent(shortData.access_token)
+    const longData = await (await fetch(longUrl)).json()
+    const userToken = longData.access_token || shortData.access_token
+
+    // 3) 取得使用者管理的粉專與各自的 Page Token
+    const pagesData = await (await fetch(`${FB_API_BASE}/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(userToken)}`)).json()
+    if (pagesData.error) throw new Error(pagesData.error.message)
+    const pages = (pagesData.data || []).map(p => ({ id: p.id, name: p.name, token: p.access_token }))
+    if (!pages.length) throw new Error('找不到你管理的粉專，請確認你是該粉專的管理員。')
+
+    // 4) 存進設定，預設選第一個粉專
+    const config = await getConfig(auth)
+    config.facebook = config.facebook || {}
+    config.facebook.pages = pages
+    if (!pages.some(p => p.id === config.facebook.pageId)) config.facebook.pageId = pages[0].id
+    await saveConfig(auth, config)
+
+    res.send(popupClose('✅ Facebook 粉專連結成功！共 ' + pages.length + ' 個粉專。'))
+  } catch (e) {
+    res.status(500).send(popupClose('連結失敗：' + e.message))
+  }
+})
+
+// 切換要發布的粉專
+router.post('/admin/api/social/fb/page', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const pageId = String(req.body.pageId || '')
+    const config = await getConfig(auth)
+    config.facebook = config.facebook || {}
+    if (!(config.facebook.pages || []).some(p => p.id === pageId)) {
+      return res.status(400).json({ error: '找不到此粉專' })
+    }
+    config.facebook.pageId = pageId
+    await saveConfig(auth, config)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 module.exports = router

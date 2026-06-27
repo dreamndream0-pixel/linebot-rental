@@ -3699,6 +3699,11 @@ function drawSocialTab() {
   }
 
   var connected = ig.accountId && ig.hasToken
+  var fb = socialConfig.facebook || {}
+  var fbConnected = !!fb.connected
+  var fbPageOptions = (fb.pages || []).map(function(pg){
+    return '<option value="' + pg.id + '"' + (pg.id === fb.pageId ? ' selected' : '') + '>' + esc(pg.name) + '</option>'
+  }).join('')
 
   el.innerHTML = [
     '<div class="form-box" style="margin-bottom:20px;">',
@@ -3713,6 +3718,20 @@ function drawSocialTab() {
     '</div>',
     '</div>',
 
+    '<div class="form-box" style="margin-bottom:20px;">',
+    '<h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">📘 Facebook 粉專串接</h3>',
+    '<p style="font-size:12px;color:#aaa;margin-bottom:16px;">連結後可一鍵自動發到你的 FB <b>粉專</b>。<b>社團無法自動發文</b>（Meta 已關閉社團 API），請用下方一鍵發文的「複製文案／下載照片」手動貼到社團。</p>',
+    '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;">',
+    '<button class="btn" style="width:auto;padding:11px 24px;background:#1877f2;color:#fff;border:none;" onclick="connectFacebook()">🔗 ' + (fbConnected ? '重新連結 Facebook' : '連結 Facebook 粉專') + '</button>',
+    (fbConnected
+      ? '<span style="font-size:13px;color:var(--deep-sage);font-weight:600;">✅ 已連結' + (fb.pageName ? '（' + esc(fb.pageName) + '）' : '') + '</span>'
+      : '<span style="font-size:12px;color:var(--gray-light);">尚未連結</span>'),
+    '</div>',
+    (fb.pages && fb.pages.length > 1
+      ? '<div style="margin-top:10px;"><label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">發布到哪個粉專</label><select onchange="switchFbPage(this.value)" style="width:100%;max-width:320px;padding:9px 12px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:13px;">' + fbPageOptions + '</select></div>'
+      : ''),
+    '</div>',
+
     '<div class="form-box">',
     '<h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">🚀 房源一鍵發文</h3>',
     '<p style="font-size:12px;color:#aaa;margin-bottom:16px;">選擇房源後，下方會自動帶入封面照片與發文文字，你可以直接編輯文字再發布。</p>',
@@ -3724,11 +3743,18 @@ function drawSocialTab() {
 
     '<label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">發文內容（可編輯）</label>',
     '<textarea id="socialCaption" oninput="socialCaptionEdited=true" placeholder="選擇房源後會自動帶入文字，你也可以自由修改…" style="width:100%;min-height:140px;padding:12px 14px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;line-height:1.7;resize:vertical;font-family:inherit;margin-bottom:8px;"></textarea>',
-    '<div style="display:flex;justify-content:flex-end;margin-bottom:16px;"><button onclick="resetSocialCaption()" style="background:none;border:none;color:var(--gray-light);font-size:12px;cursor:pointer;text-decoration:underline;">↺ 還原預設文字</button></div>',
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">',
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;">',
+    '<button onclick="copySocialCaption()" style="padding:9px 16px;border:1.5px solid var(--oat-mid);background:#fff;border-radius:10px;font-size:13px;cursor:pointer;">📋 複製文案</button>',
+    '<button onclick="btnLoad(this, downloadSocialPhotos)" style="padding:9px 16px;border:1.5px solid var(--oat-mid);background:#fff;border-radius:10px;font-size:13px;cursor:pointer;">⬇️ 下載照片</button>',
+    '<span style="font-size:11px;color:var(--gray-light);align-self:center;">貼 FB 社團時用</span>',
+    '</div>',
+    '<button onclick="resetSocialCaption()" style="background:none;border:none;color:var(--gray-light);font-size:12px;cursor:pointer;text-decoration:underline;">↺ 還原預設文字</button>',
+    '</div>',
 
     '<div style="border-top:1px solid var(--oat-mid);border-bottom:1px solid var(--oat-mid);margin-bottom:16px;">',
     platformRow('instagram', '📷 Instagram', true),
-    platformRow('facebook', '📘 FB 粉專', false),
+    platformRow('facebook', '📘 FB 粉專', fbConnected),
     platformRow('threads', '🧵 Threads', false),
     '</div>',
 
@@ -3784,6 +3810,78 @@ function connectInstagram() {
       showToast('已更新 Instagram 連結狀態')
     }
   }, 1000)
+}
+
+// Facebook 粉專 OAuth 授權
+function connectFacebook() {
+  var url = '/admin/api/social/fb/connect?key=' + encodeURIComponent(KEY)
+  var w = window.open(url, 'fb_oauth', 'width=600,height=720')
+  var timer = setInterval(function() {
+    if (w && w.closed) {
+      clearInterval(timer)
+      renderSocialTab()
+      showToast('已更新 Facebook 連結狀態')
+    }
+  }, 1000)
+}
+async function switchFbPage(pageId) {
+  try {
+    await fetch('/admin/api/social/fb/page?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pageId: pageId }),
+    })
+    if (socialConfig.facebook) { socialConfig.facebook.pageId = pageId }
+    showToast('已切換發布粉專')
+  } catch (e) { showToast('❌ 切換失敗：' + e.message) }
+}
+
+// ── FB 社團小幫手：複製文案 / 下載照片（社團只能手動貼）──────────
+function copySocialCaption() {
+  var ta = document.getElementById('socialCaption')
+  var text = ta ? ta.value : ''
+  if (!text.trim()) { showToast('❌ 沒有文案可複製'); return }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      function(){ showToast('✅ 文案已複製，到社團貼上即可') },
+      function(){ fallbackCopyText(ta) }
+    )
+  } else { fallbackCopyText(ta) }
+}
+function fallbackCopyText(ta) {
+  try { ta.focus(); ta.select(); document.execCommand('copy'); showToast('✅ 文案已複製') }
+  catch (e) { showToast('❌ 複製失敗，請手動長按選取') }
+}
+
+async function downloadSocialPhotos() {
+  if (!socialSelectedPropertyId) { showToast('❌ 請先選擇房源'); return false }
+  showToast('準備下載照片…')
+  try {
+    var res = await fetch('/admin/api/property/' + socialSelectedPropertyId + '?key=' + encodeURIComponent(KEY))
+    var data = await res.json()
+    var imgs = (data.images || []).map(function(x){ return x.url }).filter(Boolean)
+    if (!imgs.length) { showToast('❌ 此房源沒有照片'); return false }
+    var base = (data.title || 'photo').replace(/[\\/:*?"<>|]/g, '').slice(0, 20)
+    for (var i = 0; i < imgs.length; i++) {
+      await downloadOneImage(imgs[i], base + '_' + (i + 1))
+      await new Promise(function(r){ setTimeout(r, 400) })
+    }
+    showToast('✅ 已下載 ' + imgs.length + ' 張照片（在瀏覽器下載資料夾）')
+    return true
+  } catch (e) { showToast('❌ 下載失敗：' + e.message); return false }
+}
+async function downloadOneImage(url, name) {
+  try {
+    var resp = await fetch(url, { mode: 'cors' })
+    var blob = await resp.blob()
+    var ext = (blob.type && blob.type.indexOf('/') > -1) ? blob.type.split('/')[1] : 'jpg'
+    var objUrl = URL.createObjectURL(blob)
+    var a = document.createElement('a')
+    a.href = objUrl; a.download = name + '.' + ext
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(function(){ URL.revokeObjectURL(objUrl) }, 2000)
+  } catch (e) {
+    window.open(url, '_blank')  // CORS 擋下時退而用新分頁開啟，可手動另存
+  }
 }
 
 // ── IG 版面規劃（總覽已發布 ＋ 規劃未發布）────────────────────────
