@@ -3739,16 +3739,18 @@ function drawSocialTab() {
     '<style>',
     '.ig-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;}',
     '.ig-cell{position:relative;aspect-ratio:1/1;border-radius:6px;overflow:hidden;background:var(--oat-mid);display:block;}',
-    '.ig-cell img{width:100%;height:100%;object-fit:cover;display:block;}',
+    '.ig-thumb{position:absolute;inset:0;background-size:cover;background-position:center;}',
     '.ig-plan{cursor:grab;outline:2px solid var(--sage);outline-offset:-2px;}',
-    '.ig-noimg{display:flex;align-items:center;justify-content:center;height:100%;color:#999;font-size:12px;}',
-    '.ig-badge{position:absolute;top:4px;left:4px;background:var(--sage);color:#fff;font-size:10px;padding:2px 6px;border-radius:6px;}',
-    '.ig-del{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1;padding:0;}',
+    '.ig-noimg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;}',
+    '.ig-play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:42px;height:42px;border-radius:50%;background:rgba(0,0,0,.5);pointer-events:none;}',
+    '.ig-play::after{content:\"\";position:absolute;top:50%;left:54%;transform:translate(-50%,-50%);border-style:solid;border-width:8px 0 8px 13px;border-color:transparent transparent transparent #fff;}',
+    '.ig-badge{position:absolute;top:4px;left:4px;background:var(--sage);color:#fff;font-size:10px;padding:2px 6px;border-radius:6px;z-index:1;}',
+    '.ig-del{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1;padding:0;z-index:1;}',
     '.ig-cap,.ig-meta{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,rgba(0,0,0,.65));color:#fff;font-size:10px;padding:10px 5px 4px;}',
     '.ig-cap{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
     '.ig-pub{opacity:.95;}',
     '.ig-rented{outline:2px solid #c0392b;outline-offset:-2px;}',
-    '.ig-rented img{opacity:.6;}',
+    '.ig-rented .ig-thumb{opacity:.6;}',
     '</style>',
     '<div class="form-box">',
     '<h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">📐 IG 版面規劃</h3>',
@@ -3831,6 +3833,23 @@ async function renderIgPlanner() {
   drawIgPlanner()
 }
 
+// 用背景圖渲染縮圖（避免破圖撐高，並可疊播放鍵）
+function igThumbHTML(url, noimgText) {
+  return url
+    ? '<div class="ig-thumb" style="background-image:url(&quot;' + esc(url) + '&quot;)"></div>'
+    : '<div class="ig-noimg">' + (noimgText || '—') + '</div>'
+}
+
+// 取得貼文封面與是否為影片：影片用 thumbnail_url（mp4 不能當圖），輪播取第一張子項
+function igFeedThumb(m) {
+  if (m.media_type === 'VIDEO') return { thumb: m.thumbnail_url || m.media_url || '', video: true }
+  if (m.media_type === 'CAROUSEL_ALBUM') {
+    var c = m.children && m.children.data && m.children.data[0]
+    return { thumb: (c && (c.thumbnail_url || c.media_url)) || m.media_url || '', video: false }
+  }
+  return { thumb: m.media_url || m.thumbnail_url || '', video: false }
+}
+
 function drawIgPlanner() {
   var box = document.getElementById('igPlanner')
   if (!box) return
@@ -3839,10 +3858,9 @@ function drawIgPlanner() {
 
   var planCells = igPlan.map(function(id, i) {
     var p = byId[id]; if (!p) return ''
-    var url = igPropThumb(p)
     return '<div class="ig-cell ig-plan" draggable="true" data-i="' + i + '"' +
       ' ondragstart="igDragStart(event,' + i + ')" ondragover="event.preventDefault()" ondrop="igDrop(event,' + i + ')">' +
-      (url ? '<img src="' + esc(url) + '" alt="">' : '<div class="ig-noimg">無封面圖</div>') +
+      igThumbHTML(igPropThumb(p), '無封面圖') +
       '<span class="ig-badge">草稿</span>' +
       '<button class="ig-del" title="移除" onclick="igRemoveFromPlan(' + i + ')">✕</button>' +
       '<span class="ig-cap">' + esc(p.title || '') + '</span>' +
@@ -3859,10 +3877,10 @@ function drawIgPlanner() {
   var shownFeed = igShowRentedOnly ? feedItems.filter(function(x){ return x.rented }) : feedItems
   var feedCells = shownFeed.map(function(x) {
     var m = x.m
-    var thumb = m.media_url || m.thumbnail_url ||
-      (m.children && m.children.data && m.children.data[0] && (m.children.data[0].media_url || m.children.data[0].thumbnail_url)) || ''
+    var t = igFeedThumb(m)
     return '<a class="ig-cell ig-pub' + (x.rented ? ' ig-rented' : '') + '" href="' + esc(m.permalink || '#') + '" target="_blank" rel="noopener">' +
-      (thumb ? '<img src="' + esc(thumb) + '" alt="">' : '<div class="ig-noimg">—</div>') +
+      igThumbHTML(t.thumb, '—') +
+      (t.video ? '<span class="ig-play"></span>' : '') +
       (x.rented ? '<span class="ig-badge" style="background:#c0392b;">已出租 ⋯封存</span>' : '') +
       '<span class="ig-meta">❤ ' + (m.like_count || 0) + '　💬 ' + (m.comments_count || 0) + '</span>' +
       '</a>'
