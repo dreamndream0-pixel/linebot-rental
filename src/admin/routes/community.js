@@ -46,7 +46,7 @@ function newId() {
 router.get('/admin/api/migrate', async (req, res) => {
   try {
     const auth = await resolveRole(req.query.key)
-    if (!auth) return res.status(401).json({ error: 'unauthorized' })
+    if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
     _tableEnsured = false  // 強制重新執行
     const results = await ensureTable()
     res.json({ ok: _tableEnsured, results })
@@ -94,6 +94,10 @@ router.post('/admin/api/community/:id', express.json(), async (req, res) => {
     const auth = await resolveRole(req.query.key)
     if (!auth) return res.status(401).json({ error: 'unauthorized' })
     await ensureTable()
+    // 擁有權檢查：房東只能編輯自己的社區
+    const owned = await prisma.$queryRawUnsafe(`SELECT "ownerId" FROM communities WHERE id=$1`, req.params.id)
+    if (!owned.length) return res.status(404).json({ error: 'not found' })
+    if (auth.role !== 'super' && owned[0].ownerId !== auth.landlordId) return res.status(403).json({ error: 'forbidden' })
     const { name, description, photos, mapUrl } = req.body
     if (name !== undefined)        await prisma.$queryRawUnsafe(`UPDATE communities SET name=$1, "updatedAt"=NOW() WHERE id=$2`, name, req.params.id)
     if (description !== undefined) await prisma.$queryRawUnsafe(`UPDATE communities SET description=$1, "updatedAt"=NOW() WHERE id=$2`, description, req.params.id)
@@ -109,6 +113,10 @@ router.post('/admin/api/community/:id/delete', express.json(), async (req, res) 
     const auth = await resolveRole(req.query.key)
     if (!auth) return res.status(401).json({ error: 'unauthorized' })
     await ensureTable()
+    // 擁有權檢查：房東只能刪除自己的社區
+    const owned = await prisma.$queryRawUnsafe(`SELECT "ownerId" FROM communities WHERE id=$1`, req.params.id)
+    if (!owned.length) return res.status(404).json({ error: 'not found' })
+    if (auth.role !== 'super' && owned[0].ownerId !== auth.landlordId) return res.status(403).json({ error: 'forbidden' })
     await prisma.$queryRawUnsafe(`UPDATE properties SET "communityId"=NULL WHERE "communityId"=$1`, req.params.id)
     await prisma.$queryRawUnsafe(`DELETE FROM communities WHERE id=$1`, req.params.id)
     res.json({ ok: true })
