@@ -4384,7 +4384,7 @@ function btnLoad(btn, fn) {
 var MANAGED = { list: [], current: null, report: null }
 
 async function renderManagedTab() {
-  var el = document.getElementById('tabContent')
+  var el = document.getElementById('content')
   el.innerHTML = '<div class="empty">載入中...</div>'
   try {
     var res = await fetch('/admin/api/managed?key=' + encodeURIComponent(KEY))
