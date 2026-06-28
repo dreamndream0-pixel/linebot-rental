@@ -73,6 +73,7 @@ router.post('/admin/api/managed', express.json(), async (req, res) => {
         ownerName: b.ownerName,
         ownerPhone: b.ownerPhone || null,
         ownerEmail: b.ownerEmail || null,
+        ownerBankName: b.ownerBankName || null,
         ownerBank: b.ownerBank || null,
         title: b.title,
         address: b.address || '',
@@ -80,11 +81,9 @@ router.post('/admin/api/managed', express.json(), async (req, res) => {
         manageType: ['TRUST', 'SUBLEASE', 'HYBRID'].includes(b.manageType) ? b.manageType : 'TRUST',
         contractStart: b.contractStart ? new Date(b.contractStart) : null,
         contractEnd: b.contractEnd ? new Date(b.contractEnd) : null,
-        leaseCost: parseInt(b.leaseCost) || 0,
-        feeType: ['PERCENT', 'FIXED', 'ONE_MONTH', 'HALF_MONTH'].includes(b.feeType) ? b.feeType : 'PERCENT',
         feePercent: parseFloat(b.feePercent) || 0,
-        feeFixed: parseInt(b.feeFixed) || 0,
-        expectedRent: parseInt(b.expectedRent) || 0,
+        subleaseFeeType: ['HALF_MONTH', 'ONE_MONTH', 'OTHER'].includes(b.subleaseFeeType) ? b.subleaseFeeType : null,
+        subleaseFeeOther: parseInt(b.subleaseFeeOther) || 0,
         note: b.note || null,
       },
     })
@@ -109,17 +108,15 @@ router.post('/admin/api/managed/:id', express.json(), async (req, res) => {
 
     const b = req.body
     const data = {}
-    const strFields = ['ownerName', 'ownerPhone', 'ownerEmail', 'ownerBank', 'title', 'address', 'note', 'status']
+    const strFields = ['ownerName', 'ownerPhone', 'ownerEmail', 'ownerBankName', 'ownerBank', 'title', 'address', 'note', 'status']
     strFields.forEach(f => { if (b[f] !== undefined) data[f] = b[f] || null })
     if (b.roomCount !== undefined) data.roomCount = parseInt(b.roomCount) || 1
     if (b.manageType !== undefined) data.manageType = ['TRUST', 'SUBLEASE', 'HYBRID'].includes(b.manageType) ? b.manageType : 'TRUST'
     if (b.contractStart !== undefined) data.contractStart = b.contractStart ? new Date(b.contractStart) : null
     if (b.contractEnd !== undefined) data.contractEnd = b.contractEnd ? new Date(b.contractEnd) : null
-    if (b.leaseCost !== undefined) data.leaseCost = parseInt(b.leaseCost) || 0
-    if (b.feeType !== undefined) data.feeType = ['PERCENT', 'FIXED', 'ONE_MONTH', 'HALF_MONTH'].includes(b.feeType) ? b.feeType : 'PERCENT'
     if (b.feePercent !== undefined) data.feePercent = parseFloat(b.feePercent) || 0
-    if (b.feeFixed !== undefined) data.feeFixed = parseInt(b.feeFixed) || 0
-    if (b.expectedRent !== undefined) data.expectedRent = parseInt(b.expectedRent) || 0
+    if (b.subleaseFeeType !== undefined) data.subleaseFeeType = ['HALF_MONTH', 'ONE_MONTH', 'OTHER'].includes(b.subleaseFeeType) ? b.subleaseFeeType : null
+    if (b.subleaseFeeOther !== undefined) data.subleaseFeeOther = parseInt(b.subleaseFeeOther) || 0
 
     const item = await prisma.managedProperty.update({ where: { id: req.params.id }, data })
     res.json(item)

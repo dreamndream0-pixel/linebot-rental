@@ -510,10 +510,11 @@ model ManagedProperty {
   ownerName     String    // 屋主姓名
   ownerPhone    String?   // 屋主電話
   ownerEmail    String?   // 屋主 email
-  ownerBank     String?   // 屋主匯款帳戶（撥款用）
+  ownerBankName String?   // 屋主匯款銀行（選單）
+  ownerBank     String?   // 屋主匯款帳號（撥款用）
 
   // 物業資訊
-  title         String    // 物業名稱/暱稱
+  title         String    // 社區名稱
   address       String    // 地址
   roomCount     Int       @default(1)  // 房間數
 
@@ -525,12 +526,16 @@ model ManagedProperty {
   // 包租：平台向屋主承租的成本（每月付給屋主的固定金額）
   leaseCost     Int       @default(0)
 
-  // 代管：管理費設定
-  feeType       String    @default("PERCENT")  // 'PERCENT'(抽成) 或 'FIXED'(固定)
-  feePercent    Float     @default(10)          // 抽成百分比（feeType=PERCENT 時用）
-  feeFixed      Int       @default(0)           // 固定管理費（feeType=FIXED 時用）
+  // 代管服務費：feePercent 為百分比（N%）
+  feeType       String    @default("PERCENT")  // 'PERCENT'(抽成) 或 'FIXED'(固定)；目前代管固定用 PERCENT
+  feePercent    Float     @default(10)          // 代管服務費 %
+  feeFixed      Int       @default(0)           // 保留（舊欄位）
 
-  // 預期租金收入（代管：實收租金；包租：轉租收入）
+  // 包租服務費：類型(半個月/一個月/其他) + 其他自填金額
+  subleaseFeeType  String?  // 'HALF_MONTH' / 'ONE_MONTH' / 'OTHER'
+  subleaseFeeOther Int      @default(0)  // subleaseFeeType=OTHER 時的金額
+
+  // 預期租金收入（保留，目前表單已不顯示）
   expectedRent  Int       @default(0)
 
   status        String    @default("ACTIVE")    // ACTIVE / ENDED / PAUSED
