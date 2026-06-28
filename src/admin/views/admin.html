@@ -3768,37 +3768,30 @@ function drawSocialTab() {
 
   el.innerHTML = [
     '<div class="form-box" style="margin-bottom:14px;">',
-    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">',
-    '<span style="font-size:15px;font-weight:700;">📷 Instagram</span>',
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">',
     (connected
-      ? '<div style="display:flex;align-items:center;gap:10px;">' +
-          socialAvatar(ig.avatar, '📷') +
-          '<button onclick="disconnectSocial(\'instagram\',\'' + esc(igName).replace(/'/g, '') + '\')" title="點一下可取消連結" style="display:flex;align-items:center;gap:7px;padding:9px 18px;border-radius:999px;border:1.5px solid var(--deep-sage,#4A6741);background:#fff;color:var(--deep-sage,#4A6741);font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis;">' +
-            '<span style="color:#06C755;font-size:10px;">●</span>' + esc(igName) +
-          '</button>' +
-        '</div>'
+      ? socialAvatar(ig.avatar, '📷') +
+        '<button onclick="disconnectSocial(\'instagram\',\'' + esc(igName).replace(/'/g, '') + '\')" title="點一下可取消連結" style="display:flex;align-items:center;gap:8px;padding:10px 20px;border-radius:999px;border:none;background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);color:#fff;font-weight:700;font-size:15px;cursor:pointer;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis;">' +
+          '<span style="font-size:9px;color:#fff;">●</span>' + esc(igName) +
+        '</button>'
       : '<button class="btn" style="width:auto;padding:11px 22px;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);color:#fff;border:none;" onclick="connectInstagram()">🔗 連結 Instagram</button>'
     ),
     '</div>',
     '</div>',
 
     '<div class="form-box" style="margin-bottom:14px;">',
-    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">',
-    '<span style="font-size:15px;font-weight:700;">📘 Facebook 粉專</span>',
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">',
     (fbConnected
-      ? '<div style="display:flex;align-items:center;gap:10px;">' +
-          socialAvatar(fb.pageAvatar, '📘') +
-          '<button onclick="disconnectSocial(\'facebook\',\'' + esc(fb.pageName || '').replace(/'/g, '') + '\')" title="點一下可取消連結" style="display:flex;align-items:center;gap:7px;padding:9px 18px;border-radius:999px;border:1.5px solid #1877f2;background:#fff;color:#1877f2;font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis;">' +
-            '<span style="color:#06C755;font-size:10px;">●</span><span style="overflow:hidden;text-overflow:ellipsis;">' + esc(fb.pageName || '已連結') + '</span>' +
-          '</button>' +
-        '</div>'
+      ? socialAvatar(fb.pageAvatar, '📘') +
+        '<button onclick="disconnectSocial(\'facebook\',\'' + esc(fb.pageName || '').replace(/'/g, '') + '\')" title="點一下可取消連結" style="display:flex;align-items:center;gap:8px;padding:10px 20px;border-radius:999px;border:none;background:#1877f2;color:#fff;font-weight:700;font-size:15px;cursor:pointer;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis;">' +
+          '<span style="font-size:9px;color:#fff;">●</span><span style="overflow:hidden;text-overflow:ellipsis;">' + esc(fb.pageName || '已連結') + '</span>' +
+        '</button>'
       : '<button class="btn" style="width:auto;padding:11px 22px;background:#1877f2;color:#fff;border:none;" onclick="connectFacebook()">🔗 連結 Facebook 粉專</button>'
     ),
     '</div>',
     (fb.pages && fb.pages.length > 1
       ? '<div style="margin-top:12px;"><label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">發布到哪個粉專</label><select onchange="switchFbPage(this.value)" style="width:100%;padding:9px 12px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:13px;">' + fbPageOptions + '</select></div>'
       : ''),
-    '<div style="font-size:11px;color:var(--gray-light);margin-top:10px;line-height:1.6;">＊只能自動發到<b>粉專</b>；社團 Meta 已關閉 API，請用下方「複製文案／下載照片」手動貼。</div>',
     '</div>',
 
     '<div class="form-box">',
