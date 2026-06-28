@@ -120,6 +120,12 @@ prisma.$connect()
       console.log('ℹ️ 已略過啟動時資料表結構確認（RUN_SCHEMA_CHECK 未啟用）')
     }
     startCronJobs(client)
+    try {
+      const { startLeaseReminders } = require('./leaseReminder')
+      startLeaseReminders()
+    } catch (e) {
+      console.error('租約提醒排程啟動失敗:', e.message)
+    }
   })
   .catch((err) => {
     console.error('❌ 資料庫連線失敗：', err.message)

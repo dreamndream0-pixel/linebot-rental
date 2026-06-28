@@ -745,6 +745,7 @@ function renderTabBar() {
   tabs.push({ id: 'properties', label: '\u623f\u6e90\u7ba1\u7406', icon: 'home' })
   if (DATA.role === 'super' || feat('booking')) tabs.push({ id: 'bookings', label: '\u9810\u7d04\u7ba1\u7406', icon: 'calendar' })
   if (DATA.role === 'super' || feat('repair')) tabs.push({ id: 'repairs', label: '\u7dad\u4fee\u7ba1\u7406', icon: 'wrench' })
+  if (DATA.role === 'super' || feat('managed')) tabs.push({ id: 'managed', label: '\u5305\u79df\u4ee3\u7ba1', icon: 'building' })
   if (DATA.role === 'super') {
     tabs.push({ id: 'landlords', label: '\u623f\u6771\u7ba1\u7406', icon: 'building' })
   }
@@ -822,6 +823,7 @@ function renderTab() {
   if (currentTab === 'community') renderCommunityTab()
   if (currentTab === 'footerSettings') renderFooterSettings()
   if (currentTab === 'socialPosting') renderSocialTab()
+  if (currentTab === 'managed') renderManagedTab()
 }
 
 function esc(s) {
@@ -4373,6 +4375,721 @@ function btnLoad(btn, fn) {
     btn.classList.remove('loading')
   })
 }
+
+
+
+// ═══════════════════════════════════════════════════════════════
+// 包租代管系統 前端
+// ═══════════════════════════════════════════════════════════════
+var MANAGED = { list: [], current: null, report: null }
+
+async function renderManagedTab() {
+  var el = document.getElementById('tabContent')
+  el.innerHTML = '<div class="empty">載入中...</div>'
+  try {
+    var res = await fetch('/admin/api/managed?key=' + encodeURIComponent(KEY))
+    MANAGED.list = await res.json()
+  } catch (e) { MANAGED.list = [] }
+
+  var rentTotal = 0, payoutPending = 0
+  MANAGED.list.forEach(function(m) {})
+
+  var cards = MANAGED.list.length === 0
+    ? '<div class="empty">尚無委託物業，點上方「+ 新增委託」開始</div>'
+    : MANAGED.list.map(managedCard).join('')
+
+  el.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="btn" onclick="openManagedForm()">+ 新增委託</button>' +
+        '<button class="btn" style="background:#5A7D8C;" onclick="showLeaseList()">📋 代管清單</button>' +
+        '<button class="btn" style="background:#6B7F6E;" onclick="showManagedReport()">📊 收支報表</button>' +
+      '</div>' +
+    '</div>' +
+    '<div id="managedReportBox"></div>' +
+    '<div class="managed-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">' + cards + '</div>'
+}
+
+function managedCard(m) {
+  var typeLabel = m.manageType === 'SUBLEASE' ? '包租' : '代管'
+  var typeColor = m.manageType === 'SUBLEASE' ? '#C9913A' : '#7A9E7E'
+  var feeText = m.manageType === 'SUBLEASE'
+    ? ('承租成本 NT$ ' + Number(m.leaseCost).toLocaleString() + '/月')
+    : (m.feeType === 'FIXED'
+        ? ('管理費 NT$ ' + Number(m.feeFixed).toLocaleString() + '/月')
+        : ('管理費 ' + m.feePercent + '%'))
+
+  return '<div class="card" style="padding:18px;border:1px solid #E5E0D5;border-radius:14px;background:#fff;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">' +
+      '<div><div style="font-weight:700;font-size:16px;">' + esc(m.title) + '</div>' +
+      '<div style="font-size:12px;color:#999;margin-top:2px;">' + esc(m.address || '') + '</div></div>' +
+      '<span style="background:' + typeColor + ';color:#fff;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700;">' + typeLabel + '</span>' +
+    '</div>' +
+    '<div style="font-size:13px;color:#666;line-height:1.8;">' +
+      '👤 屋主：' + esc(m.ownerName) + (m.ownerPhone ? '（' + esc(m.ownerPhone) + '）' : '') + '<br>' +
+      '🏠 房間數：' + m.roomCount + '　|　' + feeText + '<br>' +
+      '💰 預期租金：NT$ ' + Number(m.expectedRent).toLocaleString() + '/月' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:14px;">' +
+      '<button class="btn" style="flex:1;font-size:13px;padding:8px;" onclick="openManagedDetail(\'' + m.id + '\')">明細對帳</button>' +
+      '<button class="btn" style="background:#8A8A8A;font-size:13px;padding:8px 12px;" onclick="openManagedForm(\'' + m.id + '\')">編輯</button>' +
+    '</div>' +
+  '</div>'
+}
+
+// ── 新增/編輯表單 ──────────────────────────────────────────────
+function openManagedForm(id) {
+  var m = id ? MANAGED.list.find(function(x){ return x.id === id }) : null
+  var isEdit = !!m
+  m = m || { manageType: 'TRUST', feeType: 'PERCENT', feePercent: 10, roomCount: 1 }
+
+  function fmtDate(d) { return d ? new Date(d).toISOString().slice(0,10) : '' }
+
+  var html = '<div id="managedModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:480px;width:100%;margin:auto;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+      '<h3 style="margin:0;">' + (isEdit ? '編輯委託物業' : '新增委託物業') + '</h3>' +
+      '<button onclick="closeManagedModal()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+    '</div>' +
+    mInput('物業名稱 *', 'm_title', m.title) +
+    mInput('地址', 'm_address', m.address) +
+    '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;">' + mInput('屋主姓名 *', 'm_ownerName', m.ownerName) + '</div>' +
+      '<div style="flex:1;">' + mInput('屋主電話', 'm_ownerPhone', m.ownerPhone) + '</div>' +
+    '</div>' +
+    mInput('屋主匯款帳戶', 'm_ownerBank', m.ownerBank) +
+    '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;">' + mInput('房間數', 'm_roomCount', m.roomCount, 'number') + '</div>' +
+      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">委託類型</label>' +
+        '<select id="m_manageType" onchange="toggleFeeFields()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
+          '<option value="TRUST"' + (m.manageType==='TRUST'?' selected':'') + '>代管（抽管理費）</option>' +
+          '<option value="SUBLEASE"' + (m.manageType==='SUBLEASE'?' selected':'') + '>包租（賺價差）</option>' +
+        '</select></div>' +
+    '</div>' +
+    // 代管費設定
+    '<div id="trustFields" style="' + (m.manageType==='SUBLEASE'?'display:none;':'') + '">' +
+      '<label style="font-size:12px;color:#888;display:block;margin:10px 0 4px;">管理費方式</label>' +
+      '<select id="m_feeType" onchange="toggleFeeFields()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;">' +
+        '<option value="PERCENT"' + (m.feeType==='PERCENT'?' selected':'') + '>抽成（%）</option>' +
+        '<option value="FIXED"' + (m.feeType==='FIXED'?' selected':'') + '>固定金額</option>' +
+      '</select>' +
+      '<div id="feePercentBox" style="' + (m.feeType==='FIXED'?'display:none;':'') + '">' + mInput('抽成百分比 %', 'm_feePercent', m.feePercent, 'number') + '</div>' +
+      '<div id="feeFixedBox" style="' + (m.feeType!=='FIXED'?'display:none;':'') + '">' + mInput('固定管理費 /月', 'm_feeFixed', m.feeFixed, 'number') + '</div>' +
+    '</div>' +
+    // 包租成本
+    '<div id="subleaseFields" style="' + (m.manageType!=='SUBLEASE'?'display:none;':'') + '">' +
+      mInput('承租成本（每月付屋主）', 'm_leaseCost', m.leaseCost, 'number') +
+    '</div>' +
+    mInput('預期租金收入 /月', 'm_expectedRent', m.expectedRent, 'number') +
+    '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;">' + mInput('合約起日', 'm_contractStart', fmtDate(m.contractStart), 'date') + '</div>' +
+      '<div style="flex:1;">' + mInput('合約迄日', 'm_contractEnd', fmtDate(m.contractEnd), 'date') + '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:18px;">' +
+      (isEdit ? '<button class="btn" style="background:#C0524A;" onclick="deleteManaged(\'' + m.id + '\')">刪除</button>' : '') +
+      '<button class="btn" style="flex:1;background:var(--deep-sage,#4A6741);" onclick="saveManaged(' + (isEdit ? "'" + m.id + "'" : 'null') + ')">儲存</button>' +
+    '</div>' +
+    '</div></div>'
+
+  var ex = document.getElementById('managedModal'); if (ex) ex.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
+function mInput(label, id, val, type) {
+  return '<div style="margin-bottom:10px;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">' + label + '</label>' +
+    '<input id="' + id + '" type="' + (type||'text') + '" value="' + esc(val==null?'':val) + '" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>'
+}
+
+function toggleFeeFields() {
+  var type = document.getElementById('m_manageType').value
+  document.getElementById('trustFields').style.display = type === 'SUBLEASE' ? 'none' : 'block'
+  document.getElementById('subleaseFields').style.display = type === 'SUBLEASE' ? 'block' : 'none'
+  var ft = document.getElementById('m_feeType')
+  if (ft) {
+    document.getElementById('feePercentBox').style.display = ft.value === 'FIXED' ? 'none' : 'block'
+    document.getElementById('feeFixedBox').style.display = ft.value === 'FIXED' ? 'block' : 'none'
+  }
+}
+
+function closeManagedModal() { var m = document.getElementById('managedModal'); if (m) m.remove() }
+
+async function saveManaged(id) {
+  var body = {
+    title: val('m_title'), address: val('m_address'),
+    ownerName: val('m_ownerName'), ownerPhone: val('m_ownerPhone'), ownerBank: val('m_ownerBank'),
+    roomCount: val('m_roomCount'), manageType: val('m_manageType'),
+    feeType: val('m_feeType'), feePercent: val('m_feePercent'), feeFixed: val('m_feeFixed'),
+    leaseCost: val('m_leaseCost'), expectedRent: val('m_expectedRent'),
+    contractStart: val('m_contractStart'), contractEnd: val('m_contractEnd'),
+  }
+  if (!body.title || !body.ownerName) { showToast('❌ 物業名稱與屋主姓名必填'); return }
+
+  var url = id ? '/admin/api/managed/' + id : '/admin/api/managed'
+  var res = await fetch(url + '?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  })
+  if (!res.ok) { showToast('❌ 儲存失敗'); return }
+  showToast('✅ 已儲存')
+  closeManagedModal()
+  renderManagedTab()
+}
+
+function val(id) { var e = document.getElementById(id); return e ? e.value.trim() : '' }
+
+async function deleteManaged(id) {
+  if (!confirm('確定刪除此委託物業？所有收支與撥款紀錄也會一併刪除')) return
+  var res = await fetch('/admin/api/managed/' + id + '?key=' + encodeURIComponent(KEY), { method: 'DELETE' })
+  if (!res.ok) { showToast('❌ 刪除失敗'); return }
+  showToast('✅ 已刪除')
+  closeManagedModal()
+  renderManagedTab()
+}
+
+// ── 明細對帳頁 ─────────────────────────────────────────────────
+async function openManagedDetail(id) {
+  var res = await fetch('/admin/api/managed/' + id + '?key=' + encodeURIComponent(KEY))
+  if (!res.ok) { showToast('❌ 載入失敗'); return }
+  MANAGED.current = await res.json()
+  renderManagedDetail()
+}
+
+function renderManagedDetail() {
+  var m = MANAGED.current
+  var typeLabel = m.manageType === 'SUBLEASE' ? '包租' : '代管'
+
+  var incomeRows = (m.incomes || []).map(function(r) {
+    var sign = r.type === 'INCOME' ? '+' : '−'
+    var color = r.type === 'INCOME' ? '#4A8A4A' : '#C0524A'
+    var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', OTHER:'其他' }[r.category] || r.category
+    return '<tr>' +
+      '<td style="padding:8px;font-size:13px;">' + new Date(r.recordDate).toLocaleDateString('zh-TW') + '</td>' +
+      '<td style="padding:8px;font-size:13px;">' + catLabel + '</td>' +
+      '<td style="padding:8px;font-size:13px;color:' + color + ';font-weight:700;">' + sign + ' NT$ ' + Number(r.amount).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:12px;color:#888;">' + esc(r.description || '') + '</td>' +
+      '<td style="padding:8px;"><button onclick="deleteRecord(\'' + r.id + '\')" style="border:none;background:none;color:#C0524A;cursor:pointer;">✕</button></td>' +
+    '</tr>'
+  }).join('') || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#aaa;">尚無收支紀錄</td></tr>'
+
+  var payoutRows = (m.payouts || []).map(function(p) {
+    var paid = p.status === 'PAID'
+    return '<tr>' +
+      '<td style="padding:8px;font-size:13px;font-weight:700;">' + p.period + '</td>' +
+      '<td style="padding:8px;font-size:13px;">NT$ ' + Number(p.grossRent).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:13px;color:#C0524A;">−' + Number(p.mgmtFee).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:13px;color:#C0524A;">−' + Number(p.expenses).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:14px;font-weight:700;color:#4A6741;">NT$ ' + Number(p.payoutAmount).toLocaleString() + '</td>' +
+      '<td style="padding:8px;"><button onclick="togglePayout(\'' + p.id + '\',\'' + (paid?'PENDING':'PAID') + '\')" style="border:none;border-radius:99px;padding:4px 12px;font-size:12px;cursor:pointer;background:' + (paid?'#4A8A4A':'#E5A33C') + ';color:#fff;">' + (paid?'已付':'未付') + '</button></td>' +
+    '</tr>'
+  }).join('') || '<tr><td colspan="6" style="padding:16px;text-align:center;color:#aaa;">尚無撥款紀錄，點下方「計算本月撥款」</td></tr>'
+
+  var thisMonth = new Date().toISOString().slice(0,7)
+
+  var html = '<div id="managedModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:680px;width:100%;margin:auto;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+      '<h3 style="margin:0;">' + esc(m.title) + ' <span style="font-size:13px;color:#999;font-weight:400;">（' + typeLabel + '・屋主 ' + esc(m.ownerName) + '）</span></h3>' +
+      '<button onclick="closeManagedModal()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+    '</div>' +
+
+    // 新增收支
+    '<div style="background:#F8F6F2;border-radius:12px;padding:14px;margin:14px 0;">' +
+      '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">＋ 新增收支</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">' +
+        '<select id="rec_type" style="padding:8px;border:1px solid #E5E0D5;border-radius:8px;"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select>' +
+        '<select id="rec_category" style="padding:8px;border:1px solid #E5E0D5;border-radius:8px;"><option value="RENT">租金</option><option value="REPAIR">維修</option><option value="UTILITY">水電</option><option value="OTHER">其他</option></select>' +
+        '<input id="rec_amount" type="number" placeholder="金額" style="width:100px;padding:8px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<input id="rec_date" type="date" value="' + new Date().toISOString().slice(0,10) + '" style="padding:8px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<input id="rec_desc" placeholder="說明" style="flex:1;min-width:100px;padding:8px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<button class="btn" style="padding:8px 16px;" onclick="addRecord()">新增</button>' +
+      '</div>' +
+    '</div>' +
+
+    // 收支明細表
+    '<div style="font-size:14px;font-weight:700;margin-bottom:6px;">收支明細</div>' +
+    '<div style="overflow-x:auto;max-height:200px;overflow-y:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:18px;">' +
+      '<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;">' +
+      '<th style="padding:8px;text-align:left;font-size:12px;">日期</th><th style="padding:8px;text-align:left;font-size:12px;">類別</th><th style="padding:8px;text-align:left;font-size:12px;">金額</th><th style="padding:8px;text-align:left;font-size:12px;">說明</th><th></th>' +
+      '</tr></thead><tbody>' + incomeRows + '</tbody></table>' +
+    '</div>' +
+
+    // 屋主撥款
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+      '<div style="font-size:14px;font-weight:700;">屋主撥款對帳</div>' +
+      '<div style="display:flex;gap:6px;align-items:center;">' +
+        '<input id="payout_period" type="month" value="' + thisMonth + '" style="padding:6px;border:1px solid #E5E0D5;border-radius:8px;font-size:13px;">' +
+        '<button class="btn" style="padding:6px 14px;font-size:13px;" onclick="calcPayout()">計算撥款</button>' +
+      '</div>' +
+    '</div>' +
+    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;">' +
+      '<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;">' +
+      '<th style="padding:8px;text-align:left;font-size:12px;">帳期</th><th style="padding:8px;text-align:left;font-size:12px;">收租</th><th style="padding:8px;text-align:left;font-size:12px;">管理費</th><th style="padding:8px;text-align:left;font-size:12px;">支出</th><th style="padding:8px;text-align:left;font-size:12px;">撥給屋主</th><th style="padding:8px;text-align:left;font-size:12px;">狀態</th>' +
+      '</tr></thead><tbody>' + payoutRows + '</tbody></table>' +
+    '</div>' +
+
+    '</div></div>'
+
+  var ex = document.getElementById('managedModal'); if (ex) ex.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
+async function addRecord() {
+  var body = {
+    type: document.getElementById('rec_type').value,
+    category: document.getElementById('rec_category').value,
+    amount: document.getElementById('rec_amount').value,
+    recordDate: document.getElementById('rec_date').value,
+    description: document.getElementById('rec_desc').value,
+  }
+  if (!body.amount) { showToast('❌ 請填金額'); return }
+  var res = await fetch('/admin/api/managed/' + MANAGED.current.id + '/record?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  })
+  if (!res.ok) { showToast('❌ 新增失敗'); return }
+  showToast('✅ 已新增')
+  openManagedDetail(MANAGED.current.id)
+}
+
+async function deleteRecord(rid) {
+  if (!confirm('刪除這筆收支？')) return
+  var res = await fetch('/admin/api/managed/record/' + rid + '?key=' + encodeURIComponent(KEY), { method: 'DELETE' })
+  if (!res.ok) { showToast('❌ 刪除失敗'); return }
+  openManagedDetail(MANAGED.current.id)
+}
+
+async function calcPayout() {
+  var period = document.getElementById('payout_period').value
+  if (!period) { showToast('❌ 請選帳期'); return }
+  var res = await fetch('/admin/api/managed/' + MANAGED.current.id + '/payout?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ period: period })
+  })
+  if (!res.ok) { showToast('❌ 計算失敗'); return }
+  showToast('✅ 已計算撥款')
+  openManagedDetail(MANAGED.current.id)
+}
+
+async function togglePayout(pid, status) {
+  var res = await fetch('/admin/api/managed/payout/' + pid + '/status?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: status })
+  })
+  if (!res.ok) { showToast('❌ 操作失敗'); return }
+  openManagedDetail(MANAGED.current.id)
+}
+
+// ── 收支報表 ───────────────────────────────────────────────────
+async function showManagedReport() {
+  var box = document.getElementById('managedReportBox')
+  box.innerHTML = '<div class="empty">載入報表中...</div>'
+  var res = await fetch('/admin/api/managed-report?key=' + encodeURIComponent(KEY))
+  if (!res.ok) { box.innerHTML = ''; showToast('❌ 報表載入失敗'); return }
+  var data = await res.json()
+  var s = data.summary
+
+  var rows = data.byProperty.map(function(p) {
+    var typeLabel = p.manageType === 'SUBLEASE' ? '包租' : '代管'
+    return '<tr>' +
+      '<td style="padding:8px;font-size:13px;">' + esc(p.title) + '<br><span style="font-size:11px;color:#999;">' + esc(p.ownerName) + '・' + typeLabel + '</span></td>' +
+      '<td style="padding:8px;font-size:13px;color:#4A8A4A;">' + Number(p.income).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:13px;color:#C0524A;">' + Number(p.expense).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:13px;">' + Number(p.payout).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:13px;font-weight:700;color:#4A6741;">' + Number(p.profit).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:13px;color:' + (p.pending>0?'#E5A33C':'#aaa') + ';">' + (p.pending>0 ? ('待付 ' + Number(p.pending).toLocaleString()) : '已結清') + '</td>' +
+    '</tr>'
+  }).join('') || '<tr><td colspan="6" style="padding:16px;text-align:center;color:#aaa;">尚無資料</td></tr>'
+
+  box.innerHTML =
+    '<div style="background:#fff;border:1px solid #E5E0D5;border-radius:14px;padding:20px;margin-bottom:18px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+      '<h3 style="margin:0;font-size:16px;">📊 收支報表（進行中物業）</h3>' +
+      '<button onclick="document.getElementById(\'managedReportBox\').innerHTML=\'\'" style="border:none;background:none;font-size:18px;cursor:pointer;color:#999;">×</button>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:16px;">' +
+      reportStat('委託物業', s.count + ' 件', '#7A9E7E') +
+      reportStat('總收入', 'NT$ ' + Number(s.totalIncome).toLocaleString(), '#4A8A4A') +
+      reportStat('總支出', 'NT$ ' + Number(s.totalExpense).toLocaleString(), '#C0524A') +
+      reportStat('管理費收入', 'NT$ ' + Number(s.totalMgmtFee).toLocaleString(), '#4A6741') +
+      reportStat('待撥屋主', 'NT$ ' + Number(s.pendingPayout).toLocaleString(), '#E5A33C') +
+    '</div>' +
+    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;">' +
+      '<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;">' +
+      '<th style="padding:8px;text-align:left;font-size:12px;">物業</th><th style="padding:8px;text-align:left;font-size:12px;">收入</th><th style="padding:8px;text-align:left;font-size:12px;">支出</th><th style="padding:8px;text-align:left;font-size:12px;">已撥屋主</th><th style="padding:8px;text-align:left;font-size:12px;">平台利潤</th><th style="padding:8px;text-align:left;font-size:12px;">待付</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>' +
+    '</div>' +
+    '</div>'
+}
+
+function reportStat(label, value, color) {
+  return '<div style="background:#F8F6F2;border-radius:10px;padding:12px;text-align:center;">' +
+    '<div style="font-size:11px;color:#999;margin-bottom:4px;">' + label + '</div>' +
+    '<div style="font-size:15px;font-weight:700;color:' + color + ';">' + value + '</div></div>'
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 合約功能（委託合約條款 + 租約管理 + 文件上傳）
+// ═══════════════════════════════════════════════════════════════
+
+// 在明細對帳視窗加「合約管理」按鈕 → 開合約視窗
+async function openContractManager(id) {
+  var res = await fetch('/admin/api/managed/' + id + '?key=' + encodeURIComponent(KEY))
+  if (!res.ok) { showToast('❌ 載入失敗'); return }
+  MANAGED.current = await res.json()
+  // 載入租約
+  var lres = await fetch('/admin/api/managed/' + id + '/leases?key=' + encodeURIComponent(KEY))
+  MANAGED.leases = lres.ok ? await lres.json() : []
+  renderContractManager()
+}
+
+function renderContractManager() {
+  var m = MANAGED.current
+  function fmtDate(d) { return d ? new Date(d).toISOString().slice(0,10) : '' }
+
+  // 委託合約條款區
+  var ownerContract =
+    '<div style="background:#F8F6F2;border-radius:12px;padding:16px;margin-bottom:18px;">' +
+      '<div style="font-weight:700;font-size:14px;margin-bottom:10px;">📋 委託合約（屋主 ' + esc(m.ownerName) + '）</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+        '<div style="flex:1;min-width:120px;">' + mInput('押金', 'c_deposit', m.deposit, 'number') + '</div>' +
+        '<div style="flex:1;min-width:120px;">' + mInput('每月付款日', 'c_payDay', m.payDay, 'number') + '</div>' +
+        '<div style="flex:1;min-width:120px;">' + mInput('付款方式', 'c_payMethod', m.payMethod) + '</div>' +
+      '</div>' +
+      '<div style="margin-top:10px;">' +
+        '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">委託合約文件</label>' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          (m.contractFile ? '<a href="' + esc(m.contractFile) + '" target="_blank" style="color:#4A6741;font-size:13px;">📄 查看已上傳合約</a>' : '<span style="font-size:13px;color:#aaa;">尚未上傳</span>') +
+          '<input type="file" id="c_file" accept="image/*,application/pdf" onchange="uploadContractFile(this,\'managed\')" style="font-size:12px;">' +
+          '<span id="c_file_status" style="font-size:12px;color:#4A8A4A;"></span>' +
+        '</div>' +
+      '</div>' +
+      '<button class="btn" style="margin-top:12px;padding:8px 18px;font-size:13px;" onclick="saveContract()">儲存委託合約</button>' +
+    '</div>'
+
+  // 租約列表
+  var leaseRows = (MANAGED.leases || []).map(function(l) {
+    var statusLabel = { ACTIVE:'生效中', ENDED:'已終止', EXPIRED:'已到期' }[l.status] || l.status
+    var statusColor = l.status === 'ACTIVE' ? '#4A8A4A' : '#999'
+    var endWarn = ''
+    if (l.leaseEnd && l.status === 'ACTIVE') {
+      var days = Math.ceil((new Date(l.leaseEnd) - new Date()) / 86400000)
+      if (days <= 30 && days >= 0) endWarn = ' <span style="color:#E5A33C;font-size:11px;">⚠️ ' + days + '天後到期</span>'
+      else if (days < 0) endWarn = ' <span style="color:#C0524A;font-size:11px;">已逾期</span>'
+    }
+    return '<tr>' +
+      '<td style="padding:8px;font-size:13px;">' + esc(l.tenantName) + (l.roomLabel ? '<br><span style="font-size:11px;color:#999;">' + esc(l.roomLabel) + '</span>' : '') + '</td>' +
+      '<td style="padding:8px;font-size:13px;">NT$ ' + Number(l.rent).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:12px;">' + fmtDate(l.leaseStart) + '<br>~ ' + fmtDate(l.leaseEnd) + endWarn + '</td>' +
+      '<td style="padding:8px;"><span style="color:' + statusColor + ';font-size:12px;">' + statusLabel + '</span></td>' +
+      '<td style="padding:8px;">' +
+        (l.contractFile ? '<a href="' + esc(l.contractFile) + '" target="_blank" style="font-size:12px;color:#4A6741;">📄</a> ' : '') +
+        '<button onclick="openLeaseForm(\'' + l.id + '\')" style="border:none;background:none;cursor:pointer;font-size:13px;">✏️</button>' +
+        '<button onclick="deleteLease(\'' + l.id + '\')" style="border:none;background:none;cursor:pointer;color:#C0524A;">✕</button>' +
+      '</td>' +
+    '</tr>'
+  }).join('') || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#aaa;">尚無租約</td></tr>'
+
+  var html = '<div id="contractModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:320;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:680px;width:100%;margin:auto;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+      '<h3 style="margin:0;">合約管理 — ' + esc(m.title) + '</h3>' +
+      '<button onclick="closeContractModal()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+    '</div>' +
+    ownerContract +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+      '<div style="font-weight:700;font-size:14px;">🏠 租賃合約（租客）</div>' +
+      '<button class="btn" style="padding:6px 14px;font-size:13px;" onclick="openLeaseForm()">+ 新增租約</button>' +
+    '</div>' +
+    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;">' +
+      '<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;">' +
+      '<th style="padding:8px;text-align:left;font-size:12px;">承租人</th><th style="padding:8px;text-align:left;font-size:12px;">租金</th><th style="padding:8px;text-align:left;font-size:12px;">租期</th><th style="padding:8px;text-align:left;font-size:12px;">狀態</th><th style="padding:8px;text-align:left;font-size:12px;">操作</th>' +
+      '</tr></thead><tbody>' + leaseRows + '</tbody></table>' +
+    '</div>' +
+    '</div></div>'
+
+  var ex = document.getElementById('contractModal'); if (ex) ex.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
+function closeContractModal() { var m = document.getElementById('contractModal'); if (m) m.remove() }
+
+var _uploadedContractFile = null
+async function uploadContractFile(input, target) {
+  if (!input.files || !input.files[0]) return
+  var statusEl = document.getElementById('c_file_status')
+  if (statusEl) statusEl.textContent = '上傳中...'
+  var fd = new FormData(); fd.append('file', input.files[0])
+  try {
+    var res = await fetch('/admin/api/upload?key=' + encodeURIComponent(KEY), { method: 'POST', body: fd })
+    if (!res.ok) { if (statusEl) statusEl.textContent = '❌ 失敗'; return }
+    var data = await res.json()
+    _uploadedContractFile = data.url
+    if (statusEl) statusEl.textContent = '✅ 已上傳（記得按儲存）'
+  } catch (e) { if (statusEl) statusEl.textContent = '❌ 失敗' }
+}
+
+async function saveContract() {
+  var body = {
+    deposit: val('c_deposit'), payDay: val('c_payDay'), payMethod: val('c_payMethod'),
+  }
+  if (_uploadedContractFile) body.contractFile = _uploadedContractFile
+  var res = await fetch('/admin/api/managed/' + MANAGED.current.id + '/contract?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  })
+  if (!res.ok) { showToast('❌ 儲存失敗'); return }
+  showToast('✅ 委託合約已儲存')
+  _uploadedContractFile = null
+  openContractManager(MANAGED.current.id)
+}
+
+// ── 租約表單 ───────────────────────────────────────────────────
+var _uploadedLeaseFile = null
+async function openLeaseForm(leaseId) {
+  await loadManagedOpts()
+  var l = leaseId ? (MANAGED.leases || []).find(function(x){ return x.id === leaseId }) : {}
+  l = l || {}
+  _uploadedLeaseFile = null
+  function fmtDate(d) { return d ? new Date(d).toISOString().slice(0,10) : '' }
+
+  // 房源下拉
+  var propOptions = '<option value="">（不連結房源）</option>' + (MANAGED_OPTS.properties || []).map(function(p) {
+    return '<option value="' + p.id + '"' + (l.propertyId === p.id ? ' selected' : '') + '>' + esc(p.label) + '</option>'
+  }).join('')
+
+  // 租客 LINE 下拉
+  var tenantOptions = '<option value="">（不綁定 LINE）</option>' + (MANAGED_OPTS.tenants || []).map(function(t) {
+    return '<option value="' + t.id + '" data-line="' + esc(t.lineUserId || '') + '"' + (l.lineTenantId === t.id ? ' selected' : '') + '>' + esc(t.label) + '</option>'
+  }).join('')
+
+  var html = '<div id="leaseModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:340;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:480px;width:100%;margin:auto;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+      '<h3 style="margin:0;">' + (leaseId ? '編輯租約' : '新增租約') + '</h3>' +
+      '<button onclick="closeLeaseModal()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+    '</div>' +
+    '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;">' + mInput('承租人姓名 *', 'l_tenantName', l.tenantName) + '</div>' +
+      '<div style="flex:1;">' + mInput('電話', 'l_tenantPhone', l.tenantPhone) + '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;">' + mInput('房號/單位', 'l_roomLabel', l.roomLabel) + '</div>' +
+      '<div style="flex:1;">' + mInput('身分證字號', 'l_tenantIdNo', l.tenantIdNo) + '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;">' + mInput('月租金', 'l_rent', l.rent, 'number') + '</div>' +
+      '<div style="flex:1;">' + mInput('押金', 'l_deposit', l.deposit, 'number') + '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;">' + mInput('租約起日', 'l_leaseStart', fmtDate(l.leaseStart), 'date') + '</div>' +
+      '<div style="flex:1;">' + mInput('租約迄日', 'l_leaseEnd', fmtDate(l.leaseEnd), 'date') + '</div>' +
+    '</div>' +
+    // 房源連結
+    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">🔗 連結網站房源頁</label>' +
+    '<select id="l_propertyId" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;">' + propOptions + '</select>' +
+    // 合約狀態
+    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">合約狀態</label>' +
+    '<select id="l_status" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:14px;">' +
+      '<option value="ACTIVE"' + (l.status==='ACTIVE'||!l.status?' selected':'') + '>生效中</option>' +
+      '<option value="ENDED"' + (l.status==='ENDED'?' selected':'') + '>已終止</option>' +
+      '<option value="EXPIRED"' + (l.status==='EXPIRED'?' selected':'') + '>已到期</option>' +
+    '</select>' +
+    // ── LINE 提醒設定 ──
+    '<div style="background:#F0F7F1;border-radius:12px;padding:14px;margin-bottom:12px;">' +
+      '<div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#4A6741;">📲 LINE 繳費提醒</div>' +
+      '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">綁定租客 LINE（已加 Bot 的租客）</label>' +
+      '<select id="l_lineTenantId" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;">' + tenantOptions + '</select>' +
+      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">' +
+        '<label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="l_rentRemindOn"' + (l.rentRemindOn !== false ? ' checked' : '') + '> 租金提醒</label>' +
+        '<div style="flex:1;">' + mInput('繳租日(號)', 'l_rentPayDay', l.rentPayDay || 5, 'number') + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;align-items:center;">' +
+        '<label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="l_utilRemindOn"' + (l.utilRemindOn ? ' checked' : '') + '> 水電提醒</label>' +
+        '<div style="flex:1;">' + mInput('水電日(號)', 'l_utilPayDay', l.utilPayDay || '', 'number') + '</div>' +
+        '<div style="flex:1;">' + mInput('水電金額', 'l_utilAmount', l.utilAmount || '', 'number') + '</div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#999;margin-top:8px;">提醒會在繳費日前 3 天自動推播</div>' +
+    '</div>' +
+    // 租約文件
+    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">租約文件</label>' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +
+      (l.contractFile ? '<a href="' + esc(l.contractFile) + '" target="_blank" style="font-size:13px;color:#4A6741;">📄 現有文件</a>' : '<span style="font-size:13px;color:#aaa;">無</span>') +
+      '<input type="file" id="l_file" accept="image/*,application/pdf" onchange="uploadLeaseFile(this)" style="font-size:12px;">' +
+      '<span id="l_file_status" style="font-size:12px;color:#4A8A4A;"></span>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:14px;">' +
+      (leaseId ? '<button class="btn" style="background:#C0524A;" onclick="deleteLease(\'' + leaseId + '\')">刪除</button>' : '') +
+      '<button class="btn" style="flex:1;background:var(--deep-sage,#4A6741);" onclick="saveLease(' + (leaseId ? "'" + leaseId + "'" : 'null') + ')">儲存租約</button>' +
+    '</div>' +
+    '</div></div>'
+
+  var ex = document.getElementById('leaseModal'); if (ex) ex.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
+function closeLeaseModal() { var m = document.getElementById('leaseModal'); if (m) m.remove() }
+
+async function uploadLeaseFile(input) {
+  if (!input.files || !input.files[0]) return
+  var statusEl = document.getElementById('l_file_status')
+  if (statusEl) statusEl.textContent = '上傳中...'
+  var fd = new FormData(); fd.append('file', input.files[0])
+  try {
+    var res = await fetch('/admin/api/upload?key=' + encodeURIComponent(KEY), { method: 'POST', body: fd })
+    if (!res.ok) { if (statusEl) statusEl.textContent = '❌ 失敗'; return }
+    var data = await res.json()
+    _uploadedLeaseFile = data.url
+    if (statusEl) statusEl.textContent = '✅ 已上傳'
+  } catch (e) { if (statusEl) statusEl.textContent = '❌ 失敗' }
+}
+
+async function saveLease(leaseId) {
+  // 從選的租客取得 lineUserId
+  var tenantSel = document.getElementById('l_lineTenantId')
+  var lineTenantId = tenantSel ? tenantSel.value : ''
+  var lineUserId = ''
+  if (lineTenantId && MANAGED_OPTS.tenants) {
+    var t = MANAGED_OPTS.tenants.find(function(x){ return x.id === lineTenantId })
+    if (t) lineUserId = t.lineUserId || ''
+  }
+
+  var body = {
+    tenantName: val('l_tenantName'), tenantPhone: val('l_tenantPhone'), tenantIdNo: val('l_tenantIdNo'),
+    roomLabel: val('l_roomLabel'), rent: val('l_rent'), deposit: val('l_deposit'),
+    leaseStart: val('l_leaseStart'), leaseEnd: val('l_leaseEnd'),
+    status: document.getElementById('l_status').value,
+    propertyId: document.getElementById('l_propertyId').value,
+    lineTenantId: lineTenantId,
+    lineUserId: lineUserId,
+    rentPayDay: val('l_rentPayDay'),
+    rentRemindOn: document.getElementById('l_rentRemindOn').checked,
+    utilPayDay: val('l_utilPayDay'),
+    utilRemindOn: document.getElementById('l_utilRemindOn').checked,
+    utilAmount: val('l_utilAmount'),
+  }
+  if (!body.tenantName) { showToast('❌ 承租人姓名必填'); return }
+  if (leaseId) body.leaseId = leaseId
+  if (_uploadedLeaseFile) body.contractFile = _uploadedLeaseFile
+
+  var res = await fetch('/admin/api/managed/' + MANAGED.current.id + '/lease?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  })
+  if (!res.ok) { showToast('❌ 儲存失敗'); return }
+  showToast('✅ 租約已儲存')
+  closeLeaseModal()
+  openContractManager(MANAGED.current.id)
+}
+
+async function deleteLease(leaseId) {
+  if (!confirm('確定刪除此租約？')) return
+  var res = await fetch('/admin/api/managed/lease/' + leaseId + '?key=' + encodeURIComponent(KEY), { method: 'DELETE' })
+  if (!res.ok) { showToast('❌ 刪除失敗'); return }
+  showToast('✅ 已刪除')
+  closeLeaseModal()
+  openContractManager(MANAGED.current.id)
+}
+
+// ── 到期提醒（顯示在包租代管頁上方） ──────────────────────────
+async function loadExpiringReminders() {
+  try {
+    var res = await fetch('/admin/api/managed-expiring?key=' + encodeURIComponent(KEY) + '&days=30')
+    if (!res.ok) return ''
+    var data = await res.json()
+    var all = (data.managed || []).concat(data.leases || [])
+    if (all.length === 0) return ''
+    var items = all.map(function(x) {
+      var days = Math.ceil((new Date(x.endDate) - new Date()) / 86400000)
+      return '<div style="display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #F0E8D8;font-size:13px;">' +
+        '<span>' + (x.type === '租約' ? '🏠' : '📋') + ' ' + esc(x.title) + (x.room ? '（' + esc(x.room) + '）' : '') + ' — ' + esc(x.who) + '</span>' +
+        '<span style="color:#E5A33C;font-weight:700;">' + days + ' 天後到期</span>' +
+      '</div>'
+    }).join('')
+    return '<div style="background:#FFF8EC;border:1px solid #F0D9A8;border-radius:12px;padding:14px;margin-bottom:18px;">' +
+      '<div style="font-weight:700;font-size:14px;margin-bottom:8px;color:#B07D1E;">⏰ 即將到期合約（30 天內）</div>' + items + '</div>'
+  } catch (e) { return '' }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 代管清單（狀態分頁）+ 租約進階設定（房源連結/LINE綁定/繳費提醒）
+// ═══════════════════════════════════════════════════════════════
+
+// 載入綁定用的租客與房源清單（快取）
+var MANAGED_OPTS = { tenants: null, properties: null }
+async function loadManagedOpts() {
+  if (!MANAGED_OPTS.tenants) {
+    try {
+      var tr = await fetch('/admin/api/managed-tenants?key=' + encodeURIComponent(KEY))
+      MANAGED_OPTS.tenants = tr.ok ? await tr.json() : []
+    } catch (e) { MANAGED_OPTS.tenants = [] }
+  }
+  if (!MANAGED_OPTS.properties) {
+    try {
+      var pr = await fetch('/admin/api/managed-properties-list?key=' + encodeURIComponent(KEY))
+      MANAGED_OPTS.properties = pr.ok ? await pr.json() : []
+    } catch (e) { MANAGED_OPTS.properties = [] }
+  }
+}
+
+// 代管清單分頁狀態
+var LEASE_TAB = 'active'
+async function showLeaseList() {
+  var box = document.getElementById('managedReportBox')
+  box.innerHTML = '<div class="empty">載入代管清單中...</div>'
+  var res = await fetch('/admin/api/managed-leases?key=' + encodeURIComponent(KEY))
+  if (!res.ok) { box.innerHTML = ''; showToast('❌ 載入失敗'); return }
+  MANAGED.leaseList = await res.json()
+  renderLeaseList()
+}
+
+function renderLeaseList() {
+  var box = document.getElementById('managedReportBox')
+  var d = MANAGED.leaseList
+  var counts = { active: d.active.length, expiring: d.expiring.length, expired: d.expired.length, ended: d.ended.length }
+
+  function tabBtn(key, label, count, color) {
+    var active = LEASE_TAB === key
+    return '<button onclick="LEASE_TAB=\'' + key + '\';renderLeaseList()" style="padding:8px 16px;border:none;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;background:' + (active ? color : '#EEE') + ';color:' + (active ? '#fff' : '#888') + ';">' + label + ' ' + count + '</button>'
+  }
+
+  var rows = (d[LEASE_TAB] || []).map(function(l) {
+    function fmt(dt) { return dt ? new Date(dt).toLocaleDateString('zh-TW') : '—' }
+    var endInfo = fmt(l.leaseEnd)
+    if (l.daysToEnd != null && l.status === 'EXPIRING') endInfo += ' <span style="color:#E5A33C;font-size:11px;">(' + l.daysToEnd + '天)</span>'
+    if (l.status === 'EXPIRED') endInfo += ' <span style="color:#C0524A;font-size:11px;">已過期</span>'
+
+    var nextRent = l.nextRentDate ? new Date(l.nextRentDate).toLocaleDateString('zh-TW') : '—'
+    var propLink = l.propertyId
+      ? '<a href="' + (DATA.siteUrl || '') + '/property/' + l.propertyId + '" target="_blank" style="color:#4A6741;font-size:12px;">🔗 房源頁</a>'
+      : '<span style="font-size:12px;color:#ccc;">未連結</span>'
+    var lineBadge = l.lineBound
+      ? '<span style="color:#06C755;font-size:12px;">● LINE</span>'
+      : '<span style="color:#ccc;font-size:12px;">○ 未綁</span>'
+
+    return '<tr>' +
+      '<td style="padding:8px;font-size:13px;">' + esc(l.tenantName) + (l.roomLabel ? '<br><span style="font-size:11px;color:#999;">' + esc(l.roomLabel) + '</span>' : '') + '</td>' +
+      '<td style="padding:8px;font-size:13px;">' + esc(l.managedTitle) + '</td>' +
+      '<td style="padding:8px;font-size:12px;">' + fmt(l.leaseStart) + '<br>~ ' + endInfo + '</td>' +
+      '<td style="padding:8px;font-size:13px;">NT$ ' + Number(l.rent).toLocaleString() + '<br><span style="font-size:11px;color:#999;">下期 ' + nextRent + '</span></td>' +
+      '<td style="padding:8px;">' + propLink + '<br>' + lineBadge + '</td>' +
+      '<td style="padding:8px;"><button class="btn" style="padding:5px 12px;font-size:12px;" onclick="openManagedDetail(\'' + l.managedId + '\')">對帳</button></td>' +
+    '</tr>'
+  }).join('') || '<tr><td colspan="6" style="padding:20px;text-align:center;color:#aaa;">此分類沒有租約</td></tr>'
+
+  box.innerHTML =
+    '<div style="background:#fff;border:1px solid #E5E0D5;border-radius:14px;padding:18px;margin-bottom:18px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">' +
+      '<h3 style="margin:0;font-size:16px;">📋 代管清單</h3>' +
+      '<button onclick="document.getElementById(\'managedReportBox\').innerHTML=\'\'" style="border:none;background:none;font-size:18px;cursor:pointer;color:#999;">×</button>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">' +
+      tabBtn('active', '承租中', counts.active, '#4A8A4A') +
+      tabBtn('expiring', '即將到期', counts.expiring, '#E5A33C') +
+      tabBtn('expired', '已到期', counts.expired, '#C0524A') +
+      tabBtn('ended', '已終止', counts.ended, '#888') +
+    '</div>' +
+    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;">' +
+      '<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;">' +
+      '<th style="padding:8px;text-align:left;font-size:12px;">承租人</th><th style="padding:8px;text-align:left;font-size:12px;">物業</th><th style="padding:8px;text-align:left;font-size:12px;">租期</th><th style="padding:8px;text-align:left;font-size:12px;">租金/下期</th><th style="padding:8px;text-align:left;font-size:12px;">連結</th><th style="padding:8px;text-align:left;font-size:12px;">操作</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>' +
+    '</div>' +
+    '</div>'
+}
+
 </script>
 </body>
 </html>`

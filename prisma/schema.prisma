@@ -100,6 +100,7 @@ model Landlord {
   bookings      Booking[]
   repairs       Repair[]
   communities   Community[]
+  managedProperties ManagedProperty[]
 
   @@index([email])
   @@index([adminKey])
@@ -493,4 +494,148 @@ model Review {
   @@unique([propertyId, userId])
   @@index([propertyId])
   @@map("reviews")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 包租代管系統
+// ═══════════════════════════════════════════════════════════════
+
+// 委託物業（屋主把房子委託給平台包租或代管）
+model ManagedProperty {
+  id            String    @id @default(cuid())
+  landlordId    String    // 所屬管理者（平台/代管公司，對應 Landlord）
+  landlord      Landlord  @relation(fields: [landlordId], references: [id], onDelete: Cascade)
+
+  // 屋主資訊
+  ownerName     String    // 屋主姓名
+  ownerPhone    String?   // 屋主電話
+  ownerEmail    String?   // 屋主 email
+  ownerBank     String?   // 屋主匯款帳戶（撥款用）
+
+  // 物業資訊
+  title         String    // 物業名稱/暱稱
+  address       String    // 地址
+  roomCount     Int       @default(1)  // 房間數
+
+  // 委託類型與合約
+  manageType    String    // 'SUBLEASE'(包租) 或 'TRUST'(代管)
+  contractStart DateTime? // 合約起日
+  contractEnd   DateTime? // 合約迄日
+
+  // 包租：平台向屋主承租的成本（每月付給屋主的固定金額）
+  leaseCost     Int       @default(0)
+
+  // 代管：管理費設定
+  feeType       String    @default("PERCENT")  // 'PERCENT'(抽成) 或 'FIXED'(固定)
+  feePercent    Float     @default(10)          // 抽成百分比（feeType=PERCENT 時用）
+  feeFixed      Int       @default(0)           // 固定管理費（feeType=FIXED 時用）
+
+  // 預期租金收入（代管：實收租金；包租：轉租收入）
+  expectedRent  Int       @default(0)
+
+  status        String    @default("ACTIVE")    // ACTIVE / ENDED / PAUSED
+  note          String?   @db.Text
+
+  // 委託合約條款
+  deposit       Int       @default(0)    // 押金
+  payDay        Int?      // 每月付款日（1-31）
+  payMethod     String?   // 付款方式（轉帳/現金/支票...）
+  contractFile  String?   // 委託合約文件 URL（Cloudinary）
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  incomes       ManagementRecord[]
+  payouts       OwnerPayout[]
+  leases        Lease[]
+
+  @@index([landlordId])
+  @@index([manageType])
+  @@map("managed_properties")
+}
+
+// 收支明細（每筆收入或支出）
+model ManagementRecord {
+  id                 String          @id @default(cuid())
+  managedPropertyId  String
+  managedProperty    ManagedProperty @relation(fields: [managedPropertyId], references: [id], onDelete: Cascade)
+
+  type        String    // 'INCOME'(收入：租金) 或 'EXPENSE'(支出：維修/雜支)
+  category    String    // 'RENT'(租金) / 'REPAIR'(維修) / 'UTILITY'(水電) / 'OTHER'(其他)
+  amount      Int       // 金額
+  recordDate  DateTime  // 發生日期
+  description String?   // 說明
+  createdAt   DateTime  @default(now())
+
+  @@index([managedPropertyId])
+  @@index([recordDate])
+  @@map("management_records")
+}
+
+// 屋主撥款紀錄（每月該撥給屋主多少、是否已付）
+model OwnerPayout {
+  id                 String          @id @default(cuid())
+  managedPropertyId  String
+  managedProperty    ManagedProperty @relation(fields: [managedPropertyId], references: [id], onDelete: Cascade)
+
+  period      String    // 帳期，格式 'YYYY-MM'
+  grossRent   Int       @default(0)  // 該期收到的租金總額
+  mgmtFee     Int       @default(0)  // 扣除的管理費
+  expenses    Int       @default(0)  // 扣除的支出（維修等）
+  payoutAmount Int      @default(0)  // 實際撥給屋主的金額
+  status      String    @default("PENDING")  // PENDING(未付) / PAID(已付)
+  paidDate    DateTime? // 撥款日期
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([managedPropertyId, period])
+  @@index([managedPropertyId])
+  @@map("owner_payouts")
+}
+
+// 租賃合約（平台/屋主 ↔ 租客）
+model Lease {
+  id                 String          @id @default(cuid())
+  managedPropertyId  String
+  managedProperty    ManagedProperty @relation(fields: [managedPropertyId], references: [id], onDelete: Cascade)
+
+  // 租客資訊
+  tenantName    String    // 承租人姓名
+  tenantPhone   String?   // 承租人電話
+  tenantIdNo    String?   // 身分證字號（選填）
+  lineUserId    String?   // 綁定的 LINE 用戶 ID（推播提醒用）
+  propertyId    String?   // 連接的網站房源 ID
+
+  // 租約條款
+  roomLabel     String?   // 房號/單位（如：A 房、3 樓）
+  rent          Int       @default(0)    // 月租金
+  deposit       Int       @default(0)    // 押金
+  payDay        Int?      // 每月付款日（1-31）
+  payMethod     String?   // 付款方式
+  leaseStart    DateTime? // 租約起日
+  leaseEnd      DateTime? // 租約迄日
+
+  contractFile  String?   // 租約文件 URL（Cloudinary）
+  status        String    @default("ACTIVE")  // ACTIVE(生效) / ENDED(已終止) / EXPIRED(已到期)
+  note          String?   @db.Text
+
+  // 租客 LINE 綁定（推播提醒用）
+  lineTenantId  String?   // 對應 Tenant.id（已加 Bot 的租客）
+
+  // 繳費提醒設定
+  rentPayDay    Int       @default(5)      // 每月幾號繳租
+  rentRemindOn  Boolean   @default(true)   // 是否推播租金提醒
+  utilPayDay    Int?      // 水電繳費日（每月幾號，null=不提醒）
+  utilRemindOn  Boolean   @default(false)  // 是否推播水電提醒
+  utilAmount    Int       @default(0)      // 水電金額（提醒時顯示，0=不顯示金額）
+  lastRentRemind  DateTime?  // 上次推租金提醒的時間（避免同月重複推）
+  lastUtilRemind  DateTime?  // 上次推水電提醒的時間
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([managedPropertyId])
+  @@index([leaseEnd])
+  @@index([status])
+  @@map("leases")
 }

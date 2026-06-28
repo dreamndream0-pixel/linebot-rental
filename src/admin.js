@@ -17,6 +17,7 @@ router.use(require('./admin/routes/contactNotify'))
 router.use(require('./admin/routes/internalLandlord'))
 router.use(require('./admin/routes/webusers'))
 router.use(require('./admin/routes/social'))
+router.use(require('./admin/routes/managedProperty'))
 
 router.use('/admin/assets', express.static(path.join(__dirname, 'admin/assets')))
 
