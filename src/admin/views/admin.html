@@ -4966,6 +4966,25 @@ async function openLeaseForm(leaseId) {
         '<div style="flex:1;">' + mInput('水電日(號)', 'l_utilPayDay', l.utilPayDay || '', 'number') + '</div>' +
         '<div style="flex:1;">' + mInput('水電金額', 'l_utilAmount', l.utilAmount || '', 'number') + '</div>' +
       '</div>' +
+      // 水電費率模式
+      '<div style="border-top:1px dashed #cfe0d0;margin-top:10px;padding-top:10px;">' +
+        '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">水電費率模式</label>' +
+        '<select id="l_utilMode" onchange="toggleUtilMode()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:8px;">' +
+          '<option value="FIXED"' + (l.utilMode !== 'METER' ? ' selected' : '') + '>固定費率（每月固定金額）</option>' +
+          '<option value="METER"' + (l.utilMode === 'METER' ? ' selected' : '') + '>台水台電（按電表度數）</option>' +
+        '</select>' +
+        '<div id="utilMeterBox" style="display:none;">' +
+          '<div style="display:flex;gap:8px;">' +
+            '<div style="flex:1;margin-bottom:8px;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">抄錶時間</label><input id="l_meterReadDate" type="date" value="' + (l.meterReadDate ? new Date(l.meterReadDate).toISOString().slice(0,10) : '') + '" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>' +
+            '<div style="flex:1;margin-bottom:8px;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">每度費率(元)</label><input id="l_meterRate" type="number" value="' + (l.meterRate || '') + '" oninput="updateMeterCalc()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">本期度數</label><input id="l_meterCurrent" type="number" value="' + (l.meterCurrent || '') + '" oninput="updateMeterCalc()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>' +
+            '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">下期度數</label><input id="l_meterNext" type="number" value="' + (l.meterNext || '') + '" oninput="updateMeterCalc()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>' +
+          '</div>' +
+          '<div id="meterCalc" style="font-size:12px;color:#4A6741;margin-top:6px;"></div>' +
+        '</div>' +
+      '</div>' +
       '<div style="font-size:11px;color:#999;margin-top:8px;">提醒會在繳費日前 3 天自動推播</div>' +
     '</div>' +
     // 租約文件
@@ -4983,6 +5002,23 @@ async function openLeaseForm(leaseId) {
 
   var ex = document.getElementById('leaseModal'); if (ex) ex.remove()
   document.body.insertAdjacentHTML('beforeend', html)
+  toggleUtilMode()
+}
+
+function toggleUtilMode() {
+  var sel = document.getElementById('l_utilMode')
+  if (!sel) return
+  document.getElementById('utilMeterBox').style.display = sel.value === 'METER' ? 'block' : 'none'
+  updateMeterCalc()
+}
+function updateMeterCalc() {
+  var el = document.getElementById('meterCalc')
+  if (!el) return
+  var cur = parseFloat(val('l_meterCurrent')) || 0
+  var nxt = parseFloat(val('l_meterNext')) || 0
+  var rate = parseFloat(val('l_meterRate')) || 0
+  var deg = Math.max(0, nxt - cur)
+  el.textContent = '用量 ' + deg + ' 度 × ' + rate + ' 元 ＝ NT$ ' + Math.round(deg * rate).toLocaleString()
 }
 
 function closeLeaseModal() { var m = document.getElementById('leaseModal'); if (m) m.remove() }
@@ -5024,6 +5060,16 @@ async function saveLease(leaseId) {
     utilPayDay: val('l_utilPayDay'),
     utilRemindOn: document.getElementById('l_utilRemindOn').checked,
     utilAmount: val('l_utilAmount'),
+    utilMode: document.getElementById('l_utilMode') ? document.getElementById('l_utilMode').value : 'FIXED',
+    meterReadDate: val('l_meterReadDate'),
+    meterCurrent: val('l_meterCurrent'),
+    meterNext: val('l_meterNext'),
+    meterRate: val('l_meterRate'),
+  }
+  // 按電表模式：水電金額自動以「用量 × 費率」計算
+  if (body.utilMode === 'METER') {
+    var deg = Math.max(0, (parseFloat(body.meterNext) || 0) - (parseFloat(body.meterCurrent) || 0))
+    body.utilAmount = String(Math.round(deg * (parseFloat(body.meterRate) || 0)))
   }
   if (!body.tenantName) { showToast('❌ 承租人姓名必填'); return }
   if (leaseId) body.leaseId = leaseId

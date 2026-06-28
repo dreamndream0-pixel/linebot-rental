@@ -409,6 +409,12 @@ router.post('/admin/api/managed/:id/lease', express.json(), async (req, res) => 
       utilPayDay: b.utilPayDay ? parseInt(b.utilPayDay) : null,
       utilRemindOn: b.utilRemindOn === true || b.utilRemindOn === 'true',
       utilAmount: parseInt(b.utilAmount) || 0,
+      // 水電費率模式 + 電表
+      utilMode: b.utilMode === 'METER' ? 'METER' : 'FIXED',
+      meterReadDate: b.meterReadDate ? new Date(b.meterReadDate) : null,
+      meterCurrent: parseInt(b.meterCurrent) || 0,
+      meterNext: parseInt(b.meterNext) || 0,
+      meterRate: parseFloat(b.meterRate) || 0,
     }
 
     let lease

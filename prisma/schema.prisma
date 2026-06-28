@@ -632,9 +632,16 @@ model Lease {
   rentRemindOn  Boolean   @default(true)   // 是否推播租金提醒
   utilPayDay    Int?      // 水電繳費日（每月幾號，null=不提醒）
   utilRemindOn  Boolean   @default(false)  // 是否推播水電提醒
-  utilAmount    Int       @default(0)      // 水電金額（提醒時顯示，0=不顯示金額）
+  utilAmount    Int       @default(0)      // 水電金額（固定費率金額，或按表計算後的金額）
   lastRentRemind  DateTime?  // 上次推租金提醒的時間（避免同月重複推）
   lastUtilRemind  DateTime?  // 上次推水電提醒的時間
+
+  // 水電費率模式：FIXED(固定費率) / METER(台水台電・按電表度數)
+  utilMode      String    @default("FIXED")
+  meterReadDate DateTime? // 抄錶時間
+  meterCurrent  Int       @default(0)  // 本期度數
+  meterNext     Int       @default(0)  // 下期度數
+  meterRate     Float     @default(0)  // 每度費率（元）
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
