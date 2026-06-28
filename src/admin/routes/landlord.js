@@ -3,7 +3,7 @@ const express = require('express')
 const router = express.Router()
 const crypto = require('crypto')
 const prisma = require('../../db')
-const { resolveRole } = require('../helpers')
+const { resolveRole, deleteCloudinaryImages, revalidateSite } = require('../helpers')
 
 // 列出所有房東（僅超級管理員）
 router.get('/admin/api/landlords', async (req, res) => {
@@ -245,6 +245,56 @@ router.post('/admin/api/landlord/:id/bottext', express.json(), async (req, res) 
   try { require('../../botText').clearTextCache(req.params.id) } catch (e) {}
   try { require('../../landlordWebhook').clearConfigCache(req.params.id) } catch (e) {}
   res.json({ ok: true })
+})
+
+// 完全刪除房東 + 名下所有房源（含照片、預約、評論、維修等關聯）— 僅超級管理員
+// ⚠️ 不可復原。Booking/Repair/Review 對 Property 是 Restrict，需先刪子資料再刪房源。
+router.delete('/admin/api/landlord/:id', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+
+  const id = req.params.id
+  const landlord = await prisma.landlord.findUnique({ where: { id } })
+  if (!landlord) return res.status(404).json({ error: '找不到房東' })
+
+  try {
+    // 名下所有房源（含已軟刪除的）
+    const props = await prisma.property.findMany({ where: { ownerId: id }, select: { id: true } })
+    const propIds = props.map(p => p.id)
+
+    // 先收集 Cloudinary 圖片網址（DB 刪掉後就查不到）
+    let imageUrls = []
+    if (propIds.length) {
+      const imgs = await prisma.propertyImage.findMany({ where: { propertyId: { in: propIds } }, select: { url: true } })
+      imageUrls = imgs.map(i => i.url)
+    }
+
+    // 交易內依相依順序刪除
+    await prisma.$transaction([
+      ...(propIds.length ? [
+        prisma.booking.deleteMany({ where: { propertyId: { in: propIds } } }),
+        prisma.repair.deleteMany({ where: { propertyId: { in: propIds } } }),
+        prisma.review.deleteMany({ where: { propertyId: { in: propIds } } }),
+        prisma.message.deleteMany({ where: { propertyId: { in: propIds } } }),
+        prisma.favorite.deleteMany({ where: { propertyId: { in: propIds } } }),
+        prisma.propertyTag.deleteMany({ where: { propertyId: { in: propIds } } }),
+        prisma.propertyAmenity.deleteMany({ where: { propertyId: { in: propIds } } }),
+        prisma.propertyImage.deleteMany({ where: { propertyId: { in: propIds } } }),
+        prisma.property.deleteMany({ where: { id: { in: propIds } } }),
+      ] : []),
+      // 刪房東（managed_properties → leases/records/payouts 由 DB ON DELETE CASCADE 連帶刪除）
+      prisma.landlord.delete({ where: { id } }),
+    ])
+
+    // DB 一致後再清 Cloudinary（失敗只是殘留圖片，不影響資料）
+    if (imageUrls.length) { try { await deleteCloudinaryImages(imageUrls) } catch (e) {} }
+    try { await revalidateSite(['/listings', `/site/${id}`]) } catch (e) {}
+
+    res.json({ ok: true, deletedProperties: propIds.length })
+  } catch (e) {
+    console.error('刪除房東失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
 })
 
 module.exports = router

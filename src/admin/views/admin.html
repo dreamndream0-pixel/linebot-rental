@@ -2342,6 +2342,7 @@ function renderLandlords() {
       '<button class="action-btn" onclick="openFeaturesEditor(\'' + l.id + '\')">⚙️ 權限設定</button>' +
       '<button class="action-btn" onclick="openLineRichMenuPanel(\'' + l.id + '\')">📱 LINE 圖文</button>' +
       '<button class="action-btn ' + (l.isActive ? 'danger' : '') + '" onclick="toggleLandlord(\'' + l.id + '\', ' + (!l.isActive) + ')">' + (l.isActive ? '停用' : '啟用') + '</button>' +
+      '<button class="action-btn danger" onclick="event.stopPropagation();deleteLandlord(\'' + l.id + '\', \'' + esc(l.name).replace(/'/g, '') + '\', ' + propCount + ')">🗑️ 刪除</button>' +
       '</div>' +
       '<div style="margin-top:10px;border-top:1px solid var(--oat-mid);padding-top:10px;">' +
       '<button onclick="togglePropList(\'' + propListId + '\', this)" style="background:none;border:none;font-size:13px;font-weight:600;color:var(--deep-sage);cursor:pointer;padding:0;">🏠 房源（' + propCount + '）▾</button>' +
@@ -3033,6 +3034,27 @@ async function toggleLandlord(id, isActive) {
   })
   showToast(isActive ? '✅ 已啟用' : '⏸️ 已停用')
   reload()
+}
+
+async function deleteLandlord(id, name, propCount) {
+  var msg = '⚠️ 完全刪除房東「' + name + '」\n\n' +
+    '將永久刪除：\n' +
+    '• 此房東帳號\n' +
+    '• 名下 ' + propCount + ' 筆房源（含照片、預約、評論、維修等所有關聯）\n' +
+    '• 相關代管／租約資料\n\n' +
+    '⛔ 此動作無法復原！\n\n' +
+    '確定要刪除請輸入「刪除」兩個字：'
+  var ans = prompt(msg)
+  if (ans === null) return
+  if (ans.trim() !== '刪除') { showToast('已取消（未輸入「刪除」）'); return }
+  showToast('刪除中…請稍候')
+  try {
+    var res = await fetch('/admin/api/landlord/' + id + '?key=' + encodeURIComponent(KEY), { method: 'DELETE' })
+    var data = await res.json().catch(function(){ return {} })
+    if (!res.ok) { showToast('❌ 刪除失敗：' + (data.error || ('HTTP ' + res.status))); return }
+    showToast('✅ 已刪除房東「' + name + '」與 ' + (data.deletedProperties || 0) + ' 筆房源')
+    reload()
+  } catch (e) { showToast('❌ 連線失敗：' + e.message) }
 }
 
 async function updateBooking(id, status, rejectReason) {
