@@ -645,6 +645,32 @@ document.addEventListener('DOMContentLoaded', function() {
 
 var DATA = null
 var KEY = sessionStorage.getItem('adminKey') || ''
+
+// 後台金鑰改走 HTTP header：自動把 /admin/api/ 請求網址上的 ?key= 拿掉，改放 X-Admin-Key
+// header，金鑰就不會出現在網址與伺服器日誌。包一層 fetch，呼叫端不必逐一修改。
+;(function () {
+  var _origFetch = window.fetch
+  window.fetch = function (input, init) {
+    try {
+      if (typeof input === 'string' && input.indexOf('/admin/api/') !== -1) {
+        var u = new URL(input, window.location.origin)
+        var urlKey = u.searchParams.get('key')
+        u.searchParams.delete('key')
+        init = init || {}
+        var h = init.headers || {}
+        if (typeof Headers !== 'undefined' && h instanceof Headers) {
+          var o = {}; h.forEach(function (v, k) { o[k] = v }); h = o
+        }
+        var theKey = (typeof KEY !== 'undefined' && KEY) ? KEY : urlKey
+        if (theKey) h['X-Admin-Key'] = theKey
+        init.headers = h
+        input = u.pathname + (u.search || '') + (u.hash || '')
+      }
+    } catch (e) {}
+    return _origFetch.call(this, input, init)
+  }
+})()
+
 var currentTab = 'overview'
 var tenantUserTab = 'line'
 var webUsersCache = null

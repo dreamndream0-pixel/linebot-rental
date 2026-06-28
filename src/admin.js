@@ -3,6 +3,18 @@ const express = require('express')
 const path = require('path')
 const router = express.Router()
 
+// 後台金鑰可放在 HTTP header（X-Admin-Key），避免金鑰出現在網址 / 伺服器日誌。
+// 為了相容舊呼叫，header 不存在時仍沿用網址上的 ?key=。
+// 注意：Express 的 req.query 是 getter（每次存取重新解析 URL），直接改 req.query.key
+// 不會留存，因此先快照成固定物件再覆寫，下游 resolveRole(req.query.key) 才讀得到。
+router.use((req, _res, next) => {
+  const headerKey = req.get('X-Admin-Key')
+  const q = Object.assign({}, req.query)
+  if (headerKey) q.key = headerKey
+  Object.defineProperty(req, 'query', { value: q, configurable: true, writable: true })
+  next()
+})
+
 router.use(require('./admin/routes/data'))
 router.use(require('./admin/routes/booking'))
 router.use(require('./admin/routes/repair'))
