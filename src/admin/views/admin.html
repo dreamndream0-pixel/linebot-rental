@@ -4451,6 +4451,12 @@ function openManagedForm(id) {
       '<h3 style="margin:0;">' + (isEdit ? '編輯委託物業' : '新增委託物業') + '</h3>' +
       '<button onclick="closeManagedModal()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
     '</div>' +
+    (DATA.role === 'super'
+      ? '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">所屬房東／管理者 *</label>' +
+        '<select id="m_landlordId" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;">' +
+          (DATA.landlords || []).map(function(l){ return '<option value="' + l.id + '"' + (m.landlordId === l.id ? ' selected' : '') + '>' + esc(l.name || l.id) + '</option>' }).join('') +
+        '</select>'
+      : '') +
     mInput('物業名稱 *', 'm_title', m.title) +
     mInput('地址', 'm_address', m.address) +
     '<div style="display:flex;gap:10px;">' +
@@ -4523,12 +4529,21 @@ async function saveManaged(id) {
     contractStart: val('m_contractStart'), contractEnd: val('m_contractEnd'),
   }
   if (!body.title || !body.ownerName) { showToast('❌ 物業名稱與屋主姓名必填'); return }
+  var llSel = document.getElementById('m_landlordId')
+  if (llSel) {
+    if (!llSel.value) { showToast('❌ 請先選擇所屬房東／管理者'); return }
+    body.landlordId = llSel.value
+  }
 
   var url = id ? '/admin/api/managed/' + id : '/admin/api/managed'
   var res = await fetch(url + '?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
   })
-  if (!res.ok) { showToast('❌ 儲存失敗'); return }
+  if (!res.ok) {
+    var d = await res.json().catch(function(){ return {} })
+    showToast('❌ 儲存失敗：' + (d.error || ('HTTP ' + res.status)))
+    return
+  }
   showToast('✅ 已儲存')
   closeManagedModal()
   renderManagedTab()
