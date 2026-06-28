@@ -64,12 +64,53 @@ function maskConfig(config) {
   }
 }
 
+// 帶超時的 GET（避免抓頭像/名稱時拖慢設定載入）
+async function fetchJsonQuick(url, ms = 4000) {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(ms) })
+    return await r.json()
+  } catch (_) { return null }
+}
+
 router.get('/admin/api/social/config', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
   try {
     const config = await getConfig(auth)
-    res.json(maskConfig(config))
+    const masked = maskConfig(config)
+
+    const ig = config.instagram || {}
+    const fb = config.facebook || {}
+    const activePage = (fb.pages || []).find(p => p.id === fb.pageId)
+
+    // 平行抓 IG 名稱/頭像 與 FB 粉專頭像（抓不到就維持空值、不影響其他功能）
+    const [igProfile, fbPic] = await Promise.all([
+      (ig.accountId && ig.accessToken)
+        ? fetchJsonQuick(`${IG_API_BASE}/me?fields=username,profile_picture_url&access_token=${encodeURIComponent(ig.accessToken)}`)
+        : Promise.resolve(null),
+      (activePage && activePage.token)
+        ? fetchJsonQuick(`${FB_API_BASE}/${activePage.id}?fields=picture.width(96).height(96){url}&access_token=${encodeURIComponent(activePage.token)}`)
+        : Promise.resolve(null),
+    ])
+    if (igProfile && igProfile.username) masked.instagram.username = igProfile.username
+    if (igProfile && igProfile.profile_picture_url) masked.instagram.avatar = igProfile.profile_picture_url
+    if (fbPic && fbPic.picture && fbPic.picture.data && fbPic.picture.data.url) masked.facebook.pageAvatar = fbPic.picture.data.url
+
+    res.json(masked)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// 取消連結（清掉該平台的設定）
+router.post('/admin/api/social/disconnect', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const config = await getConfig(auth)
+    if (req.body.platform === 'instagram') config.instagram = {}
+    else if (req.body.platform === 'facebook') config.facebook = {}
+    else return res.status(400).json({ error: 'unknown platform' })
+    await saveConfig(auth, config)
+    res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

@@ -3759,31 +3759,46 @@ function drawSocialTab() {
     return '<option value="' + pg.id + '"' + (pg.id === fb.pageId ? ' selected' : '') + '>' + esc(pg.name) + '</option>'
   }).join('')
 
+  function socialAvatar(url, emoji) {
+    return url
+      ? '<img src="' + esc(url) + '" alt="" style="width:38px;height:38px;border-radius:50%;object-fit:cover;border:1.5px solid var(--oat-mid);flex:none;">'
+      : '<div style="width:38px;height:38px;border-radius:50%;background:#F5F0EA;display:flex;align-items:center;justify-content:center;font-size:18px;flex:none;">' + emoji + '</div>'
+  }
+  var igName = ig.username ? '@' + ig.username : (ig.accountId || '')
+
   el.innerHTML = [
-    '<div class="form-box" style="margin-bottom:20px;">',
-    '<h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">📷 Instagram 串接設定</h3>',
-    '<p style="font-size:12px;color:#aaa;margin-bottom:16px;">點下方按鈕用你的 Instagram 帳號登入授權，系統會自動取得帳號 ID 與權杖，不需手動填寫。</p>',
-
-    '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;">',
-    '<button class="btn" style="width:auto;padding:11px 24px;background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);color:#fff;border:none;" onclick="connectInstagram()">🔗 ' + (connected ? '重新連結 Instagram' : '連結 Instagram 帳號') + '</button>',
+    '<div class="form-box" style="margin-bottom:14px;">',
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">',
+    '<span style="font-size:15px;font-weight:700;">📷 Instagram</span>',
     (connected
-      ? '<span style="font-size:13px;color:var(--deep-sage);font-weight:600;">✅ 已連結（帳號 ID：' + esc(ig.accountId) + '）</span>'
-      : '<span style="font-size:12px;color:var(--gray-light);">尚未連結</span>'),
+      ? '<div style="display:flex;align-items:center;gap:10px;">' +
+          socialAvatar(ig.avatar, '📷') +
+          '<button onclick="disconnectSocial(\'instagram\',\'' + esc(igName).replace(/'/g, '') + '\')" title="點一下可取消連結" style="display:flex;align-items:center;gap:7px;padding:9px 18px;border-radius:999px;border:1.5px solid var(--deep-sage,#4A6741);background:#fff;color:var(--deep-sage,#4A6741);font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis;">' +
+            '<span style="color:#06C755;font-size:10px;">●</span>' + esc(igName) +
+          '</button>' +
+        '</div>'
+      : '<button class="btn" style="width:auto;padding:11px 22px;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);color:#fff;border:none;" onclick="connectInstagram()">🔗 連結 Instagram</button>'
+    ),
     '</div>',
     '</div>',
 
-    '<div class="form-box" style="margin-bottom:20px;">',
-    '<h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">📘 Facebook 粉專串接</h3>',
-    '<p style="font-size:12px;color:#aaa;margin-bottom:16px;">連結後可一鍵自動發到你的 FB <b>粉專</b>。<b>社團無法自動發文</b>（Meta 已關閉社團 API），請用下方一鍵發文的「複製文案／下載照片」手動貼到社團。</p>',
-    '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;">',
-    '<button class="btn" style="width:auto;padding:11px 24px;background:#1877f2;color:#fff;border:none;" onclick="connectFacebook()">🔗 ' + (fbConnected ? '重新連結 Facebook' : '連結 Facebook 粉專') + '</button>',
+    '<div class="form-box" style="margin-bottom:14px;">',
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">',
+    '<span style="font-size:15px;font-weight:700;">📘 Facebook 粉專</span>',
     (fbConnected
-      ? '<span style="font-size:13px;color:var(--deep-sage);font-weight:600;">✅ 已連結' + (fb.pageName ? '（' + esc(fb.pageName) + '）' : '') + '</span>'
-      : '<span style="font-size:12px;color:var(--gray-light);">尚未連結</span>'),
+      ? '<div style="display:flex;align-items:center;gap:10px;">' +
+          socialAvatar(fb.pageAvatar, '📘') +
+          '<button onclick="disconnectSocial(\'facebook\',\'' + esc(fb.pageName || '').replace(/'/g, '') + '\')" title="點一下可取消連結" style="display:flex;align-items:center;gap:7px;padding:9px 18px;border-radius:999px;border:1.5px solid #1877f2;background:#fff;color:#1877f2;font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis;">' +
+            '<span style="color:#06C755;font-size:10px;">●</span><span style="overflow:hidden;text-overflow:ellipsis;">' + esc(fb.pageName || '已連結') + '</span>' +
+          '</button>' +
+        '</div>'
+      : '<button class="btn" style="width:auto;padding:11px 22px;background:#1877f2;color:#fff;border:none;" onclick="connectFacebook()">🔗 連結 Facebook 粉專</button>'
+    ),
     '</div>',
     (fb.pages && fb.pages.length > 1
-      ? '<div style="margin-top:10px;"><label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">發布到哪個粉專</label><select onchange="switchFbPage(this.value)" style="width:100%;max-width:320px;padding:9px 12px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:13px;">' + fbPageOptions + '</select></div>'
+      ? '<div style="margin-top:12px;"><label style="font-size:12px;color:var(--gray-mid);display:block;margin-bottom:4px;">發布到哪個粉專</label><select onchange="switchFbPage(this.value)" style="width:100%;padding:9px 12px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:13px;">' + fbPageOptions + '</select></div>'
       : ''),
+    '<div style="font-size:11px;color:var(--gray-light);margin-top:10px;line-height:1.6;">＊只能自動發到<b>粉專</b>；社團 Meta 已關閉 API，請用下方「複製文案／下載照片」手動貼。</div>',
     '</div>',
 
     '<div class="form-box">',
@@ -3878,6 +3893,21 @@ function connectFacebook() {
     }
   }, 1000)
 }
+// 點已連結的帳號按鈕 → 詢問是否取消連結
+async function disconnectSocial(platform, name) {
+  var label = platform === 'instagram' ? 'Instagram' : 'Facebook 粉專'
+  if (!confirm('要取消與「' + (name || label) + '」的連結嗎？\n取消後需重新連結才能再發文。')) return
+  try {
+    var res = await fetch('/admin/api/social/disconnect', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: platform }),
+    })
+    if (!res.ok) { showToast('❌ 取消失敗'); return }
+    showToast('已取消連結')
+    renderSocialTab()
+  } catch (e) { showToast('❌ 連線失敗：' + e.message) }
+}
+
 async function switchFbPage(pageId) {
   try {
     await fetch('/admin/api/social/fb/page?key=' + encodeURIComponent(KEY), {
