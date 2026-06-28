@@ -77,11 +77,11 @@ router.post('/admin/api/managed', express.json(), async (req, res) => {
         title: b.title,
         address: b.address || '',
         roomCount: parseInt(b.roomCount) || 1,
-        manageType: b.manageType === 'SUBLEASE' ? 'SUBLEASE' : 'TRUST',
+        manageType: ['TRUST', 'SUBLEASE', 'HYBRID'].includes(b.manageType) ? b.manageType : 'TRUST',
         contractStart: b.contractStart ? new Date(b.contractStart) : null,
         contractEnd: b.contractEnd ? new Date(b.contractEnd) : null,
         leaseCost: parseInt(b.leaseCost) || 0,
-        feeType: b.feeType === 'FIXED' ? 'FIXED' : 'PERCENT',
+        feeType: ['PERCENT', 'FIXED', 'ONE_MONTH', 'HALF_MONTH'].includes(b.feeType) ? b.feeType : 'PERCENT',
         feePercent: parseFloat(b.feePercent) || 0,
         feeFixed: parseInt(b.feeFixed) || 0,
         expectedRent: parseInt(b.expectedRent) || 0,
@@ -112,11 +112,11 @@ router.post('/admin/api/managed/:id', express.json(), async (req, res) => {
     const strFields = ['ownerName', 'ownerPhone', 'ownerEmail', 'ownerBank', 'title', 'address', 'note', 'status']
     strFields.forEach(f => { if (b[f] !== undefined) data[f] = b[f] || null })
     if (b.roomCount !== undefined) data.roomCount = parseInt(b.roomCount) || 1
-    if (b.manageType !== undefined) data.manageType = b.manageType === 'SUBLEASE' ? 'SUBLEASE' : 'TRUST'
+    if (b.manageType !== undefined) data.manageType = ['TRUST', 'SUBLEASE', 'HYBRID'].includes(b.manageType) ? b.manageType : 'TRUST'
     if (b.contractStart !== undefined) data.contractStart = b.contractStart ? new Date(b.contractStart) : null
     if (b.contractEnd !== undefined) data.contractEnd = b.contractEnd ? new Date(b.contractEnd) : null
     if (b.leaseCost !== undefined) data.leaseCost = parseInt(b.leaseCost) || 0
-    if (b.feeType !== undefined) data.feeType = b.feeType === 'FIXED' ? 'FIXED' : 'PERCENT'
+    if (b.feeType !== undefined) data.feeType = ['PERCENT', 'FIXED', 'ONE_MONTH', 'HALF_MONTH'].includes(b.feeType) ? b.feeType : 'PERCENT'
     if (b.feePercent !== undefined) data.feePercent = parseFloat(b.feePercent) || 0
     if (b.feeFixed !== undefined) data.feeFixed = parseInt(b.feeFixed) || 0
     if (b.expectedRent !== undefined) data.expectedRent = parseInt(b.expectedRent) || 0
@@ -230,14 +230,16 @@ router.post('/admin/api/managed/:id/payout', express.json(), async (req, res) =>
     let mgmtFee = 0
     let payoutAmount = 0
 
-    if (mp.manageType === 'TRUST') {
-      // 代管：收租 → 扣管理費 → 扣支出 → 撥給屋主
-      mgmtFee = mp.feeType === 'FIXED' ? mp.feeFixed : Math.round(grossRent * mp.feePercent / 100)
-      payoutAmount = grossRent - mgmtFee - expenses
-    } else {
-      // 包租：平台付屋主固定承租成本（leaseCost），支出由平台吸收
+    if (mp.manageType === 'SUBLEASE') {
+      // 包租：管理費為一次性（一個月/半個月），每月撥款＝收租 − 支出
       mgmtFee = 0
-      payoutAmount = mp.leaseCost
+      payoutAmount = grossRent - expenses
+    } else {
+      // 代管 / 包租代管：依管理費方式扣費（一次性的一個月/半個月不列入每月撥款）
+      if (mp.feeType === 'FIXED') mgmtFee = mp.feeFixed
+      else if (mp.feeType === 'PERCENT') mgmtFee = Math.round(grossRent * mp.feePercent / 100)
+      else mgmtFee = 0
+      payoutAmount = grossRent - mgmtFee - expenses
     }
 
     // upsert（同帳期覆蓋）

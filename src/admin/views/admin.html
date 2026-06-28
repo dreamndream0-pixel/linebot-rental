@@ -4432,14 +4432,20 @@ async function renderManagedTab() {
     '<div class="managed-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">' + cards + '</div>'
 }
 
+// 委託類型/管理費的共用顯示
+function mtLabel(t) { return t === 'SUBLEASE' ? '包租' : (t === 'HYBRID' ? '包租代管' : '代管') }
+function mtColor(t) { return t === 'SUBLEASE' ? '#C9913A' : (t === 'HYBRID' ? '#8A6FA8' : '#7A9E7E') }
+function mtFeeText(m) {
+  if (m.feeType === 'ONE_MONTH') return '管理費 一個月租金'
+  if (m.feeType === 'HALF_MONTH') return '管理費 半個月租金'
+  if (m.feeType === 'FIXED') return '管理費 NT$ ' + Number(m.feeFixed || 0).toLocaleString() + '/月'
+  return '管理費 ' + (m.feePercent || 0) + '%'
+}
+
 function managedCard(m) {
-  var typeLabel = m.manageType === 'SUBLEASE' ? '包租' : '代管'
-  var typeColor = m.manageType === 'SUBLEASE' ? '#C9913A' : '#7A9E7E'
-  var feeText = m.manageType === 'SUBLEASE'
-    ? ('承租成本 NT$ ' + Number(m.leaseCost).toLocaleString() + '/月')
-    : (m.feeType === 'FIXED'
-        ? ('管理費 NT$ ' + Number(m.feeFixed).toLocaleString() + '/月')
-        : ('管理費 ' + m.feePercent + '%'))
+  var typeLabel = mtLabel(m.manageType)
+  var typeColor = mtColor(m.manageType)
+  var feeText = mtFeeText(m)
 
   return '<div class="card" style="padding:18px;border:1px solid #E5E0D5;border-radius:14px;background:#fff;">' +
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">' +
@@ -4449,8 +4455,8 @@ function managedCard(m) {
     '</div>' +
     '<div style="font-size:13px;color:#666;line-height:1.8;">' +
       '👤 屋主：' + esc(m.ownerName) + (m.ownerPhone ? '（' + esc(m.ownerPhone) + '）' : '') + '<br>' +
-      '🏠 房間數：' + m.roomCount + '　|　' + feeText + '<br>' +
-      '💰 預期租金：NT$ ' + Number(m.expectedRent).toLocaleString() + '/月' +
+      '🏠 房間數：' + m.roomCount + '　|　' + feeText +
+      (m.manageType === 'HYBRID' ? '<br>💰 預期租金：NT$ ' + Number(m.expectedRent || 0).toLocaleString() + '/月' : '') +
     '</div>' +
     '<div style="display:flex;gap:8px;margin-top:14px;">' +
       '<button class="btn" style="flex:1;width:auto;white-space:nowrap;font-size:13px;padding:8px 4px;" onclick="openManagedDetail(\'' + m.id + '\')">明細對帳</button>' +
@@ -4492,36 +4498,35 @@ function openManagedForm(id) {
       '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">委託類型</label>' +
         '<select id="m_manageType" onchange="toggleFeeFields()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
           '<option value="TRUST"' + (m.manageType==='TRUST'?' selected':'') + '>代管（抽管理費）</option>' +
-          '<option value="SUBLEASE"' + (m.manageType==='SUBLEASE'?' selected':'') + '>包租（賺價差）</option>' +
+          '<option value="SUBLEASE"' + (m.manageType==='SUBLEASE'?' selected':'') + '>包租（收一次管理費）</option>' +
+          '<option value="HYBRID"' + (m.manageType==='HYBRID'?' selected':'') + '>包租代管（綜合）</option>' +
         '</select></div>' +
     '</div>' +
-    // 代管費設定
-    '<div id="trustFields" style="' + (m.manageType==='SUBLEASE'?'display:none;':'') + '">' +
+    // 管理費設定（選項依委託類型動態變化，由 toggleFeeFields 填入）
+    '<div id="feeBlock">' +
       '<label style="font-size:12px;color:#888;display:block;margin:10px 0 4px;">管理費方式</label>' +
-      '<select id="m_feeType" onchange="toggleFeeFields()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;">' +
-        '<option value="PERCENT"' + (m.feeType==='PERCENT'?' selected':'') + '>抽成（%）</option>' +
-        '<option value="FIXED"' + (m.feeType==='FIXED'?' selected':'') + '>固定金額</option>' +
-      '</select>' +
-      '<div id="feePercentBox" style="' + (m.feeType==='FIXED'?'display:none;':'') + '">' + mInput('抽成百分比 %', 'm_feePercent', m.feePercent, 'number') + '</div>' +
-      '<div id="feeFixedBox" style="' + (m.feeType!=='FIXED'?'display:none;':'') + '">' + mInput('固定管理費 /月', 'm_feeFixed', m.feeFixed, 'number') + '</div>' +
+      '<select id="m_feeType" onchange="toggleFeeFields()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;"></select>' +
+      '<div id="feePercentBox">' + mInput('抽成百分比 %', 'm_feePercent', m.feePercent, 'number') + '</div>' +
+      '<div id="feeFixedBox">' + mInput('固定管理費 /月', 'm_feeFixed', m.feeFixed, 'number') + '</div>' +
     '</div>' +
-    // 包租成本
-    '<div id="subleaseFields" style="' + (m.manageType!=='SUBLEASE'?'display:none;':'') + '">' +
-      mInput('承租成本（每月付屋主）', 'm_leaseCost', m.leaseCost, 'number') +
-    '</div>' +
-    mInput('預期租金收入 /月', 'm_expectedRent', m.expectedRent, 'number') +
+    // 承租成本（僅綜合版顯示）
+    '<div id="leaseCostBox">' + mInput('承租成本（每月付屋主）', 'm_leaseCost', m.leaseCost, 'number') + '</div>' +
+    // 預期租金收入（僅綜合版顯示）
+    '<div id="expectedRentBox">' + mInput('預期租金收入 /月', 'm_expectedRent', m.expectedRent, 'number') + '</div>' +
     '<div style="display:flex;gap:10px;">' +
       '<div style="flex:1;">' + mInput('合約起日', 'm_contractStart', fmtDate(m.contractStart), 'date') + '</div>' +
       '<div style="flex:1;">' + mInput('合約迄日', 'm_contractEnd', fmtDate(m.contractEnd), 'date') + '</div>' +
     '</div>' +
-    '<div style="display:flex;gap:8px;margin-top:18px;">' +
-      (isEdit ? '<button class="btn" style="background:#C0524A;" onclick="deleteManaged(\'' + m.id + '\')">刪除</button>' : '') +
-      '<button class="btn" style="flex:1;background:var(--deep-sage,#4A6741);" onclick="saveManaged(' + (isEdit ? "'" + m.id + "'" : 'null') + ')">儲存</button>' +
+    '<div style="display:flex;gap:8px;margin-top:18px;align-items:center;">' +
+      '<button class="btn" style="flex:1;width:auto;background:var(--deep-sage,#4A6741);padding:13px;font-size:15px;font-weight:700;" onclick="saveManaged(' + (isEdit ? "'" + m.id + "'" : 'null') + ')">儲存</button>' +
+      (isEdit ? '<button class="btn" style="width:auto;background:#C0524A;padding:9px 14px;font-size:13px;" onclick="deleteManaged(\'' + m.id + '\')">刪除</button>' : '') +
     '</div>' +
     '</div></div>'
 
   var ex = document.getElementById('managedModal'); if (ex) ex.remove()
+  window._managedInitFeeType = m.feeType || 'PERCENT'
   document.body.insertAdjacentHTML('beforeend', html)
+  toggleFeeFields()
 }
 
 function mInput(label, id, val, type) {
@@ -4531,13 +4536,26 @@ function mInput(label, id, val, type) {
 
 function toggleFeeFields() {
   var type = document.getElementById('m_manageType').value
-  document.getElementById('trustFields').style.display = type === 'SUBLEASE' ? 'none' : 'block'
-  document.getElementById('subleaseFields').style.display = type === 'SUBLEASE' ? 'block' : 'none'
   var ft = document.getElementById('m_feeType')
-  if (ft) {
-    document.getElementById('feePercentBox').style.display = ft.value === 'FIXED' ? 'none' : 'block'
-    document.getElementById('feeFixedBox').style.display = ft.value === 'FIXED' ? 'block' : 'none'
-  }
+
+  // 依委託類型決定「管理費方式」可選項
+  var opts = []
+  if (type === 'TRUST' || type === 'HYBRID') { opts.push(['PERCENT', '抽成（%）'], ['FIXED', '固定金額']) }
+  if (type === 'SUBLEASE' || type === 'HYBRID') { opts.push(['ONE_MONTH', '一個月租金'], ['HALF_MONTH', '半個月租金']) }
+
+  // 保留原本選擇（仍有效就保留，否則取第一個）
+  var prev = ft.value || window._managedInitFeeType || ''
+  var values = opts.map(function(o){ return o[0] })
+  var sel = values.indexOf(prev) >= 0 ? prev : (values[0] || '')
+  ft.innerHTML = opts.map(function(o){ return '<option value="' + o[0] + '"' + (o[0] === sel ? ' selected' : '') + '>' + o[1] + '</option>' }).join('')
+  window._managedInitFeeType = ''
+
+  // 金額輸入框：只有抽成/固定才需要填數字
+  document.getElementById('feePercentBox').style.display = sel === 'PERCENT' ? 'block' : 'none'
+  document.getElementById('feeFixedBox').style.display = sel === 'FIXED' ? 'block' : 'none'
+  // 承租成本與預期收入：只有「包租代管（綜合）」才顯示
+  document.getElementById('leaseCostBox').style.display = type === 'HYBRID' ? 'block' : 'none'
+  document.getElementById('expectedRentBox').style.display = type === 'HYBRID' ? 'block' : 'none'
 }
 
 function closeManagedModal() { var m = document.getElementById('managedModal'); if (m) m.remove() }
@@ -4593,7 +4611,7 @@ async function openManagedDetail(id) {
 
 function renderManagedDetail() {
   var m = MANAGED.current
-  var typeLabel = m.manageType === 'SUBLEASE' ? '包租' : '代管'
+  var typeLabel = mtLabel(m.manageType)
 
   var incomeRows = (m.incomes || []).map(function(r) {
     var sign = r.type === 'INCOME' ? '+' : '−'
@@ -4723,7 +4741,7 @@ async function showManagedReport() {
   var s = data.summary
 
   var rows = data.byProperty.map(function(p) {
-    var typeLabel = p.manageType === 'SUBLEASE' ? '包租' : '代管'
+    var typeLabel = mtLabel(p.manageType)
     return '<tr>' +
       '<td style="padding:8px;font-size:13px;">' + esc(p.title) + '<br><span style="font-size:11px;color:#999;">' + esc(p.ownerName) + '・' + typeLabel + '</span></td>' +
       '<td style="padding:8px;font-size:13px;color:#4A8A4A;">' + Number(p.income).toLocaleString() + '</td>' +
