@@ -886,8 +886,19 @@ function renderOverview() {
 }
 
 // ── 房源 CSV 匯出 ──────────────────────────────────────────────────
-function exportProperties() {
-  window.open('/admin/api/property/export?key=' + encodeURIComponent(KEY), '_blank')
+// 用 fetch（金鑰走 header）下載成 blob，再觸發下載，避免金鑰出現在網址
+async function exportProperties() {
+  try {
+    var res = await fetch('/admin/api/property/export')
+    if (!res.ok) { showToast('❌ 匯出失敗'); return }
+    var blob = await res.blob()
+    var url = URL.createObjectURL(blob)
+    var a = document.createElement('a')
+    a.href = url
+    a.download = 'properties_' + new Date().toISOString().slice(0, 10) + '.csv'
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(function(){ URL.revokeObjectURL(url) }, 2000)
+  } catch (e) { showToast('❌ 匯出失敗：' + e.message) }
 }
 
 // ── 下載範本 ──────────────────────────────────────────────────────
@@ -3861,31 +3872,34 @@ function resetSocialCaption() {
   socialCaptionEdited = false
 }
 
-// 開新視窗跑 Instagram OAuth 授權，完成後自動重新整理設定
-function connectInstagram() {
-  var url = '/admin/api/social/ig/connect?key=' + encodeURIComponent(KEY)
-  var w = window.open(url, 'ig_oauth', 'width=600,height=720')
+// 先以 header 取得一次性票券，OAuth 彈窗網址只帶 ticket，不帶後台金鑰
+async function getOauthTicket() {
+  try {
+    var res = await fetch('/admin/api/social/oauth-ticket', { method: 'POST' })
+    if (!res.ok) return ''
+    var d = await res.json()
+    return d.ticket || ''
+  } catch (e) { return '' }
+}
+
+// 先同步開好空白彈窗（避免被擋），拿到票券後再導向授權頁
+function openOauthPopup(path, name, platformLabel) {
+  var w = window.open('about:blank', name, 'width=600,height=720')
+  getOauthTicket().then(function(ticket) {
+    if (!ticket) { if (w) w.close(); showToast('❌ 取得授權票券失敗，請重新登入後台'); return }
+    if (w) w.location = path + '?ticket=' + encodeURIComponent(ticket)
+  })
   var timer = setInterval(function() {
     if (w && w.closed) {
       clearInterval(timer)
       renderSocialTab()
-      showToast('已更新 Instagram 連結狀態')
+      showToast('已更新 ' + platformLabel + ' 連結狀態')
     }
   }, 1000)
 }
 
-// Facebook 粉專 OAuth 授權
-function connectFacebook() {
-  var url = '/admin/api/social/fb/connect?key=' + encodeURIComponent(KEY)
-  var w = window.open(url, 'fb_oauth', 'width=600,height=720')
-  var timer = setInterval(function() {
-    if (w && w.closed) {
-      clearInterval(timer)
-      renderSocialTab()
-      showToast('已更新 Facebook 連結狀態')
-    }
-  }, 1000)
-}
+function connectInstagram() { openOauthPopup('/admin/api/social/ig/connect', 'ig_oauth', 'Instagram') }
+function connectFacebook() { openOauthPopup('/admin/api/social/fb/connect', 'fb_oauth', 'Facebook') }
 // 點已連結的帳號按鈕 → 詢問是否取消連結
 async function disconnectSocial(platform, name) {
   var label = platform === 'instagram' ? 'Instagram' : 'Facebook 粉專'

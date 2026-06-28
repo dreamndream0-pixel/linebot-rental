@@ -14,6 +14,8 @@ function parseFeatures(json) {
 router.get('/admin/api/landlord/:id/features', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  // 房東只能查自己的 features；super 可查任意
+  if (auth.role !== 'super' && auth.landlordId !== req.params.id) return res.status(403).json({ error: 'forbidden' })
   try {
     const rows = await prisma.$queryRawUnsafe(`SELECT features FROM landlords WHERE id = $1`, req.params.id)
     res.json(parseFeatures(rows[0]?.features))

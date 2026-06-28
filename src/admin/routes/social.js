@@ -348,6 +348,27 @@ function makeState(key) {
   return state
 }
 
+// 一次性票券：OAuth 彈窗是頁面導向（無法帶 header），改用短效單次票券換金鑰，
+// 避免把後台金鑰直接放進彈窗網址。前端先以 header 取得 ticket，再用 ?ticket= 開窗。
+const oauthTickets = new Map()
+router.post('/admin/api/social/oauth-ticket', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  const ticket = require('crypto').randomBytes(18).toString('hex')
+  oauthTickets.set(ticket, { key: req.query.key, expires: Date.now() + 2 * 60 * 1000 })
+  for (const [t, v] of oauthTickets) if (v.expires < Date.now()) oauthTickets.delete(t)
+  res.json({ ticket })
+})
+// 從 ticket 換回金鑰（單次、用後即焚）；沒帶 ticket 時相容舊的 ?key=
+function keyFromTicket(req) {
+  const t = req.query.ticket
+  if (!t) return req.query.key
+  const entry = oauthTickets.get(t)
+  if (!entry || entry.expires < Date.now()) { oauthTickets.delete(t); return null }
+  oauthTickets.delete(t)
+  return entry.key
+}
+
 function publicBase(req) {
   const host = req.get('host')
   const proto = /localhost|127\.0\.0\.1/.test(host) ? 'http' : 'https'
@@ -367,12 +388,13 @@ function popupClose(message) {
 }
 
 router.get('/admin/api/social/ig/connect', async (req, res) => {
-  const auth = await resolveRole(req.query.key)
+  const key = keyFromTicket(req)
+  const auth = await resolveRole(key)
   if (!auth) return res.status(401).send(popupClose('授權失敗：登入狀態無效，請重新登入後台。'))
   if (!IG_APP_ID || !IG_APP_SECRET) {
     return res.status(500).send(popupClose('系統尚未設定 Instagram 應用程式（IG_APP_ID / IG_APP_SECRET），請聯絡管理員。'))
   }
-  const state = makeState(req.query.key)
+  const state = makeState(key)
   const scope = 'instagram_business_basic,instagram_business_content_publish'
   const url = 'https://www.instagram.com/oauth/authorize'
     + '?client_id=' + encodeURIComponent(IG_APP_ID)
@@ -445,12 +467,13 @@ const FB_APP_ID = process.env.FB_APP_ID
 const FB_APP_SECRET = process.env.FB_APP_SECRET
 
 router.get('/admin/api/social/fb/connect', async (req, res) => {
-  const auth = await resolveRole(req.query.key)
+  const key = keyFromTicket(req)
+  const auth = await resolveRole(key)
   if (!auth) return res.status(401).send(popupClose('授權失敗：登入狀態無效，請重新登入後台。'))
   if (!FB_APP_ID || !FB_APP_SECRET) {
     return res.status(500).send(popupClose('系統尚未設定 Facebook 應用程式（FB_APP_ID / FB_APP_SECRET），請聯絡管理員。'))
   }
-  const state = makeState(req.query.key)
+  const state = makeState(key)
   const scope = 'pages_show_list,pages_manage_posts,pages_read_engagement'
   const url = 'https://www.facebook.com/v21.0/dialog/oauth'
     + '?client_id=' + encodeURIComponent(FB_APP_ID)
