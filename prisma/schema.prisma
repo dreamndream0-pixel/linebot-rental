@@ -568,6 +568,8 @@ model ManagementRecord {
   managedProperty    ManagedProperty @relation(fields: [managedPropertyId], references: [id], onDelete: Cascade)
   leaseId            String?
   lease              Lease?          @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+  payoutId           String?
+  payout             OwnerPayout?    @relation(fields: [payoutId], references: [id], onDelete: SetNull)
 
   type        String    // 'INCOME'(收入：租金) 或 'EXPENSE'(支出：維修/雜支)
   category    String    // 'RENT'(租金) / 'REPAIR'(維修) / 'UTILITY'(水電) / 'OTHER'(其他)
@@ -578,6 +580,7 @@ model ManagementRecord {
 
   @@index([managedPropertyId])
   @@index([leaseId])
+  @@index([payoutId])
   @@index([recordDate])
   @@map("management_records")
 }
@@ -597,6 +600,7 @@ model OwnerPayout {
   paidDate    DateTime? // 撥款日期
   note        String?
   createdAt   DateTime  @default(now())
+  records     ManagementRecord[]
 
   @@unique([managedPropertyId, period])
   @@index([managedPropertyId])

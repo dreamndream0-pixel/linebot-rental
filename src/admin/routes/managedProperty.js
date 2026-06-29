@@ -80,6 +80,33 @@ function buildRentSchedule(lease, records) {
   return rows
 }
 
+function assertPeriod(period) {
+  return typeof period === 'string' && /^\d{4}-\d{2}$/.test(period)
+}
+
+function periodEndDate(period) {
+  const [year, month] = period.split('-').map(Number)
+  return new Date(year, month, 1)
+}
+
+function calculateOwnerPayout(mp, records) {
+  const grossRent = records.filter(r => r.type === 'INCOME').reduce((s, r) => s + r.amount, 0)
+  const expenses = records.filter(r => r.type === 'EXPENSE').reduce((s, r) => s + r.amount, 0)
+  let mgmtFee = 0
+  let payoutAmount = 0
+
+  if (mp.manageType === 'SUBLEASE') {
+    mgmtFee = 0
+    payoutAmount = grossRent - expenses
+  } else {
+    if (mp.feeType === 'FIXED') mgmtFee = mp.feeFixed
+    else if (mp.feeType === 'PERCENT') mgmtFee = Math.round(grossRent * mp.feePercent / 100)
+    payoutAmount = grossRent - mgmtFee - expenses
+  }
+
+  return { grossRent, expenses, mgmtFee, payoutAmount }
+}
+
 // ── 委託物業列表 ──────────────────────────────────────────────
 router.get('/admin/api/managed', async (req, res) => {
   const auth = await resolveRole(req.query.key)
@@ -110,7 +137,10 @@ router.get('/admin/api/managed/:id', async (req, res) => {
       where: { id: req.params.id },
       include: {
         incomes: { orderBy: { recordDate: 'desc' } },
-        payouts: { orderBy: { period: 'desc' } },
+        payouts: {
+          orderBy: { period: 'desc' },
+          include: { records: { orderBy: { recordDate: 'asc' } } },
+        },
       },
     })
     if (!item) return res.status(404).json({ error: 'not found' })
@@ -267,6 +297,7 @@ router.delete('/admin/api/managed/record/:recordId', async (req, res) => {
     if (auth.role !== 'super' && record.managedProperty.landlordId !== auth.landlordId) {
       return res.status(403).json({ error: 'forbidden' })
     }
+    if (record.payoutId) return res.status(400).json({ error: '此收支已結算到撥款單，不能直接刪除' })
     await prisma.managementRecord.delete({ where: { id: req.params.recordId } })
     res.json({ ok: true })
   } catch (e) {
@@ -274,14 +305,53 @@ router.delete('/admin/api/managed/record/:recordId', async (req, res) => {
   }
 })
 
-// ── 計算並產生某帳期的屋主撥款 ────────────────────────────────
-// 自動依該物業的收支與管理費規則計算
+// ── 預覽某帳期可結算的屋主撥款 ────────────────────────────────
+router.post('/admin/api/managed/:id/payout-preview', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  const period = req.body.period
+  if (!assertPeriod(period)) return res.status(400).json({ error: '帳期格式須為 YYYY-MM' })
+
+  try {
+    const mp = await prisma.managedProperty.findUnique({ where: { id: req.params.id } })
+    if (!mp) return res.status(404).json({ error: 'not found' })
+    if (auth.role !== 'super' && mp.landlordId !== auth.landlordId) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+
+    const existing = await prisma.ownerPayout.findUnique({
+      where: { managedPropertyId_period: { managedPropertyId: req.params.id, period } },
+      include: { records: { orderBy: { recordDate: 'asc' } } },
+    })
+    if (existing?.status === 'PAID') {
+      return res.status(400).json({ error: '此帳期已付款，不能重新計算；新收支請放到下一期結算' })
+    }
+
+    const end = periodEndDate(period)
+    const records = await prisma.managementRecord.findMany({
+      where: {
+        managedPropertyId: req.params.id,
+        recordDate: { lt: end },
+        OR: existing ? [{ payoutId: null }, { payoutId: existing.id }] : [{ payoutId: null }],
+      },
+      orderBy: { recordDate: 'asc' },
+    })
+    res.json({ period, existingPayoutId: existing?.id || null, ...calculateOwnerPayout(mp, records), records })
+  } catch (e) {
+    console.error('預覽撥款失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── 確認建立某帳期的屋主撥款 ────────────────────────────────
+// 只結算尚未綁定 payoutId 的收支；確認後會把本次明細鎖定到撥款單
 router.post('/admin/api/managed/:id/payout', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
   const period = req.body.period  // 'YYYY-MM'
-  if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+  if (!assertPeriod(period)) {
     return res.status(400).json({ error: '帳期格式須為 YYYY-MM' })
   }
 
@@ -292,37 +362,49 @@ router.post('/admin/api/managed/:id/payout', express.json(), async (req, res) =>
       return res.status(403).json({ error: 'forbidden' })
     }
 
-    // 該帳期的收支
-    const [year, month] = period.split('-').map(Number)
-    const start = new Date(year, month - 1, 1)
-    const end = new Date(year, month, 1)
-    const records = await prisma.managementRecord.findMany({
-      where: { managedPropertyId: req.params.id, recordDate: { gte: start, lt: end } },
+    const existing = await prisma.ownerPayout.findUnique({
+      where: { managedPropertyId_period: { managedPropertyId: req.params.id, period } },
+      include: { records: true },
     })
-
-    const grossRent = records.filter(r => r.type === 'INCOME').reduce((s, r) => s + r.amount, 0)
-    const expenses = records.filter(r => r.type === 'EXPENSE').reduce((s, r) => s + r.amount, 0)
-
-    let mgmtFee = 0
-    let payoutAmount = 0
-
-    if (mp.manageType === 'SUBLEASE') {
-      // 包租：管理費為一次性（一個月/半個月），每月撥款＝收租 − 支出
-      mgmtFee = 0
-      payoutAmount = grossRent - expenses
-    } else {
-      // 代管 / 包租代管：依管理費方式扣費（一次性的一個月/半個月不列入每月撥款）
-      if (mp.feeType === 'FIXED') mgmtFee = mp.feeFixed
-      else if (mp.feeType === 'PERCENT') mgmtFee = Math.round(grossRent * mp.feePercent / 100)
-      else mgmtFee = 0
-      payoutAmount = grossRent - mgmtFee - expenses
+    if (existing?.status === 'PAID') {
+      return res.status(400).json({ error: '此帳期已付款，不能重新計算；新收支請放到下一期結算' })
     }
 
-    // upsert（同帳期覆蓋）
-    const payout = await prisma.ownerPayout.upsert({
-      where: { managedPropertyId_period: { managedPropertyId: req.params.id, period } },
-      update: { grossRent, mgmtFee, expenses, payoutAmount },
-      create: { managedPropertyId: req.params.id, period, grossRent, mgmtFee, expenses, payoutAmount },
+    const end = periodEndDate(period)
+    const records = await prisma.managementRecord.findMany({
+      where: {
+        managedPropertyId: req.params.id,
+        recordDate: { lt: end },
+        OR: existing ? [{ payoutId: null }, { payoutId: existing.id }] : [{ payoutId: null }],
+      },
+      orderBy: { recordDate: 'asc' },
+    })
+    const { grossRent, expenses, mgmtFee, payoutAmount } = calculateOwnerPayout(mp, records)
+    if (!records.length) return res.status(400).json({ error: '目前沒有可結算的收支明細' })
+
+    const payout = await prisma.$transaction(async tx => {
+      let saved
+      if (existing) {
+        await tx.managementRecord.updateMany({ where: { payoutId: existing.id }, data: { payoutId: null } })
+        saved = await tx.ownerPayout.update({
+          where: { id: existing.id },
+          data: { grossRent, mgmtFee, expenses, payoutAmount },
+        })
+      } else {
+        saved = await tx.ownerPayout.create({
+          data: { managedPropertyId: req.params.id, period, grossRent, mgmtFee, expenses, payoutAmount },
+        })
+      }
+      if (records.length) {
+        await tx.managementRecord.updateMany({
+          where: { id: { in: records.map(r => r.id) } },
+          data: { payoutId: saved.id },
+        })
+      }
+      return tx.ownerPayout.findUnique({
+        where: { id: saved.id },
+        include: { records: { orderBy: { recordDate: 'asc' } } },
+      })
     })
     res.json(payout)
   } catch (e) {
