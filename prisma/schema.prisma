@@ -622,7 +622,9 @@ model Lease {
 
   // 租約條款
   roomLabel     String?   // 房號/單位（如：A 房、3 樓）
-  rent          Int       @default(0)    // 月租金
+  rent          Int       @default(0)    // 月租金（原價）
+  discountType  String    @default("NONE")  // NONE / FIXED(折固定金額) / PERCENT(折%數)
+  discountValue Float     @default(0)        // FIXED=折扣金額；PERCENT=折扣百分比
   deposit       Int       @default(0)    // 押金
   payDay        Int?      // 每月付款日（1-31）
   payMethod     String?   // 付款方式

@@ -82,6 +82,14 @@
     border-top-color: var(--deep-sage);
   }
   @keyframes btnSpin { to { transform: rotate(360deg); } }
+  /* 給非 .btn/.action-btn 的小型可點擊元素用（如表格內鉛筆、分頁小圓鈕）：點擊後立即可見轉圈回饋 */
+  .spin-btn.loading { opacity: 0.5; pointer-events: none; }
+  .spin-btn.loading::after {
+    content: ''; display: inline-block; width: 10px; height: 10px;
+    border: 2px solid rgba(0,0,0,0.2); border-top-color: var(--deep-sage, #4A6741);
+    border-radius: 50%; animation: btnSpin 0.7s linear infinite;
+    margin-left: 5px; vertical-align: middle;
+  }
   /* ripple on click */
   .btn-ripple {
     position: absolute; border-radius: 50%;
@@ -4507,13 +4515,29 @@ async function renderManagedTab() {
   el.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-        '<button class="btn" style="width:auto;white-space:nowrap;padding:10px 18px;" onclick="openManagedForm()">＋ 新增委託</button>' +
-        '<button class="btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#5A7D8C;" onclick="showLeaseList()">📋 代管清單</button>' +
-        '<button class="btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#6B7F6E;" onclick="showManagedReport()">📊 收支報表</button>' +
+        '<button class="btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#5A7D8C;" onclick="btnLoad(this, showLeaseList)">📋 代管清單</button>' +
+        '<button class="btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#6B7F6E;" onclick="btnLoad(this, showManagedReport)">📊 收支報表</button>' +
       '</div>' +
     '</div>' +
     '<div id="managedReportBox"></div>' +
-    '<div class="managed-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">' + cards + '</div>'
+    '<details style="margin-top:6px;">' +
+      '<summary style="cursor:pointer;font-weight:700;font-size:15px;padding:10px 2px;list-style:none;display:flex;align-items:center;gap:8px;">' +
+        '<span style="display:inline-block;transition:transform .15s;">▸</span> 📁 委託列表（' + MANAGED.list.length + '）' +
+      '</summary>' +
+      '<div style="padding-top:10px;">' +
+        '<button class="btn" style="width:auto;white-space:nowrap;padding:10px 18px;margin-bottom:14px;" onclick="openManagedForm()">＋ 新增委託</button>' +
+        '<div class="managed-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">' + cards + '</div>' +
+      '</div>' +
+    '</details>'
+
+  var sumEl = el.querySelector('details summary')
+  if (sumEl) sumEl.addEventListener('click', function() {
+    var arrow = sumEl.querySelector('span')
+    setTimeout(function() {
+      var open = sumEl.parentElement.open
+      if (arrow) arrow.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)'
+    }, 0)
+  })
 }
 
 // 常見銀行（屋主匯款選單用）
@@ -4549,8 +4573,8 @@ function managedCard(m) {
       '🏠 房間數：' + m.roomCount + '　|　' + feeText +
     '</div>' +
     '<div style="display:flex;gap:8px;margin-top:14px;">' +
-      '<button class="btn" style="flex:1;width:auto;white-space:nowrap;font-size:13px;padding:8px 4px;" onclick="openManagedDetail(\'' + m.id + '\')">明細對帳</button>' +
-      '<button class="btn" style="flex:1;width:auto;white-space:nowrap;background:#5A7D8C;font-size:13px;padding:8px 4px;" onclick="openContractManager(\'' + m.id + '\')">合約租約</button>' +
+      '<button class="btn" style="flex:1;width:auto;white-space:nowrap;font-size:13px;padding:8px 4px;" onclick="btnLoad(this, function(){ return openManagedDetail(\'' + m.id + '\') })">明細對帳</button>' +
+      '<button class="btn" style="flex:1;width:auto;white-space:nowrap;background:#5A7D8C;font-size:13px;padding:8px 4px;" onclick="btnLoad(this, function(){ return openContractManager(\'' + m.id + '\') })">合約租約</button>' +
       '<button class="btn" style="flex:1;width:auto;white-space:nowrap;background:#8A8A8A;font-size:13px;padding:8px 4px;" onclick="openManagedForm(\'' + m.id + '\')">編輯</button>' +
     '</div>' +
   '</div>'
@@ -4924,39 +4948,24 @@ function reportStat(label, value, color) {
 // ═══════════════════════════════════════════════════════════════
 
 // 在明細對帳視窗加「合約管理」按鈕 → 開合約視窗
+var _leaseFormOrigin = 'contract'  // 'contract'=從合約租約視窗開的；'list'=從代管清單鉛筆開的
+
 async function openContractManager(id) {
-  var res = await fetch('/admin/api/managed/' + id + '?key=' + encodeURIComponent(KEY))
-  if (!res.ok) { showToast('❌ 載入失敗'); return }
-  MANAGED.current = await res.json()
-  // 載入租約
-  var lres = await fetch('/admin/api/managed/' + id + '/leases?key=' + encodeURIComponent(KEY))
-  MANAGED.leases = lres.ok ? await lres.json() : []
+  _leaseFormOrigin = 'contract'
+  // 兩支彼此無關，平行打省一次來回
+  var results = await Promise.all([
+    fetch('/admin/api/managed/' + id + '?key=' + encodeURIComponent(KEY)),
+    fetch('/admin/api/managed/' + id + '/leases?key=' + encodeURIComponent(KEY)),
+  ])
+  if (!results[0].ok) { showToast('❌ 載入失敗'); return }
+  MANAGED.current = await results[0].json()
+  MANAGED.leases = results[1].ok ? await results[1].json() : []
   renderContractManager()
 }
 
 function renderContractManager() {
   var m = MANAGED.current
   function fmtDate(d) { return d ? new Date(d).toISOString().slice(0,10) : '' }
-
-  // 委託合約條款區
-  var ownerContract =
-    '<div style="background:#F8F6F2;border-radius:12px;padding:16px;margin-bottom:18px;">' +
-      '<div style="font-weight:700;font-size:14px;margin-bottom:10px;">📋 委託合約（屋主 ' + esc(m.ownerName) + '）</div>' +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
-        '<div style="flex:1;min-width:120px;">' + mInput('押金', 'c_deposit', m.deposit, 'number') + '</div>' +
-        '<div style="flex:1;min-width:120px;">' + mInput('每月付款日', 'c_payDay', m.payDay, 'number') + '</div>' +
-        '<div style="flex:1;min-width:120px;">' + mInput('付款方式', 'c_payMethod', m.payMethod) + '</div>' +
-      '</div>' +
-      '<div style="margin-top:10px;">' +
-        '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">委託合約文件</label>' +
-        '<div style="display:flex;align-items:center;gap:10px;">' +
-          (m.contractFile ? '<a href="' + esc(m.contractFile) + '" target="_blank" style="color:#4A6741;font-size:13px;">📄 查看已上傳合約</a>' : '<span style="font-size:13px;color:#aaa;">尚未上傳</span>') +
-          '<input type="file" id="c_file" accept="image/*,application/pdf" onchange="uploadContractFile(this,\'managed\')" style="font-size:12px;">' +
-          '<span id="c_file_status" style="font-size:12px;color:#4A8A4A;"></span>' +
-        '</div>' +
-      '</div>' +
-      '<button class="btn" style="margin-top:12px;padding:8px 18px;font-size:13px;" onclick="saveContract()">儲存委託合約</button>' +
-    '</div>'
 
   // 租約列表
   var leaseRows = (MANAGED.leases || []).map(function(l) {
@@ -4987,7 +4996,6 @@ function renderContractManager() {
       '<h3 style="margin:0;">合約管理 — ' + esc(m.title) + '</h3>' +
       '<button onclick="closeContractModal()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
     '</div>' +
-    ownerContract +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
       '<div style="font-weight:700;font-size:14px;">🏠 租賃合約（租客）</div>' +
       '<button class="btn" style="padding:6px 14px;font-size:13px;" onclick="openLeaseForm()">+ 新增租約</button>' +
@@ -5068,9 +5076,18 @@ async function openLeaseForm(leaseId) {
       '<div style="flex:1;">' + mInput('身分證字號', 'l_tenantIdNo', l.tenantIdNo) + '</div>' +
     '</div>' +
     '<div style="display:flex;gap:10px;">' +
-      '<div style="flex:1;">' + mInput('月租金', 'l_rent', l.rent, 'number') + '</div>' +
+      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">月租金</label><input id="l_rent" type="number" value="' + esc(l.rent==null?'':l.rent) + '" oninput="updateDiscountPreview()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;"></div>' +
       '<div style="flex:1;">' + mInput('押金', 'l_deposit', l.deposit, 'number') + '</div>' +
     '</div>' +
+    '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">折扣方式</label><select id="l_discountType" onchange="toggleDiscountField()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:4px;">' +
+        '<option value="NONE"' + ((l.discountType||'NONE')==='NONE'?' selected':'') + '>不折扣</option>' +
+        '<option value="FIXED"' + (l.discountType==='FIXED'?' selected':'') + '>折固定金額</option>' +
+        '<option value="PERCENT"' + (l.discountType==='PERCENT'?' selected':'') + '>折%數</option>' +
+      '</select></div>' +
+      '<div style="flex:1;" id="discountValueBox"><label id="discountValueLabel" style="font-size:12px;color:#888;display:block;margin-bottom:4px;">折扣金額</label><input id="l_discountValue" type="number" value="' + (l.discountValue || '') + '" oninput="updateDiscountPreview()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>' +
+    '</div>' +
+    '<div id="discountPreview" style="font-size:12px;color:#4A6741;margin:-4px 0 10px;"></div>' +
     '<div style="display:flex;gap:10px;">' +
       '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">繳費方式</label><select id="l_paymentCycle" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;">' +
         '<option value="MONTHLY"' + ((l.paymentCycle||'MONTHLY')==='MONTHLY'?' selected':'') + '>月繳</option>' +
@@ -5110,26 +5127,16 @@ async function openLeaseForm(leaseId) {
       '<div style="display:flex;gap:10px;align-items:center;">' +
         '<label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="l_utilRemindOn"' + (l.utilRemindOn ? ' checked' : '') + '> 水電提醒</label>' +
         '<div style="flex:1;">' + mInput('水電日(號)', 'l_utilPayDay', l.utilPayDay || '', 'number') + '</div>' +
-        '<div style="flex:1;">' + mInput('水電金額', 'l_utilAmount', l.utilAmount || '', 'number') + '</div>' +
       '</div>' +
-      // 水電費率模式
+      // 水電費率模式：實際抄表/算費都在「電費明細表」處理，這裡只設定每期沿用的計費方式
       '<div style="border-top:1px dashed #cfe0d0;margin-top:10px;padding-top:10px;">' +
         '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">水電費率模式</label>' +
         '<select id="l_utilMode" onchange="toggleUtilMode()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:8px;">' +
-          '<option value="FIXED"' + (l.utilMode !== 'METER' ? ' selected' : '') + '>固定費率（每月固定金額）</option>' +
-          '<option value="METER"' + (l.utilMode === 'METER' ? ' selected' : '') + '>台水台電（按電表度數）</option>' +
+          '<option value="FIXED"' + (l.utilMode !== 'METER' ? ' selected' : '') + '>固定費率（自訂每度費率）</option>' +
+          '<option value="METER"' + (l.utilMode === 'METER' ? ' selected' : '') + '>台水台電（依實際帳單，免填費率）</option>' +
         '</select>' +
-        '<div id="utilMeterBox" style="display:none;">' +
-          '<div style="display:flex;gap:8px;">' +
-            '<div style="flex:1;margin-bottom:8px;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">抄錶時間</label><input id="l_meterReadDate" type="date" value="' + (l.meterReadDate ? new Date(l.meterReadDate).toISOString().slice(0,10) : '') + '" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>' +
-            '<div style="flex:1;margin-bottom:8px;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">每度費率(元)</label><input id="l_meterRate" type="number" value="' + (l.meterRate || '') + '" oninput="updateMeterCalc()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>' +
-          '</div>' +
-          '<div style="display:flex;gap:8px;">' +
-            '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">本期度數</label><input id="l_meterCurrent" type="number" value="' + (l.meterCurrent || '') + '" oninput="updateMeterCalc()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>' +
-            '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">下期度數</label><input id="l_meterNext" type="number" value="' + (l.meterNext || '') + '" oninput="updateMeterCalc()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>' +
-          '</div>' +
-          '<div id="meterCalc" style="font-size:12px;color:#4A6741;margin-top:6px;"></div>' +
-        '</div>' +
+        '<div id="utilRateBox">' + mInput('每度費率(元)', 'l_meterRate', l.meterRate, 'number') + '</div>' +
+        '<div style="font-size:11px;color:#999;">抄表度數與金額請到「電費明細表」逐期新增</div>' +
       '</div>' +
       '<div style="font-size:11px;color:#999;margin-top:8px;">提醒會在繳費日前 3 天自動推播</div>' +
     '</div>' +
@@ -5149,6 +5156,7 @@ async function openLeaseForm(leaseId) {
   var ex = document.getElementById('leaseModal'); if (ex) ex.remove()
   document.body.insertAdjacentHTML('beforeend', html)
   toggleUtilMode()
+  toggleDiscountField()
 }
 
 async function editLeaseFromList(leaseId) {
@@ -5156,28 +5164,44 @@ async function editLeaseFromList(leaseId) {
   var all = (d.active || []).concat(d.expiring || [], d.expired || [], d.ended || [])
   var l = all.filter(function(x){ return x.id === leaseId })[0]
   if (!l) { showToast('❌ 找不到租約'); return }
-  var res = await fetch('/admin/api/managed/' + l.managedId)
-  if (!res.ok) { showToast('❌ 載入租約失敗'); return }
-  MANAGED.current = await res.json()
-  var lres = await fetch('/admin/api/managed/' + l.managedId + '/leases')
-  MANAGED.leases = lres.ok ? await lres.json() : []
+  // 兩支彼此無關，平行打可省掉一次來回的等待時間
+  var results = await Promise.all([
+    fetch('/admin/api/managed/' + l.managedId),
+    fetch('/admin/api/managed/' + l.managedId + '/leases'),
+  ])
+  if (!results[0].ok) { showToast('❌ 載入租約失敗'); return }
+  MANAGED.current = await results[0].json()
+  MANAGED.leases = results[1].ok ? await results[1].json() : []
+  _leaseFormOrigin = 'list'
   openLeaseForm(leaseId)
 }
 
 function toggleUtilMode() {
   var sel = document.getElementById('l_utilMode')
   if (!sel) return
-  document.getElementById('utilMeterBox').style.display = sel.value === 'METER' ? 'block' : 'none'
-  updateMeterCalc()
+  // 固定費率才需要在合約上設每度費率；台水台電依實際帳單，每期到電費明細表填即可
+  var box = document.getElementById('utilRateBox')
+  if (box) box.style.display = sel.value === 'METER' ? 'none' : 'block'
 }
-function updateMeterCalc() {
-  var el = document.getElementById('meterCalc')
+
+function toggleDiscountField() {
+  var sel = document.getElementById('l_discountType')
+  if (!sel) return
+  var box = document.getElementById('discountValueBox')
+  var label = document.getElementById('discountValueLabel')
+  if (box) box.style.display = sel.value === 'NONE' ? 'none' : 'block'
+  if (label) label.textContent = sel.value === 'PERCENT' ? '折扣百分比 %' : '折扣金額'
+  updateDiscountPreview()
+}
+function updateDiscountPreview() {
+  var el = document.getElementById('discountPreview')
   if (!el) return
-  var cur = parseFloat(val('l_meterCurrent')) || 0
-  var nxt = parseFloat(val('l_meterNext')) || 0
-  var rate = parseFloat(val('l_meterRate')) || 0
-  var deg = Math.max(0, nxt - cur)
-  el.textContent = '用量 ' + deg + ' 度 × ' + rate + ' 元 ＝ NT$ ' + Math.round(deg * rate).toLocaleString()
+  var type = document.getElementById('l_discountType') ? document.getElementById('l_discountType').value : 'NONE'
+  var rent = parseFloat(val('l_rent')) || 0
+  var v = parseFloat(val('l_discountValue')) || 0
+  if (type === 'NONE' || !rent) { el.textContent = ''; return }
+  var effective = type === 'FIXED' ? Math.max(0, rent - v) : Math.max(0, Math.round(rent * (1 - v / 100)))
+  el.textContent = '折扣後實收 NT$ ' + effective.toLocaleString() + '/月'
 }
 
 function closeLeaseModal() { var m = document.getElementById('leaseModal'); if (m) m.remove() }
@@ -5208,7 +5232,10 @@ async function saveLease(leaseId) {
 
   var body = {
     tenantName: val('l_tenantName'), tenantPhone: val('l_tenantPhone'), tenantIdNo: val('l_tenantIdNo'),
-    roomLabel: val('l_roomLabel'), rent: val('l_rent'), deposit: val('l_deposit'),
+    roomLabel: val('l_roomLabel'), rent: val('l_rent'),
+    discountType: document.getElementById('l_discountType') ? document.getElementById('l_discountType').value : 'NONE',
+    discountValue: val('l_discountValue'),
+    deposit: val('l_deposit'),
     leaseStart: val('l_leaseStart'), leaseEnd: val('l_leaseEnd'),
     status: document.getElementById('l_status').value,
     propertyId: document.getElementById('l_propertyId').value,
@@ -5220,17 +5247,8 @@ async function saveLease(leaseId) {
     rentRemindOn: document.getElementById('l_rentRemindOn').checked,
     utilPayDay: val('l_utilPayDay'),
     utilRemindOn: document.getElementById('l_utilRemindOn').checked,
-    utilAmount: val('l_utilAmount'),
     utilMode: document.getElementById('l_utilMode') ? document.getElementById('l_utilMode').value : 'FIXED',
-    meterReadDate: val('l_meterReadDate'),
-    meterCurrent: val('l_meterCurrent'),
-    meterNext: val('l_meterNext'),
     meterRate: val('l_meterRate'),
-  }
-  // 按電表模式：水電金額自動以「用量 × 費率」計算
-  if (body.utilMode === 'METER') {
-    var deg = Math.max(0, (parseFloat(body.meterNext) || 0) - (parseFloat(body.meterCurrent) || 0))
-    body.utilAmount = String(Math.round(deg * (parseFloat(body.meterRate) || 0)))
   }
   if (!body.tenantName) { showToast('❌ 承租人姓名必填'); return }
   if (leaseId) body.leaseId = leaseId
@@ -5242,7 +5260,8 @@ async function saveLease(leaseId) {
   if (!res.ok) { showToast('❌ 儲存失敗'); return }
   showToast('✅ 租約已儲存')
   closeLeaseModal()
-  openContractManager(MANAGED.current.id)
+  if (_leaseFormOrigin === 'list') showLeaseList()
+  else openContractManager(MANAGED.current.id)
 }
 
 async function deleteLease(leaseId) {
@@ -5251,7 +5270,8 @@ async function deleteLease(leaseId) {
   if (!res.ok) { showToast('❌ 刪除失敗'); return }
   showToast('✅ 已刪除')
   closeLeaseModal()
-  openContractManager(MANAGED.current.id)
+  if (_leaseFormOrigin === 'list') showLeaseList()
+  else openContractManager(MANAGED.current.id)
 }
 
 // ── 到期提醒（顯示在包租代管頁上方） ──────────────────────────
@@ -5281,18 +5301,23 @@ async function loadExpiringReminders() {
 // 載入綁定用的租客與房源清單（快取）
 var MANAGED_OPTS = { tenants: null, properties: null }
 async function loadManagedOpts() {
-  if (!MANAGED_OPTS.tenants) {
-    try {
-      var tr = await fetch('/admin/api/managed-tenants?key=' + encodeURIComponent(KEY))
-      MANAGED_OPTS.tenants = tr.ok ? await tr.json() : []
-    } catch (e) { MANAGED_OPTS.tenants = [] }
-  }
-  if (!MANAGED_OPTS.properties) {
-    try {
-      var pr = await fetch('/admin/api/managed-properties-list?key=' + encodeURIComponent(KEY))
-      MANAGED_OPTS.properties = pr.ok ? await pr.json() : []
-    } catch (e) { MANAGED_OPTS.properties = [] }
-  }
+  // 兩支彼此無關，沒快取時平行打，省掉一次來回的等待時間
+  await Promise.all([
+    (async function() {
+      if (MANAGED_OPTS.tenants) return
+      try {
+        var tr = await fetch('/admin/api/managed-tenants?key=' + encodeURIComponent(KEY))
+        MANAGED_OPTS.tenants = tr.ok ? await tr.json() : []
+      } catch (e) { MANAGED_OPTS.tenants = [] }
+    })(),
+    (async function() {
+      if (MANAGED_OPTS.properties) return
+      try {
+        var pr = await fetch('/admin/api/managed-properties-list?key=' + encodeURIComponent(KEY))
+        MANAGED_OPTS.properties = pr.ok ? await pr.json() : []
+      } catch (e) { MANAGED_OPTS.properties = [] }
+    })(),
+  ])
 }
 
 // 代管清單分頁狀態
@@ -5313,7 +5338,7 @@ function renderLeaseList() {
 
   function tabBtn(key, label, count, color) {
     var active = LEASE_TAB === key
-    return '<button onclick="LEASE_TAB=\'' + key + '\';renderLeaseList()" style="padding:8px 16px;border:none;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;background:' + (active ? color : '#EEE') + ';color:' + (active ? '#fff' : '#888') + ';">' + label + ' ' + count + '</button>'
+    return '<button class="spin-btn" onclick="btnLoad(this, function(){ LEASE_TAB=\'' + key + '\'; return renderLeaseList() })" style="padding:8px 16px;border:none;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;background:' + (active ? color : '#EEE') + ';color:' + (active ? '#fff' : '#888') + ';">' + label + ' ' + count + '</button>'
   }
   function fmt(dt) { return dt ? new Date(dt).toLocaleDateString('zh-TW') : '—' }
 
@@ -5329,12 +5354,12 @@ function renderLeaseList() {
       ? '<span style="color:#06C755;font-size:12px;">● LINE</span>'
       : '<span style="color:#ccc;font-size:12px;">○ 未綁</span>'
     return '<tr>' +
-      '<td style="padding:8px;font-size:13px;"><span style="display:inline-flex;align-items:center;gap:5px;">' + esc(l.tenantName) + '<button title="編輯房客合約" onclick="editLeaseFromList(\'' + l.id + '\')" style="border:none;background:none;color:#4A6741;cursor:pointer;font-size:13px;padding:0;">✎</button></span>' + (l.roomLabel ? '<br><span style="font-size:11px;color:#999;">' + esc(l.roomLabel) + '</span>' : '') + '</td>' +
+      '<td style="padding:8px;font-size:13px;"><span style="display:inline-flex;align-items:center;gap:5px;">' + esc(l.tenantName) + '<button title="編輯房客合約" class="spin-btn" onclick="btnLoad(this, function(){ return editLeaseFromList(\'' + l.id + '\') })" style="border:none;background:none;color:#4A6741;cursor:pointer;font-size:13px;padding:0;">✎</button></span>' + (l.roomLabel ? '<br><span style="font-size:11px;color:#999;">' + esc(l.roomLabel) + '</span>' : '') + '</td>' +
       '<td style="padding:8px;font-size:13px;">' + esc(l.managedTitle) + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + fmt(l.leaseStart) + '<br>~ ' + endInfo + '</td>' +
       '<td style="padding:8px;font-size:13px;">NT$ ' + Number(l.rent).toLocaleString() + '<br><span style="font-size:11px;color:#999;">下期 ' + nextRent + '</span></td>' +
       '<td style="padding:8px;">' + propLink + '<br>' + lineBadge + '</td>' +
-      '<td style="padding:8px;"><button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;" onclick="openLeaseLedger(\'' + l.id + '\')">對帳</button></td>' +
+      '<td style="padding:8px;"><button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;" onclick="btnLoad(this, function(){ return openLeaseLedger(\'' + l.id + '\') })">對帳</button></td>' +
     '</tr>'
   }
 

@@ -55,6 +55,14 @@ async function getOwnedLease(auth, leaseId) {
   return lease
 }
 
+// 折扣後的實際月租金（FIXED=折固定金額；PERCENT=折%數；都不可低於 0）
+function effectiveRent(lease) {
+  const rent = lease.rent || 0
+  if (lease.discountType === 'FIXED') return Math.max(0, rent - (lease.discountValue || 0))
+  if (lease.discountType === 'PERCENT') return Math.max(0, Math.round(rent * (1 - (lease.discountValue || 0) / 100)))
+  return rent
+}
+
 function buildRentSchedule(lease, rentPayments) {
   if (!lease.leaseStart) return []
   const months = cycleMonths(lease.paymentCycle)
@@ -95,7 +103,7 @@ function buildRentSchedule(lease, rentPayments) {
     const nextStart = addMonths(periodStart, months)
     const periodEnd = new Date(Math.min(addMonths(periodStart, months).getTime() - 86400000, leaseEnd.getTime()))
     const due = lease.paymentDueMode === 'CONTRACT_START' ? new Date(periodStart) : fixedDueDate(periodStart, payDay)
-    const amount = (lease.rent || 0) * months
+    const amount = effectiveRent(lease) * months
     rows.push({
       id: null,
       index: rows.length + 1,
@@ -598,6 +606,8 @@ router.post('/admin/api/managed/:id/lease', express.json(), async (req, res) => 
       tenantIdNo: b.tenantIdNo || null,
       roomLabel: b.roomLabel || null,
       rent: parseInt(b.rent) || 0,
+      discountType: ['NONE', 'FIXED', 'PERCENT'].includes(b.discountType) ? b.discountType : 'NONE',
+      discountValue: parseFloat(b.discountValue) || 0,
       deposit: parseInt(b.deposit) || 0,
       payDay: b.payDay ? parseInt(b.payDay) : null,
       payMethod: b.payMethod || null,
