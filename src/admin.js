@@ -15,10 +15,11 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000
 const LOGIN_LOCK_MS = 15 * 60 * 1000
 const LOGIN_MAX_FAILURES = 8
 
+// 用 Express 的 req.ip（需搭配 index.js 的 app.set('trust proxy', 1)）取得真實客戶端 IP。
+// 直接讀 X-Forwarded-For 並取第一段會被使用者自帶該 header 偽造繞過鎖定機制，
+// req.ip 在信任代理層數設定正確時，只採用代理鏈中可信的那一段，不可被使用者偽造。
 function clientIp(req) {
-  return String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '')
-    .split(',')[0]
-    .trim() || 'unknown'
+  return req.ip || req.socket?.remoteAddress || 'unknown'
 }
 
 function loginRateKey(req, key) {

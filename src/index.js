@@ -17,6 +17,10 @@ const config = {
 const client = new Client(config)
 const app = express()
 
+// Render 在前面有一層反向代理，信任第一個 hop 才能讓 req.ip 正確解析出
+// 真實客戶端 IP（否則登入失敗鎖定機制可被自填 X-Forwarded-For 繞過）。
+app.set('trust proxy', 1)
+
 // ── 管理後台 ───────────────────────────────────────────────────
 app.use(adminRouter)
 
