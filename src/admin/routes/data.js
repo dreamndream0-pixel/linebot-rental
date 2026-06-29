@@ -108,7 +108,7 @@ router.get('/admin/api/data', async (req, res) => {
     auth.role === 'super'
       ? prisma.landlord.findMany({
           orderBy: { createdAt: 'desc' },
-          select: { id: true, name: true, email: true, phone: true, adminKey: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, notifyLineUserId: true, richMenuConfig: true, richMenuId: true, richMenuEnabled: true, siteName: true, siteLogo: true, botTextConfig: true, botEnabled: true, features: true }
+          select: { id: true, name: true, email: true, phone: true, adminKeyHash: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, notifyLineUserId: true, richMenuConfig: true, richMenuId: true, richMenuEnabled: true, siteName: true, siteLogo: true, botTextConfig: true, botEnabled: true, features: true }
         })
       : Promise.resolve([]),
     fetchCommunityMap(),
@@ -124,7 +124,7 @@ router.get('/admin/api/data', async (req, res) => {
 
   const safeLandlords = landlords.map(l => ({
     id: l.id, name: l.name, email: l.email, phone: l.phone,
-    adminKey: l.adminKey, isActive: l.isActive, createdAt: l.createdAt,
+    adminKey: null, adminKeyAvailable: !!l.adminKeyHash, isActive: l.isActive, createdAt: l.createdAt,
     lineBotName: l.lineBotName,
     notifyLineUserId: l.notifyLineUserId || null,
     botConfigured: !!(l.lineChannelSecret && l.lineChannelToken),

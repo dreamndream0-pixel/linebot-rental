@@ -4,6 +4,7 @@ const express = require('express')
 const router = express.Router()
 const crypto = require('crypto')
 const prisma = require('../../db')
+const { hashAdminKey } = require('../helpers')
 
 router.post('/api/internal/create-landlord', express.json(), async (req, res) => {
   const { secret, name, email, phone, userId } = req.body
@@ -30,7 +31,8 @@ router.post('/api/internal/create-landlord', express.json(), async (req, res) =>
         name: name || email,
         email,
         phone: phone || null,
-        adminKey,
+        adminKey: null,
+        adminKeyHash: hashAdminKey(adminKey),
         passwordHash,
       },
     })

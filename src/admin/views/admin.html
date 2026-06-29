@@ -2394,7 +2394,7 @@ function renderLandlords() {
       '<div class="landlord-info-item"><div class="label">電話</div><div class="value">' + esc(l.phone || '未填寫') + '</div></div>' +
       '<div class="landlord-info-item"><div class="label">加入日期</div><div class="value">' + fmtDate(l.createdAt) + '</div></div>' +
       '<div class="landlord-info-item"><div class="label">房源數</div><div class="value">' + propCount + ' 間</div></div>' +
-      '<div class="landlord-info-item full"><div class="label">登入金鑰</div><div class="value landlord-key-row"><span class="uid" onclick="copyText(\'' + l.adminKey + '\')" title="點擊複製">' + l.adminKey + '</span><button class="landlord-icon-btn" title="重發金鑰" onclick="event.stopPropagation();regenerateKey(\'' + l.id + '\')">↻</button></div></div>' +
+      '<div class="landlord-info-item full"><div class="label">登入金鑰</div><div class="value landlord-key-row"><span class="uid" title="金鑰已加密保存">已加密保存，需重發才會顯示新金鑰</span><button class="landlord-icon-btn" title="重發金鑰" onclick="event.stopPropagation();regenerateKey(\'' + l.id + '\')">↻</button></div></div>' +
       '<div class="landlord-info-item full"><div class="label">Webhook URL</div><div class="value"><span class="uid" onclick="copyText(\'' + webhookUrl + '\')" title="點擊複製" style="font-size:11px;">' + webhookUrl + '</span></div></div>' +
       '</div>' +
       '<div class="landlord-tools">' +

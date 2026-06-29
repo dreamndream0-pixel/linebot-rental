@@ -20,6 +20,10 @@ function signPayload(payload) {
   return crypto.createHmac('sha256', sessionSecret()).update(payload).digest('base64url')
 }
 
+function hashAdminKey(key) {
+  return crypto.createHmac('sha256', sessionSecret()).update(String(key || '')).digest('hex')
+}
+
 function makeSessionToken(auth) {
   const payload = b64url(JSON.stringify({
     role: auth.role,
@@ -70,7 +74,18 @@ async function resolveRole(key) {
   if (key === ADMIN_KEY) return { role: 'super', landlordId: null, label: '總管理員' }
 
   try {
-    const landlord = await prisma.landlord.findUnique({ where: { adminKey: key } })
+    const keyHash = hashAdminKey(key)
+    let landlord = await prisma.landlord.findFirst({ where: { adminKeyHash: keyHash } })
+    if (!landlord) {
+      landlord = await prisma.landlord.findUnique({ where: { adminKey: key } })
+      if (landlord) {
+        // 舊版明文金鑰登入成功後立即遷移成 hash，並清空明文欄位。
+        await prisma.landlord.update({
+          where: { id: landlord.id },
+          data: { adminKeyHash: keyHash, adminKey: null },
+        }).catch(e => console.error('adminKey 遷移失敗:', e.message))
+      }
+    }
     if (landlord && landlord.isActive) {
       return { role: 'landlord', landlordId: landlord.id, label: landlord.name, source: landlord.source }
     }
@@ -179,6 +194,7 @@ module.exports = {
   deleteCloudinaryImages,
   notifyBookingTenant,
   createAdminSession,
+  hashAdminKey,
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_MS,
 }

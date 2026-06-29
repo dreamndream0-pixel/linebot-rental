@@ -3,7 +3,7 @@ const express = require('express')
 const router = express.Router()
 const crypto = require('crypto')
 const prisma = require('../../db')
-const { resolveRole, deleteCloudinaryImages, revalidateSite } = require('../helpers')
+const { resolveRole, deleteCloudinaryImages, revalidateSite, hashAdminKey } = require('../helpers')
 
 // 列出所有房東（僅超級管理員）
 router.get('/admin/api/landlords', async (req, res) => {
@@ -27,7 +27,7 @@ router.post('/admin/api/landlord', express.json(), async (req, res) => {
 
   try {
     const landlord = await prisma.landlord.create({
-      data: { name, email, phone: phone || null, adminKey, passwordHash }
+      data: { name, email, phone: phone || null, adminKey: null, adminKeyHash: hashAdminKey(adminKey), passwordHash }
     })
     res.json({ ...landlord, _adminKey: adminKey, _tempPassword: tempPassword })
   } catch (e) {
@@ -69,7 +69,10 @@ router.post('/admin/api/landlord/:id/regenerate-key', express.json(), async (req
   if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
 
   const adminKey = 'LL-' + crypto.randomBytes(9).toString('base64url')
-  const landlord = await prisma.landlord.update({ where: { id: req.params.id }, data: { adminKey } })
+  const landlord = await prisma.landlord.update({
+    where: { id: req.params.id },
+    data: { adminKey: null, adminKeyHash: hashAdminKey(adminKey) }
+  })
   res.json({ ...landlord, _adminKey: adminKey })
 })
 

@@ -71,8 +71,9 @@ model Landlord {
   phone         String?
   avatar        String?
 
-  // 後台存取金鑰（給 LINE Bot 後台用，類似之前的 ADMIN_KEY）
-  adminKey      String    @unique
+  // 後台存取金鑰：adminKey 為舊版明文欄位，登入成功後會遷移到 adminKeyHash 並清空
+  adminKey      String?   @unique
+  adminKeyHash  String?   @unique
 
   // 階段 B 預留：房東自己的 LINE Bot 設定
   lineChannelSecret      String?
@@ -104,6 +105,7 @@ model Landlord {
 
   @@index([email])
   @@index([adminKey])
+  @@index([adminKeyHash])
   @@map("landlords")
 }
 

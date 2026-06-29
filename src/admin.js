@@ -5,9 +5,49 @@ const router = express.Router()
 const {
   createAdminSession,
   resolveRole,
+  hashAdminKey,
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_MS,
 } = require('./admin/helpers')
+
+const loginFailures = new Map()
+const LOGIN_WINDOW_MS = 15 * 60 * 1000
+const LOGIN_LOCK_MS = 15 * 60 * 1000
+const LOGIN_MAX_FAILURES = 8
+
+function clientIp(req) {
+  return String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '')
+    .split(',')[0]
+    .trim() || 'unknown'
+}
+
+function loginRateKey(req, key) {
+  return `${clientIp(req)}:${hashAdminKey(key).slice(0, 16)}`
+}
+
+function isLoginLocked(req, key) {
+  const k = loginRateKey(req, key)
+  const item = loginFailures.get(k)
+  if (!item) return false
+  if (item.lockUntil && item.lockUntil > Date.now()) return true
+  if (item.lastAt + LOGIN_WINDOW_MS < Date.now()) loginFailures.delete(k)
+  return false
+}
+
+function recordLoginFailure(req, key) {
+  const k = loginRateKey(req, key)
+  const now = Date.now()
+  const item = loginFailures.get(k) || { count: 0, lastAt: now, lockUntil: 0 }
+  if (item.lastAt + LOGIN_WINDOW_MS < now) item.count = 0
+  item.count += 1
+  item.lastAt = now
+  if (item.count >= LOGIN_MAX_FAILURES) item.lockUntil = now + LOGIN_LOCK_MS
+  loginFailures.set(k, item)
+}
+
+function clearLoginFailures(req, key) {
+  loginFailures.delete(loginRateKey(req, key))
+}
 
 function parseCookies(req) {
   return Object.fromEntries(String(req.headers.cookie || '')
@@ -34,8 +74,14 @@ function clearSessionCookie(res) {
 }
 
 router.post('/admin/api/login', express.json(), async (req, res) => {
-  const session = await createAdminSession(String(req.body?.key || '').trim())
-  if (!session) return res.status(401).json({ error: 'unauthorized' })
+  const key = String(req.body?.key || '').trim()
+  if (isLoginLocked(req, key)) return res.status(429).json({ error: 'too_many_attempts' })
+  const session = await createAdminSession(key)
+  if (!session) {
+    recordLoginFailure(req, key)
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+  clearLoginFailures(req, key)
   setSessionCookie(res, session.token)
   res.json({
     ok: true,
@@ -61,6 +107,7 @@ router.use((req, _res, next) => {
   const q = Object.assign({}, req.query)
   if (headerKey) q.key = headerKey
   else if (!q.key && sessionToken) q.key = `SESSION:${sessionToken}`
+  else if (q.key && process.env.ALLOW_ADMIN_QUERY_KEY !== 'true') delete q.key
   Object.defineProperty(req, 'query', { value: q, configurable: true, writable: true })
   next()
 })
