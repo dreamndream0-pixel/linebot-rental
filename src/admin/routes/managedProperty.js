@@ -157,10 +157,18 @@ router.post('/admin/api/managed/:id/record', express.json(), async (req, res) =>
 
     const b = req.body
     if (!b.amount) return res.status(400).json({ error: '金額為必填' })
+    let leaseId = b.leaseId || null
+    if (leaseId) {
+      const lease = await prisma.lease.findUnique({ where: { id: leaseId }, select: { managedPropertyId: true } })
+      if (!lease || lease.managedPropertyId !== req.params.id) {
+        return res.status(400).json({ error: '租約不屬於此委託物業' })
+      }
+    }
 
     const record = await prisma.managementRecord.create({
       data: {
         managedPropertyId: req.params.id,
+        leaseId,
         type: b.type === 'EXPENSE' ? 'EXPENSE' : 'INCOME',
         category: b.category || 'RENT',
         amount: parseInt(b.amount) || 0,
@@ -383,6 +391,15 @@ router.post('/admin/api/managed/:id/lease', express.json(), async (req, res) => 
     }
     const b = req.body
     if (!b.tenantName) return res.status(400).json({ error: '承租人姓名為必填' })
+    if (b.leaseId) {
+      const existingLease = await prisma.lease.findUnique({
+        where: { id: b.leaseId },
+        select: { managedPropertyId: true },
+      })
+      if (!existingLease || existingLease.managedPropertyId !== req.params.id) {
+        return res.status(403).json({ error: 'forbidden' })
+      }
+    }
 
     const data = {
       tenantName: b.tenantName,

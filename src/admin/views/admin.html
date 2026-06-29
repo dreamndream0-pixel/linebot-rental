@@ -5085,6 +5085,19 @@ async function openLeaseForm(leaseId) {
   toggleUtilMode()
 }
 
+async function editLeaseFromList(leaseId) {
+  var d = MANAGED.leaseList || {}
+  var all = (d.active || []).concat(d.expiring || [], d.expired || [], d.ended || [])
+  var l = all.filter(function(x){ return x.id === leaseId })[0]
+  if (!l) { showToast('❌ 找不到租約'); return }
+  var res = await fetch('/admin/api/managed/' + l.managedId)
+  if (!res.ok) { showToast('❌ 載入租約失敗'); return }
+  MANAGED.current = await res.json()
+  var lres = await fetch('/admin/api/managed/' + l.managedId + '/leases')
+  MANAGED.leases = lres.ok ? await lres.json() : []
+  openLeaseForm(leaseId)
+}
+
 function toggleUtilMode() {
   var sel = document.getElementById('l_utilMode')
   if (!sel) return
@@ -5248,7 +5261,7 @@ function renderLeaseList() {
       ? '<span style="color:#06C755;font-size:12px;">● LINE</span>'
       : '<span style="color:#ccc;font-size:12px;">○ 未綁</span>'
     return '<tr>' +
-      '<td style="padding:8px;font-size:13px;">' + esc(l.tenantName) + (l.roomLabel ? '<br><span style="font-size:11px;color:#999;">' + esc(l.roomLabel) + '</span>' : '') + '</td>' +
+      '<td style="padding:8px;font-size:13px;"><span style="display:inline-flex;align-items:center;gap:5px;">' + esc(l.tenantName) + '<button title="編輯房客合約" onclick="editLeaseFromList(\'' + l.id + '\')" style="border:none;background:none;color:#4A6741;cursor:pointer;font-size:13px;padding:0;">✎</button></span>' + (l.roomLabel ? '<br><span style="font-size:11px;color:#999;">' + esc(l.roomLabel) + '</span>' : '') + '</td>' +
       '<td style="padding:8px;font-size:13px;">' + esc(l.managedTitle) + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + fmt(l.leaseStart) + '<br>~ ' + endInfo + '</td>' +
       '<td style="padding:8px;font-size:13px;">NT$ ' + Number(l.rent).toLocaleString() + '<br><span style="font-size:11px;color:#999;">下期 ' + nextRent + '</span></td>' +
@@ -5306,6 +5319,7 @@ async function openLeaseLedger(leaseId) {
   var start = l.leaseStart ? new Date(l.leaseStart) : null
   var end = l.leaseEnd ? new Date(l.leaseEnd) : null
   var inPeriod = recs.filter(function(r){
+    if (r.leaseId) return r.leaseId === l.id
     var dt = new Date(r.recordDate)
     if (start && dt < start) return false
     if (end && dt > end) return false
@@ -5315,12 +5329,14 @@ async function openLeaseLedger(leaseId) {
   var expense = inPeriod.filter(function(r){ return r.type === 'EXPENSE' }).reduce(function(s,r){ return s + r.amount }, 0)
   function fmt(dt){ return dt ? new Date(dt).toLocaleDateString('zh-TW') : '—' }
   var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', OTHER:'其他' }
+  var today = new Date().toISOString().slice(0, 10)
   var rows = inPeriod.map(function(r){
     return '<tr><td style="padding:8px;font-size:12px;">' + fmt(r.recordDate) + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + (catLabel[r.category] || r.category) + '</td>' +
       '<td style="padding:8px;font-size:13px;color:' + (r.type === 'INCOME' ? '#2E7D32' : '#C0524A') + ';">' + (r.type === 'INCOME' ? '+' : '−') + ' NT$ ' + Number(r.amount).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:12px;color:#888;">' + esc(r.description || '') + '</td></tr>'
-  }).join('') || '<tr><td colspan="4" style="padding:16px;text-align:center;color:#aaa;">此合約期間尚無收支紀錄</td></tr>'
+      '<td style="padding:8px;font-size:12px;color:#888;">' + esc(r.description || '') + '</td>' +
+      '<td style="padding:8px;text-align:center;"><button onclick="deleteLeaseRecord(\'' + r.id + '\', \'' + l.id + '\')" style="border:none;background:none;color:#C0524A;font-size:18px;cursor:pointer;">×</button></td></tr>'
+  }).join('') || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#aaa;">此合約期間尚無收支紀錄</td></tr>'
 
   var html = '<div id="leaseLedgerModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:320;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
     '<div style="background:#fff;border-radius:16px;padding:24px;max-width:620px;width:100%;margin:auto;">' +
@@ -5338,11 +5354,50 @@ async function openLeaseLedger(leaseId) {
       '<div style="flex:1;background:#FBF0EF;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:11px;color:#888;">支出</div><div style="font-weight:700;color:#C0524A;">NT$ ' + expense.toLocaleString() + '</div></div>' +
       '<div style="flex:1;background:#F5F0EA;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:11px;color:#888;">淨額</div><div style="font-weight:700;">NT$ ' + (income - expense).toLocaleString() + '</div></div>' +
     '</div>' +
-    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;"><th style="padding:8px;text-align:left;font-size:12px;">日期</th><th style="padding:8px;text-align:left;font-size:12px;">類別</th><th style="padding:8px;text-align:left;font-size:12px;">金額</th><th style="padding:8px;text-align:left;font-size:12px;">說明</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-    '<div style="font-size:11px;color:#aaa;margin-top:10px;">＊此為該委託物業在合約期間（' + fmt(l.leaseStart) + '～' + fmt(l.leaseEnd) + '）的收支。新增收支請到該物業「明細對帳」。</div>' +
+    '<div style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:14px;">' +
+      '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">＋ 新增收支</div>' +
+      '<div style="display:grid;grid-template-columns:110px 120px 1fr 150px 1.5fr;gap:8px;margin-bottom:10px;">' +
+        '<select id="lease_rec_type" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select>' +
+        '<select id="lease_rec_category" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;"><option value="RENT">租金</option><option value="UTILITY">水電</option><option value="REPAIR">維修</option><option value="OTHER">其他</option></select>' +
+        '<input id="lease_rec_amount" type="number" placeholder="金額" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<input id="lease_rec_date" type="date" value="' + today + '" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<input id="lease_rec_desc" placeholder="說明" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
+      '</div>' +
+      '<button class="btn" style="width:100%;padding:10px;font-size:14px;" onclick="addLeaseRecord(\'' + l.managedId + '\', \'' + l.id + '\')">新增</button>' +
+    '</div>' +
+    '<h4 style="margin:0 0 10px;font-size:15px;">收支明細</h4>' +
+    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;"><th style="padding:8px;text-align:left;font-size:12px;">日期</th><th style="padding:8px;text-align:left;font-size:12px;">類別</th><th style="padding:8px;text-align:left;font-size:12px;">金額</th><th style="padding:8px;text-align:left;font-size:12px;">說明</th><th style="padding:8px;text-align:center;font-size:12px;">刪除</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<div style="font-size:11px;color:#aaa;margin-top:10px;">＊新增的收支會綁定此房客租約，並同步出現在該房東/物業的「明細對帳」。</div>' +
     '</div></div>'
   var ex = document.getElementById('leaseLedgerModal'); if (ex) ex.remove()
   document.body.insertAdjacentHTML('beforeend', html)
+}
+
+async function addLeaseRecord(managedId, leaseId) {
+  var amount = val('lease_rec_amount')
+  if (!amount) { showToast('❌ 請輸入金額'); return }
+  var body = {
+    leaseId: leaseId,
+    type: document.getElementById('lease_rec_type').value,
+    category: document.getElementById('lease_rec_category').value,
+    amount: amount,
+    recordDate: document.getElementById('lease_rec_date').value,
+    description: val('lease_rec_desc')
+  }
+  var res = await fetch('/admin/api/managed/' + managedId + '/record', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  })
+  if (!res.ok) { showToast('❌ 新增失敗'); return }
+  showToast('✅ 已新增收支')
+  openLeaseLedger(leaseId)
+}
+
+async function deleteLeaseRecord(recordId, leaseId) {
+  if (!confirm('確定刪除此筆收支？')) return
+  var res = await fetch('/admin/api/managed/record/' + recordId, { method: 'DELETE' })
+  if (!res.ok) { showToast('❌ 刪除失敗'); return }
+  showToast('✅ 已刪除')
+  openLeaseLedger(leaseId)
 }
 
 </script>

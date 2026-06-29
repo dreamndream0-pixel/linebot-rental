@@ -94,6 +94,13 @@ prisma.$connect()
     } catch (e) {
       console.error('⚠️ 後台金鑰安全欄位確認失敗:', e.message)
     }
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE management_records ADD COLUMN IF NOT EXISTS "leaseId" TEXT`)
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "management_records_leaseId_idx" ON management_records ("leaseId")`)
+      console.log('✅ 租約收支連動欄位已確認')
+    } catch (e) {
+      console.error('⚠️ 租約收支連動欄位確認失敗:', e.message)
+    }
     // Runtime DDL can be blocked by production DB locks/timeouts. Run it only when explicitly requested.
     if (process.env.RUN_SCHEMA_CHECK === 'true') {
       try {

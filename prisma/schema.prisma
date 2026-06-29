@@ -566,6 +566,8 @@ model ManagementRecord {
   id                 String          @id @default(cuid())
   managedPropertyId  String
   managedProperty    ManagedProperty @relation(fields: [managedPropertyId], references: [id], onDelete: Cascade)
+  leaseId            String?
+  lease              Lease?          @relation(fields: [leaseId], references: [id], onDelete: SetNull)
 
   type        String    // 'INCOME'(收入：租金) 或 'EXPENSE'(支出：維修/雜支)
   category    String    // 'RENT'(租金) / 'REPAIR'(維修) / 'UTILITY'(水電) / 'OTHER'(其他)
@@ -575,6 +577,7 @@ model ManagementRecord {
   createdAt   DateTime  @default(now())
 
   @@index([managedPropertyId])
+  @@index([leaseId])
   @@index([recordDate])
   @@map("management_records")
 }
@@ -647,6 +650,7 @@ model Lease {
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  records       ManagementRecord[]
 
   @@index([managedPropertyId])
   @@index([leaseEnd])
