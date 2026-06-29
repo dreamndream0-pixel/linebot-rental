@@ -97,6 +97,28 @@ prisma.$connect()
     try {
       await prisma.$executeRawUnsafe(`ALTER TABLE management_records ADD COLUMN IF NOT EXISTS "leaseId" TEXT`)
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "management_records_leaseId_idx" ON management_records ("leaseId")`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "paymentCycle" TEXT NOT NULL DEFAULT 'MONTHLY'`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "paymentDueMode" TEXT NOT NULL DEFAULT 'FIXED_DAY'`)
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS utility_readings (
+          id TEXT PRIMARY KEY,
+          "leaseId" TEXT NOT NULL,
+          "startDate" TIMESTAMPTZ,
+          "startDegree" INTEGER NOT NULL DEFAULT 0,
+          "endDate" TIMESTAMPTZ NOT NULL,
+          "endDegree" INTEGER NOT NULL,
+          "usedDegree" INTEGER NOT NULL DEFAULT 0,
+          rate DOUBLE PRECISION NOT NULL DEFAULT 0,
+          amount INTEGER NOT NULL DEFAULT 0,
+          "dueDate" TIMESTAMPTZ,
+          "paidAmount" INTEGER NOT NULL DEFAULT 0,
+          "paidDate" TIMESTAMPTZ,
+          note TEXT,
+          "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `)
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "utility_readings_leaseId_idx" ON utility_readings ("leaseId")`)
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "utility_readings_endDate_idx" ON utility_readings ("endDate")`)
       console.log('✅ 租約收支連動欄位已確認')
     } catch (e) {
       console.error('⚠️ 租約收支連動欄位確認失敗:', e.message)

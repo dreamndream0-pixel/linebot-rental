@@ -182,4 +182,4 @@ function startLeaseReminders() {
   console.log('✅ 租約繳費提醒排程已啟動（每日 9:00 檢查）')
 }
 
-module.exports = { startLeaseReminders, checkLeaseReminders }
+module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, rentReminderFlex, utilReminderFlex }

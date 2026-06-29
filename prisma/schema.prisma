@@ -622,6 +622,8 @@ model Lease {
   deposit       Int       @default(0)    // 押金
   payDay        Int?      // 每月付款日（1-31）
   payMethod     String?   // 付款方式
+  paymentCycle  String    @default("MONTHLY") // MONTHLY / BIMONTHLY / QUARTERLY / SEMIANNUAL / YEARLY
+  paymentDueMode String   @default("FIXED_DAY") // FIXED_DAY / CONTRACT_START
   leaseStart    DateTime? // 租約起日
   leaseEnd      DateTime? // 租約迄日
 
@@ -651,9 +653,33 @@ model Lease {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   records       ManagementRecord[]
+  utilityReadings UtilityReading[]
 
   @@index([managedPropertyId])
   @@index([leaseEnd])
   @@index([status])
   @@map("leases")
+}
+
+model UtilityReading {
+  id          String   @id @default(cuid())
+  leaseId     String
+  lease       Lease    @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
+  startDate   DateTime?
+  startDegree Int      @default(0)
+  endDate     DateTime
+  endDegree   Int
+  usedDegree  Int      @default(0)
+  rate        Float    @default(0)
+  amount      Int      @default(0)
+  dueDate     DateTime?
+  paidAmount  Int      @default(0)
+  paidDate    DateTime?
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@index([leaseId])
+  @@index([endDate])
+  @@map("utility_readings")
 }

@@ -3,10 +3,81 @@ const express = require('express')
 const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
+const { getClientForLease, rentReminderFlex, utilReminderFlex } = require('../../leaseReminder')
 
 // 權限過濾：super 看全部，房東只看自己的
 function ownFilter(auth) {
   return auth.role === 'super' ? {} : { landlordId: auth.landlordId }
+}
+
+function addMonths(date, months) {
+  const d = new Date(date)
+  const day = d.getDate()
+  d.setMonth(d.getMonth() + months)
+  if (d.getDate() !== day) d.setDate(0)
+  return d
+}
+
+function cycleMonths(cycle) {
+  return { BIMONTHLY: 2, QUARTERLY: 3, SEMIANNUAL: 6, YEARLY: 12 }[cycle] || 1
+}
+
+function fixedDueDate(periodStart, payDay) {
+  const year = periodStart.getFullYear()
+  const month = periodStart.getMonth()
+  const day = Math.min(payDay || periodStart.getDate(), new Date(year, month + 1, 0).getDate())
+  let due = new Date(year, month, day)
+  if (due < periodStart) {
+    const nextYear = addMonths(periodStart, 1).getFullYear()
+    const nextMonth = addMonths(periodStart, 1).getMonth()
+    due = new Date(nextYear, nextMonth, Math.min(payDay || periodStart.getDate(), new Date(nextYear, nextMonth + 1, 0).getDate()))
+  }
+  return due
+}
+
+function ymd(d) {
+  return d ? new Date(d).toISOString().slice(0, 10) : null
+}
+
+async function getOwnedLease(auth, leaseId) {
+  const lease = await prisma.lease.findUnique({
+    where: { id: leaseId },
+    include: { managedProperty: true },
+  })
+  if (!lease) return null
+  if (auth.role !== 'super' && lease.managedProperty.landlordId !== auth.landlordId) return false
+  return lease
+}
+
+function buildRentSchedule(lease, records) {
+  if (!lease.leaseStart) return []
+  const months = cycleMonths(lease.paymentCycle)
+  const start = new Date(lease.leaseStart)
+  const leaseEnd = lease.leaseEnd ? new Date(lease.leaseEnd) : addMonths(start, 12)
+  const payDay = lease.rentPayDay || start.getDate()
+  const rows = []
+  let periodStart = new Date(start)
+  let idx = 1
+  while (periodStart <= leaseEnd && idx <= 120) {
+    const nextStart = addMonths(periodStart, months)
+    const periodEnd = new Date(Math.min(addMonths(periodStart, months).getTime() - 86400000, leaseEnd.getTime()))
+    const due = lease.paymentDueMode === 'CONTRACT_START' ? new Date(periodStart) : fixedDueDate(periodStart, payDay)
+    const amount = (lease.rent || 0) * months
+    const paidRecords = records.filter(r => r.type === 'INCOME' && r.category === 'RENT' && ymd(r.recordDate) === ymd(due))
+    const paidAmount = paidRecords.reduce((s, r) => s + r.amount, 0)
+    rows.push({
+      index: idx,
+      label: `${ymd(periodStart)}~${ymd(periodEnd)}`,
+      amount,
+      dueDate: due,
+      paidAmount,
+      paidDate: paidRecords[0]?.recordDate || null,
+      unpaid: amount - paidAmount,
+    })
+    periodStart = nextStart
+    idx++
+  }
+  return rows
 }
 
 // ── 委託物業列表 ──────────────────────────────────────────────
@@ -422,6 +493,8 @@ router.post('/admin/api/managed/:id/lease', express.json(), async (req, res) => 
       lineUserId: b.lineUserId || null,
       // 繳費提醒
       rentPayDay: b.rentPayDay ? parseInt(b.rentPayDay) : 5,
+      paymentCycle: ['MONTHLY','BIMONTHLY','QUARTERLY','SEMIANNUAL','YEARLY'].includes(b.paymentCycle) ? b.paymentCycle : 'MONTHLY',
+      paymentDueMode: ['FIXED_DAY','CONTRACT_START'].includes(b.paymentDueMode) ? b.paymentDueMode : 'FIXED_DAY',
       rentRemindOn: b.rentRemindOn !== false && b.rentRemindOn !== 'false',
       utilPayDay: b.utilPayDay ? parseInt(b.utilPayDay) : null,
       utilRemindOn: b.utilRemindOn === true || b.utilRemindOn === 'true',
@@ -598,6 +671,8 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         tenantName: l.tenantName,
         roomLabel: l.roomLabel,
         rent: l.rent,
+        paymentCycle: l.paymentCycle,
+        paymentDueMode: l.paymentDueMode,
         leaseStart: l.leaseStart,
         leaseEnd: l.leaseEnd,
         daysToEnd,
@@ -620,6 +695,97 @@ router.get('/admin/api/managed-leases', async (req, res) => {
     })
   } catch (e) {
     console.error('代管清單失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    const [records, utilityReadings] = await Promise.all([
+      prisma.managementRecord.findMany({ where: { managedPropertyId: lease.managedPropertyId, OR: [{ leaseId: lease.id }, { leaseId: null }] }, orderBy: { recordDate: 'asc' } }),
+      prisma.utilityReading.findMany({ where: { leaseId: lease.id }, orderBy: { endDate: 'desc' } }),
+    ])
+    const rentSchedule = buildRentSchedule(lease, records.filter(r => r.leaseId === lease.id || !r.leaseId))
+    res.json({ lease, rentSchedule, utilityReadings })
+  } catch (e) {
+    console.error('租約帳務載入失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/admin/api/managed/lease/:leaseId/utility-reading', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    const b = req.body
+    const startDegree = parseInt(b.startDegree) || 0
+    const endDegree = parseInt(b.endDegree) || 0
+    const usedDegree = Math.max(0, endDegree - startDegree)
+    const rate = parseFloat(b.rate) || lease.meterRate || 0
+    const amount = Math.round(usedDegree * rate)
+    const reading = await prisma.utilityReading.create({
+      data: {
+        leaseId: lease.id,
+        startDate: b.startDate ? new Date(b.startDate) : null,
+        startDegree,
+        endDate: b.endDate ? new Date(b.endDate) : new Date(),
+        endDegree,
+        usedDegree,
+        rate,
+        amount,
+        dueDate: b.dueDate ? new Date(b.dueDate) : null,
+        note: b.note || null,
+      },
+    })
+    if (amount > 0) {
+      await prisma.managementRecord.create({
+        data: {
+          managedPropertyId: lease.managedPropertyId,
+          leaseId: lease.id,
+          type: 'INCOME',
+          category: 'UTILITY',
+          amount,
+          recordDate: reading.dueDate || reading.endDate,
+          description: `電費 ${startDegree}→${endDegree} 度，${usedDegree} 度 x ${rate} 元`,
+        },
+      })
+    }
+    res.json(reading)
+  } catch (e) {
+    console.error('新增抄表失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    if (!lease.lineUserId) return res.status(400).json({ error: '此租約尚未綁定 LINE 租客' })
+    const client = await getClientForLease(lease)
+    if (!client) return res.status(400).json({ error: 'LINE Bot 尚未設定' })
+    const data = { ...lease, managedTitle: lease.managedProperty.title }
+    const kind = req.body.kind === 'UTILITY' ? 'UTILITY' : 'RENT'
+    if (kind === 'UTILITY') {
+      data.utilAmount = parseInt(req.body.amount) || lease.utilAmount || 0
+      data.utilPayDay = req.body.dueDate ? new Date(req.body.dueDate).getDate() : lease.utilPayDay
+      await client.pushMessage(lease.lineUserId, utilReminderFlex(data))
+    } else {
+      data.rent = parseInt(req.body.amount) || lease.rent || 0
+      data.rentPayDay = req.body.dueDate ? new Date(req.body.dueDate).getDate() : lease.rentPayDay
+      await client.pushMessage(lease.lineUserId, rentReminderFlex(data))
+    }
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('手動繳費提醒失敗:', e.message)
     res.status(500).json({ error: e.message })
   }
 })

@@ -5019,6 +5019,19 @@ async function openLeaseForm(leaseId) {
       '<div style="flex:1;">' + mInput('押金', 'l_deposit', l.deposit, 'number') + '</div>' +
     '</div>' +
     '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">繳費方式</label><select id="l_paymentCycle" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;">' +
+        '<option value="MONTHLY"' + ((l.paymentCycle||'MONTHLY')==='MONTHLY'?' selected':'') + '>月繳</option>' +
+        '<option value="BIMONTHLY"' + (l.paymentCycle==='BIMONTHLY'?' selected':'') + '>雙月繳</option>' +
+        '<option value="QUARTERLY"' + (l.paymentCycle==='QUARTERLY'?' selected':'') + '>季繳</option>' +
+        '<option value="SEMIANNUAL"' + (l.paymentCycle==='SEMIANNUAL'?' selected':'') + '>半年繳</option>' +
+        '<option value="YEARLY"' + (l.paymentCycle==='YEARLY'?' selected':'') + '>年繳</option>' +
+      '</select></div>' +
+      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">繳費日計算</label><select id="l_paymentDueMode" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;">' +
+        '<option value="FIXED_DAY"' + ((l.paymentDueMode||'FIXED_DAY')==='FIXED_DAY'?' selected':'') + '>固定日期</option>' +
+        '<option value="CONTRACT_START"' + (l.paymentDueMode==='CONTRACT_START'?' selected':'') + '>以合約開始日</option>' +
+      '</select></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:10px;">' +
       '<div style="flex:1;">' + mInput('租約起日', 'l_leaseStart', fmtDate(l.leaseStart), 'date') + '</div>' +
       '<div style="flex:1;">' + mInput('租約迄日', 'l_leaseEnd', fmtDate(l.leaseEnd), 'date') + '</div>' +
     '</div>' +
@@ -5149,6 +5162,8 @@ async function saveLease(leaseId) {
     lineTenantId: lineTenantId,
     lineUserId: lineUserId,
     rentPayDay: val('l_rentPayDay'),
+    paymentCycle: document.getElementById('l_paymentCycle').value,
+    paymentDueMode: document.getElementById('l_paymentDueMode').value,
     rentRemindOn: document.getElementById('l_rentRemindOn').checked,
     utilPayDay: val('l_utilPayDay'),
     utilRemindOn: document.getElementById('l_utilRemindOn').checked,
@@ -5305,6 +5320,50 @@ function renderLeaseList() {
     '</div>'
 }
 
+function leaseMoney(n) { return 'NT$ ' + Number(n || 0).toLocaleString() }
+function leaseDate(d) { return d ? new Date(d).toLocaleDateString('zh-TW') : '—' }
+function leaseDateInput(d) { return d ? new Date(d).toISOString().slice(0, 10) : '' }
+function paymentCycleLabel(v) {
+  return { MONTHLY:'月繳', BIMONTHLY:'雙月繳', QUARTERLY:'季繳', SEMIANNUAL:'半年繳', YEARLY:'年繳' }[v] || '月繳'
+}
+function renderRentBillingRows(rows, leaseId) {
+  if (!rows || !rows.length) return '<tr><td colspan="9" style="padding:16px;text-align:center;color:#aaa;">尚無租金繳納明細</td></tr>'
+  return rows.map(function(r) {
+    var unpaid = Number(r.unpaid || 0)
+    var paid = unpaid <= 0
+    return '<tr>' +
+      '<td style="padding:8px;font-size:12px;">' + r.index + '</td>' +
+      '<td style="padding:8px;font-size:12px;min-width:150px;">' + esc(r.label || '') + '</td>' +
+      '<td style="padding:8px;font-size:12px;text-align:right;">' + leaseMoney(r.amount) + '</td>' +
+      '<td style="padding:8px;font-size:12px;">' + leaseDate(r.dueDate) + '</td>' +
+      '<td style="padding:8px;font-size:12px;text-align:right;color:#2E7D32;">' + leaseMoney(r.paidAmount) + '</td>' +
+      '<td style="padding:8px;font-size:12px;">' + leaseDate(r.paidDate) + '</td>' +
+      '<td style="padding:8px;font-size:12px;text-align:right;color:' + (unpaid > 0 ? '#C0524A' : '#2E7D32') + ';">' + leaseMoney(unpaid) + '</td>' +
+      '<td style="padding:8px;font-size:12px;text-align:center;">' + (paid ? '<span style="color:#2E7D32;font-weight:700;">已收款</span>' : '<span style="color:#C0524A;font-weight:700;">未繳</span>') + '</td>' +
+      '<td style="padding:8px;text-align:center;"><button class="btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="sendLeasePaymentReminder(\'' + leaseId + '\', \'RENT\', ' + Number(r.amount || 0) + ', \'' + leaseDateInput(r.dueDate) + '\')">LINE提醒</button></td>' +
+    '</tr>'
+  }).join('')
+}
+function renderUtilityBillingRows(rows, leaseId) {
+  if (!rows || !rows.length) return '<tr><td colspan="11" style="padding:16px;text-align:center;color:#aaa;">尚無水電抄表明細</td></tr>'
+  return rows.map(function(r) {
+    var unpaid = Math.max(0, Number(r.amount || 0) - Number(r.paidAmount || 0))
+    return '<tr>' +
+      '<td style="padding:8px;font-size:12px;">' + leaseDate(r.startDate) + '</td>' +
+      '<td style="padding:8px;font-size:12px;text-align:right;">' + Number(r.startDegree || 0).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:12px;">' + leaseDate(r.endDate) + '</td>' +
+      '<td style="padding:8px;font-size:12px;text-align:right;">' + Number(r.endDegree || 0).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:12px;text-align:right;">' + Number(r.usedDegree || 0).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:12px;text-align:right;">' + Number(r.rate || 0).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:12px;text-align:right;">' + leaseMoney(r.amount) + '</td>' +
+      '<td style="padding:8px;font-size:12px;">' + leaseDate(r.dueDate) + '</td>' +
+      '<td style="padding:8px;font-size:12px;text-align:right;color:#C0524A;">' + leaseMoney(unpaid) + '</td>' +
+      '<td style="padding:8px;font-size:12px;">' + esc(r.note || '') + '</td>' +
+      '<td style="padding:8px;text-align:center;"><button class="btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="sendLeasePaymentReminder(\'' + leaseId + '\', \'UTILITY\', ' + Number(r.amount || 0) + ', \'' + leaseDateInput(r.dueDate || r.endDate) + '\')">LINE提醒</button></td>' +
+    '</tr>'
+  }).join('')
+}
+
 // 該房客「合約期間」的收支明細（從代管清單的「對帳」開啟）
 async function openLeaseLedger(leaseId) {
   var d = MANAGED.leaseList || {}
@@ -5313,8 +5372,10 @@ async function openLeaseLedger(leaseId) {
   if (!l) { showToast('❌ 找不到租約'); return }
 
   var res = await fetch('/admin/api/managed/' + l.managedId + '?key=' + encodeURIComponent(KEY))
-  if (!res.ok) { showToast('❌ 載入失敗'); return }
+  var billRes = await fetch('/admin/api/managed/lease/' + leaseId + '/billing?key=' + encodeURIComponent(KEY))
+  if (!res.ok || !billRes.ok) { showToast('❌ 載入失敗'); return }
   var mp = await res.json()
+  var billing = await billRes.json()
   var recs = mp.incomes || []
   var start = l.leaseStart ? new Date(l.leaseStart) : null
   var end = l.leaseEnd ? new Date(l.leaseEnd) : null
@@ -5327,11 +5388,14 @@ async function openLeaseLedger(leaseId) {
   })
   var income = inPeriod.filter(function(r){ return r.type === 'INCOME' }).reduce(function(s,r){ return s + r.amount }, 0)
   var expense = inPeriod.filter(function(r){ return r.type === 'EXPENSE' }).reduce(function(s,r){ return s + r.amount }, 0)
-  function fmt(dt){ return dt ? new Date(dt).toLocaleDateString('zh-TW') : '—' }
   var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', OTHER:'其他' }
   var today = new Date().toISOString().slice(0, 10)
+  var lastReading = (billing.utilityReadings || [])[0]
+  var readingStartDate = lastReading ? leaseDateInput(lastReading.endDate) : ''
+  var readingStartDegree = lastReading ? Number(lastReading.endDegree || 0) : Number((billing.lease && billing.lease.meterCurrent) || 0)
+  var defaultRate = Number((billing.lease && billing.lease.meterRate) || l.meterRate || 0)
   var rows = inPeriod.map(function(r){
-    return '<tr><td style="padding:8px;font-size:12px;">' + fmt(r.recordDate) + '</td>' +
+    return '<tr><td style="padding:8px;font-size:12px;">' + leaseDate(r.recordDate) + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + (catLabel[r.category] || r.category) + '</td>' +
       '<td style="padding:8px;font-size:13px;color:' + (r.type === 'INCOME' ? '#2E7D32' : '#C0524A') + ';">' + (r.type === 'INCOME' ? '+' : '−') + ' NT$ ' + Number(r.amount).toLocaleString() + '</td>' +
       '<td style="padding:8px;font-size:12px;color:#888;">' + esc(r.description || '') + '</td>' +
@@ -5339,13 +5403,13 @@ async function openLeaseLedger(leaseId) {
   }).join('') || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#aaa;">此合約期間尚無收支紀錄</td></tr>'
 
   var html = '<div id="leaseLedgerModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:320;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
-    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:620px;width:100%;margin:auto;">' +
+    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:1120px;width:100%;margin:auto;">' +
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">' +
       '<div>' +
         '<div style="font-size:13px;color:#999;">房東 ' + esc(l.ownerName || '') + '</div>' +
         '<h3 style="margin:2px 0;">' + esc(l.managedTitle || '') + '</h3>' +
         '<div style="font-size:13px;color:#555;margin-top:4px;">🧑 房客：' + esc(l.tenantName) + (l.roomLabel ? '（' + esc(l.roomLabel) + '）' : '') + '</div>' +
-        '<div style="font-size:12px;color:#888;">租約：' + fmt(l.leaseStart) + ' ~ ' + fmt(l.leaseEnd) + '・月租 NT$ ' + Number(l.rent).toLocaleString() + '</div>' +
+        '<div style="font-size:12px;color:#888;">租約：' + leaseDate(l.leaseStart) + ' ~ ' + leaseDate(l.leaseEnd) + '・月租 NT$ ' + Number(l.rent).toLocaleString() + '・' + paymentCycleLabel((billing.lease && billing.lease.paymentCycle) || l.paymentCycle) + '</div>' +
       '</div>' +
       '<button onclick="document.getElementById(\'leaseLedgerModal\').remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
     '</div>' +
@@ -5365,12 +5429,63 @@ async function openLeaseLedger(leaseId) {
       '</div>' +
       '<button class="btn" style="width:100%;padding:10px;font-size:14px;" onclick="addLeaseRecord(\'' + l.managedId + '\', \'' + l.id + '\')">新增</button>' +
     '</div>' +
+    '<h4 style="margin:14px 0 10px;font-size:15px;">租金繳納明細</h4>' +
+    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:980px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="9" style="padding:8px;text-align:center;font-size:13px;">租金明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:8px;text-align:left;font-size:12px;">期別</th><th style="padding:8px;text-align:left;font-size:12px;">說明(起訖)</th><th style="padding:8px;text-align:right;font-size:12px;">應繳租金</th><th style="padding:8px;text-align:left;font-size:12px;">應繳日期</th><th style="padding:8px;text-align:right;font-size:12px;">已繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">繳款日期</th><th style="padding:8px;text-align:right;font-size:12px;">未繳差額</th><th style="padding:8px;text-align:center;font-size:12px;">狀態</th><th style="padding:8px;text-align:center;font-size:12px;">提醒</th></tr></thead><tbody>' + renderRentBillingRows(billing.rentSchedule || [], l.id) + '</tbody></table></div>' +
+    '<h4 style="margin:14px 0 10px;font-size:15px;">水電明細表</h4>' +
+    '<div style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:12px;">' +
+      '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">＋ 新增抄表度數</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:10px;">' +
+        '<input id="util_start_date" type="date" value="' + readingStartDate + '" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<input id="util_start_degree" type="number" value="' + readingStartDegree + '" placeholder="起算度數" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<input id="util_end_date" type="date" value="' + today + '" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<input id="util_end_degree" type="number" placeholder="本期度數" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<input id="util_rate" type="number" value="' + defaultRate + '" placeholder="每度金額" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<input id="util_due_date" type="date" value="' + today + '" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<input id="util_note" placeholder="備註" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;min-width:0;">' +
+      '</div>' +
+      '<button class="btn" style="width:100%;padding:10px;font-size:14px;" onclick="addUtilityReading(\'' + l.id + '\')">新增抄表</button>' +
+    '</div>' +
+    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:1080px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="11" style="padding:8px;text-align:center;font-size:13px;">水電明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:8px;text-align:left;font-size:12px;">起算日期</th><th style="padding:8px;text-align:right;font-size:12px;">起算度數</th><th style="padding:8px;text-align:left;font-size:12px;">結算日期</th><th style="padding:8px;text-align:right;font-size:12px;">結算度數</th><th style="padding:8px;text-align:right;font-size:12px;">使用度數</th><th style="padding:8px;text-align:right;font-size:12px;">每度</th><th style="padding:8px;text-align:right;font-size:12px;">應繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">應繳日期</th><th style="padding:8px;text-align:right;font-size:12px;">未繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">備註</th><th style="padding:8px;text-align:center;font-size:12px;">提醒</th></tr></thead><tbody>' + renderUtilityBillingRows(billing.utilityReadings || [], l.id) + '</tbody></table></div>' +
     '<h4 style="margin:0 0 10px;font-size:15px;">收支明細</h4>' +
     '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;"><th style="padding:8px;text-align:left;font-size:12px;">日期</th><th style="padding:8px;text-align:left;font-size:12px;">類別</th><th style="padding:8px;text-align:left;font-size:12px;">金額</th><th style="padding:8px;text-align:left;font-size:12px;">說明</th><th style="padding:8px;text-align:center;font-size:12px;">刪除</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '<div style="font-size:11px;color:#aaa;margin-top:10px;">＊新增的收支會綁定此房客租約，並同步出現在該房東/物業的「明細對帳」。</div>' +
     '</div></div>'
   var ex = document.getElementById('leaseLedgerModal'); if (ex) ex.remove()
   document.body.insertAdjacentHTML('beforeend', html)
+}
+
+async function addUtilityReading(leaseId) {
+  var endDegree = val('util_end_degree')
+  if (!endDegree) { showToast('❌ 請輸入本期度數'); return }
+  var body = {
+    startDate: val('util_start_date'),
+    startDegree: val('util_start_degree'),
+    endDate: val('util_end_date'),
+    endDegree: endDegree,
+    rate: val('util_rate'),
+    dueDate: val('util_due_date'),
+    note: val('util_note')
+  }
+  var res = await fetch('/admin/api/managed/lease/' + leaseId + '/utility-reading?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  })
+  if (!res.ok) { showToast('❌ 新增抄表失敗'); return }
+  showToast('✅ 已新增水電明細')
+  openLeaseLedger(leaseId)
+}
+
+async function sendLeasePaymentReminder(leaseId, kind, amount, dueDate) {
+  var label = kind === 'UTILITY' ? '水電' : '租金'
+  if (!confirm('確定要發送 ' + label + ' LINE 繳費提醒？')) return
+  var res = await fetch('/admin/api/managed/lease/' + leaseId + '/remind?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ kind: kind, amount: amount, dueDate: dueDate })
+  })
+  if (!res.ok) {
+    var data = {}; try { data = await res.json() } catch(e) {}
+    showToast('❌ 發送失敗：' + (data.error || res.status))
+    return
+  }
+  showToast('✅ 已發送 LINE 提醒')
 }
 
 async function addLeaseRecord(managedId, leaseId) {
