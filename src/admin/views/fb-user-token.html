@@ -17,6 +17,7 @@
     .ghost { background: #ede8e0; color: #39423b; }
     .danger { background: #c0524a; color: #fff; }
     .box { margin-top: 18px; background: #fbfaf7; border: 1px solid #eee8de; border-radius: 14px; padding: 14px; }
+    input { border: 1px solid #e5e0d5; border-radius: 12px; padding: 12px 14px; min-width: 260px; font-size: 15px; }
     .muted { color: #8b8b86; font-size: 13px; }
     .ok { color: #2e7d32; font-weight: 700; }
     .bad { color: #c0524a; font-weight: 700; }
@@ -29,6 +30,15 @@
     <div class="card">
       <h1>Facebook 個人授權 Token</h1>
       <p>這是獨立用途頁面，只保存 Facebook 個人 user token，用來記住房東授權身分與之後重抓粉專清單。不會改動原本社群管理或粉專發文設定。</p>
+      <div class="box">
+        <div class="muted">後台金鑰</div>
+        <div class="row" style="margin-top:8px;">
+          <input id="adminKey" type="password" placeholder="貼上房東後台金鑰">
+          <button class="ghost" onclick="saveKey()">儲存金鑰</button>
+        </div>
+        <div class="muted" style="margin-top:10px;">Callback URL 請加入 Meta App 的 Valid OAuth Redirect URIs：</div>
+        <div id="callbackUrl" style="word-break:break-all;margin-top:4px;font-weight:700;"></div>
+      </div>
       <div id="status" class="box muted">讀取中...</div>
       <div class="row">
         <button class="primary" onclick="connectFbUser()">連結 / 重新授權 Facebook</button>
@@ -36,15 +46,27 @@
         <button class="danger" onclick="disconnect()">刪除保存 token</button>
         <a class="btn ghost" href="/admin">回後台</a>
       </div>
-      <p class="muted">若顯示未登入，請先登入後台，再回到此網址。</p>
+      <p class="muted">這個頁面不放在網站選單內；金鑰只存在此手機瀏覽器的 sessionStorage。</p>
     </div>
   </div>
   <script>
     async function api(path, options) {
-      const res = await fetch(path, options || {})
+      const opt = options || {}
+      opt.headers = Object.assign({}, opt.headers || {}, authHeaders())
+      const res = await fetch(path, opt)
       const data = await res.json().catch(function(){ return {} })
       if (!res.ok) throw new Error(data.error || res.status)
       return data
+    }
+    function authHeaders() {
+      const key = sessionStorage.getItem('fbUserTokenAdminKey') || ''
+      return key ? { 'X-Admin-Key': key } : {}
+    }
+    function saveKey() {
+      const key = document.getElementById('adminKey').value.trim()
+      if (!key) { alert('請輸入後台金鑰'); return }
+      sessionStorage.setItem('fbUserTokenAdminKey', key)
+      loadStatus()
     }
     function fmtDate(v) {
       return v ? new Date(v).toLocaleString('zh-TW') : '未提供'
@@ -72,6 +94,12 @@
     }
     async function loadStatus() {
       try {
+        document.getElementById('callbackUrl').textContent = location.origin + '/admin/api/fb-user-token/callback'
+        document.getElementById('adminKey').value = sessionStorage.getItem('fbUserTokenAdminKey') || ''
+        if (!sessionStorage.getItem('fbUserTokenAdminKey')) {
+          document.getElementById('status').innerHTML = '<div class="bad">請先輸入後台金鑰</div>'
+          return
+        }
         render(await api('/admin/api/fb-user-token/status'))
       } catch(e) {
         document.getElementById('status').innerHTML = '<div class="bad">讀取失敗：' + escapeHtml(e.message) + '</div>'
@@ -79,6 +107,7 @@
     }
     async function connectFbUser() {
       try {
+        if (!sessionStorage.getItem('fbUserTokenAdminKey')) { alert('請先輸入並儲存後台金鑰'); return }
         const t = await api('/admin/api/fb-user-token/oauth-ticket', { method: 'POST' })
         window.open('/admin/api/fb-user-token/connect?ticket=' + encodeURIComponent(t.ticket), 'fb_user_token_oauth', 'width=560,height=720')
       } catch(e) {
