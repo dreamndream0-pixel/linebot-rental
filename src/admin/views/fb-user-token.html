@@ -41,6 +41,7 @@
         <div id="callbackUrl" style="word-break:break-all;margin-top:4px;font-weight:700;"></div>
       </div>
       <div id="status" class="box muted">讀取中...</div>
+      <div id="prospect" class="box muted">新房東預授權讀取中...</div>
       <div id="links" class="box muted">授權連結讀取中...</div>
       <div class="row">
         <button class="primary" onclick="connectFbUser()">連結 / 重新授權 Facebook</button>
@@ -112,10 +113,34 @@
       try {
         const data = await api('/admin/api/fb-user-token/links')
         const items = data.items || []
+        renderProspects(data, items)
         document.getElementById('links').innerHTML = '<div style="font-weight:700;margin-bottom:8px;">房東授權連結 / Token</div>' + (items.map(renderLinkItem).join('') || '<div class="muted">沒有房東資料</div>')
       } catch(e) {
         document.getElementById('links').innerHTML = '<div class="bad">授權連結讀取失敗：' + escapeHtml(e.message) + '</div>'
       }
+    }
+    function renderProspects(data, landlords) {
+      const box = document.getElementById('prospect')
+      const url = data.prospectAuthUrl || ''
+      const list = data.prospects || []
+      box.innerHTML =
+        '<div style="font-weight:700;margin-bottom:8px;">新房東預授權連結</div>' +
+        '<div class="muted">給還沒建立資料的準房東使用。授權後會先進待認領名單。</div>' +
+        '<div class="token">' + escapeHtml(url) + '</div>' +
+        '<button class="ghost" style="margin-top:8px;padding:8px 12px;" onclick="copyText(\'' + jsString(url) + '\')">複製預授權連結</button>' +
+        '<div style="font-weight:700;margin-top:18px;">待認領授權</div>' +
+        (list.map(function(p){ return renderProspectItem(p, landlords) }).join('') || '<div class="muted" style="margin-top:8px;">目前沒有待認領授權</div>')
+    }
+    function renderProspectItem(p, landlords) {
+      const token = p.token && p.token.userToken ? p.token.userToken : ''
+      const options = landlords.map(function(l){ return '<option value="' + escapeHtml(l.ownerId || '') + '">' + escapeHtml(l.name || '-') + '</option>' }).join('')
+      return '<div style="border-top:1px solid #eee0d2;padding:12px 0;">' +
+        '<div><strong>' + escapeHtml((p.token && p.token.fbName) || '未命名 FB 用戶') + '</strong> <span class="muted">' + escapeHtml((p.token && p.token.fbUserId) || '') + '</span></div>' +
+        (token ? '<div class="token">' + escapeHtml(token) + '</div><button class="ghost" style="margin-top:8px;padding:8px 12px;" onclick="copyText(\'' + jsString(token) + '\')">複製 Token</button>' : '') +
+        '<div class="row" style="margin-top:10px;"><select id="claim_' + escapeHtml(p.id || '') + '" style="padding:10px;border:1px solid #e5e0d5;border-radius:10px;">' + options + '</select>' +
+        '<button class="sage" onclick="claimProspect(\'' + jsString(p.id || '') + '\')">綁定到房東</button>' +
+        '<button class="danger" onclick="deleteProspect(\'' + jsString(p.id || '') + '\')">刪除</button></div>' +
+      '</div>'
     }
     function renderLinkItem(item) {
       const token = item.token && item.token.userToken ? item.token.userToken : ''
@@ -151,6 +176,31 @@
         await loadStatus()
       } catch(e) {
         alert('重抓失敗：' + e.message)
+      }
+    }
+    async function claimProspect(id) {
+      const sel = document.getElementById('claim_' + id)
+      const landlordId = sel ? sel.value : ''
+      if (!landlordId) { alert('請選擇房東'); return }
+      try {
+        await api('/admin/api/fb-user-token/prospect/' + encodeURIComponent(id) + '/claim', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ landlordId: landlordId })
+        })
+        alert('已綁定')
+        await loadStatus()
+      } catch(e) {
+        alert('綁定失敗：' + e.message)
+      }
+    }
+    async function deleteProspect(id) {
+      if (!confirm('確定刪除此待認領授權？')) return
+      try {
+        await api('/admin/api/fb-user-token/prospect/' + encodeURIComponent(id), { method: 'DELETE' })
+        await loadStatus()
+      } catch(e) {
+        alert('刪除失敗：' + e.message)
       }
     }
     async function disconnect() {

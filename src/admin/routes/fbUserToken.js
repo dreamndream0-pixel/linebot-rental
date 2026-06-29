@@ -41,6 +41,10 @@ function makeInvite(ownerType, ownerId) {
   return `${payload}.${signInvite(payload)}`
 }
 
+function makeProspectInvite() {
+  return makeInvite('PROSPECT', 'new')
+}
+
 function verifyInvite(token) {
   const [payload, sig] = String(token || '').split('.')
   if (!payload || !sig || signInvite(payload) !== sig) return null
@@ -55,6 +59,7 @@ function verifyInvite(token) {
 
 async function ownerLabel(ownerType, ownerId) {
   if (ownerType === 'SUPER') return '總管理員'
+  if (ownerType === 'PROSPECT') return '新房東預授權'
   const landlord = await prisma.landlord.findUnique({ where: { id: ownerId }, select: { name: true, email: true, isActive: true } })
   if (!landlord || !landlord.isActive) return null
   return landlord.name || landlord.email || ownerId
@@ -155,7 +160,9 @@ router.get('/admin/api/fb-user-token/links', async (req, res) => {
         prisma.$queryRawUnsafe(`SELECT * FROM fb_user_auth_tokens WHERE "ownerType" = 'LANDLORD'`),
       ])
       const byOwner = new Map(rows.map(r => [r.ownerId, r]))
+      const prospects = await prisma.$queryRawUnsafe(`SELECT * FROM fb_user_auth_tokens WHERE "ownerType" = 'PROSPECT' ORDER BY "createdAt" DESC`)
       return res.json({
+        prospectAuthUrl: `${publicBase(req)}/fb-user-auth/${makeProspectInvite()}`,
         items: landlords.map(l => ({
           ownerType: 'LANDLORD',
           ownerId: l.id,
@@ -164,6 +171,7 @@ router.get('/admin/api/fb-user-token/links', async (req, res) => {
           authUrl: `${publicBase(req)}/fb-user-auth/${makeInvite('LANDLORD', l.id)}`,
           token: expose(byOwner.get(l.id)),
         })),
+        prospects: prospects.map(r => ({ id: r.id, token: expose(r) })),
       })
     }
     const saved = await getSaved(auth)
@@ -177,6 +185,57 @@ router.get('/admin/api/fb-user-token/links', async (req, res) => {
         token: expose(saved),
       }],
     })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/admin/api/fb-user-token/prospect/:id/claim', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  if (auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  try {
+    await ensureTable()
+    const landlordId = String(req.body.landlordId || '')
+    const landlord = await prisma.landlord.findUnique({ where: { id: landlordId }, select: { id: true, isActive: true } })
+    if (!landlord || !landlord.isActive) return res.status(400).json({ error: '找不到可用房東' })
+    const rows = await prisma.$queryRawUnsafe(`SELECT * FROM fb_user_auth_tokens WHERE id = $1 AND "ownerType" = 'PROSPECT' LIMIT 1`, req.params.id)
+    const prospect = rows[0]
+    if (!prospect) return res.status(404).json({ error: '找不到待認領授權' })
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO fb_user_auth_tokens
+        (id, "ownerType", "ownerId", "fbUserId", "fbName", "userToken", "tokenExpiresAt", "pagesJson", "createdAt", "updatedAt")
+       VALUES ($1, 'LANDLORD', $2, $3, $4, $5, $6, $7, NOW(), NOW())
+       ON CONFLICT ("ownerType", "ownerId") DO UPDATE SET
+        "fbUserId" = $3,
+        "fbName" = $4,
+        "userToken" = $5,
+        "tokenExpiresAt" = $6,
+        "pagesJson" = $7,
+        "updatedAt" = NOW()`,
+      crypto.randomBytes(12).toString('hex'),
+      landlord.id,
+      prospect.fbUserId || null,
+      prospect.fbName || null,
+      prospect.userToken,
+      prospect.tokenExpiresAt || null,
+      prospect.pagesJson || '[]'
+    )
+    await prisma.$executeRawUnsafe(`DELETE FROM fb_user_auth_tokens WHERE id = $1 AND "ownerType" = 'PROSPECT'`, req.params.id)
+    res.json({ ok: true })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.delete('/admin/api/fb-user-token/prospect/:id', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  if (auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  try {
+    await ensureTable()
+    await prisma.$executeRawUnsafe(`DELETE FROM fb_user_auth_tokens WHERE id = $1 AND "ownerType" = 'PROSPECT'`, req.params.id)
+    res.json({ ok: true })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
@@ -261,7 +320,10 @@ router.get('/admin/api/fb-user-token/callback', async (req, res) => {
     if (!auth) return res.status(401).send(popupClose('授權失敗：登入狀態無效。'))
     owner = ownerKey(auth)
   } else {
-    owner = { ownerType: entry.ownerType, ownerId: entry.ownerId }
+    owner = {
+      ownerType: entry.ownerType,
+      ownerId: entry.ownerType === 'PROSPECT' ? `prospect_${crypto.randomBytes(8).toString('hex')}` : entry.ownerId,
+    }
     if (!(await ownerLabel(owner.ownerType, owner.ownerId))) return res.status(404).send(popupClose('找不到可用房東。'))
   }
 
