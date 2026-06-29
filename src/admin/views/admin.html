@@ -644,7 +644,7 @@ document.addEventListener('DOMContentLoaded', function() {
 })
 
 var DATA = null
-var KEY = sessionStorage.getItem('adminKey') || ''
+var KEY = ''
 
 // 後台金鑰改走 HTTP header：自動把 /admin/api/ 請求網址上的 ?key= 拿掉，改放 X-Admin-Key
 // header，金鑰就不會出現在網址與伺服器日誌。包一層 fetch，呼叫端不必逐一修改。
@@ -700,17 +700,31 @@ var PROP_SEARCHABLE = { AVAILABLE: true, COMING_SOON: true }
 var BOOKING_LABEL = { PENDING: '⏳ 待確認', CONFIRMED: '✅ 已確認', REJECTED: '❌ 已拒絕', CANCELLED: '❌ 已取消', COMPLETED: '🏁 已完成' }
 var REPAIR_LABEL = { PENDING: '待處理', IN_PROGRESS: '處理中', DONE: '已完成' }
 
-if (KEY) {
+restoreSession()
+
+async function restoreSession() {
   document.getElementById('loginView').style.display = 'none'
   document.getElementById('loadingView').style.display = 'flex'
-  login(KEY)
+  try {
+    var res = await fetch('/admin/api/data')
+    if (!res.ok) throw new Error('no session')
+    DATA = await res.json()
+    enterAdmin()
+  } catch (e) {
+    document.getElementById('loadingView').style.display = 'none'
+    document.getElementById('loginView').style.display = 'flex'
+  }
 }
 
 async function login(savedKey) {
   var key = savedKey || document.getElementById('keyInput').value.trim()
   if (!key) return
   try {
-    var res = await fetch('/admin/api/data?key=' + encodeURIComponent(key))
+    var res = await fetch('/admin/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: key })
+    })
     if (!res.ok) {
       showToast('❌ 密碼錯誤')
       sessionStorage.removeItem('adminKey')
@@ -718,9 +732,20 @@ async function login(savedKey) {
       document.getElementById('loginView').style.display = 'flex'
       return
     }
-    DATA = await res.json()
-    KEY = key
-    sessionStorage.setItem('adminKey', key)
+    var dataRes = await fetch('/admin/api/data')
+    if (!dataRes.ok) throw new Error('session data failed')
+    DATA = await dataRes.json()
+    KEY = ''
+    sessionStorage.removeItem('adminKey')
+    enterAdmin()
+  } catch (e) {
+    showToast('❌ 連線失敗')
+    document.getElementById('loadingView').style.display = 'none'
+    document.getElementById('loginView').style.display = 'flex'
+  }
+}
+
+function enterAdmin() {
     document.getElementById('loginView').style.display = 'none'
     document.getElementById('loadingView').style.display = 'none'
     document.getElementById('mainView').style.display = 'block'
@@ -742,14 +767,10 @@ async function login(savedKey) {
     renderTabBar()
     renderStats()
     renderTab()
-  } catch (e) {
-    showToast('❌ 連線失敗')
-    document.getElementById('loadingView').style.display = 'none'
-    document.getElementById('loginView').style.display = 'flex'
-  }
 }
 
-function logout() {
+async function logout() {
+  try { await fetch('/admin/api/logout', { method: 'POST' }) } catch (e) {}
   sessionStorage.removeItem('adminKey')
   KEY = ''
   DATA = null
@@ -761,7 +782,7 @@ function logout() {
 
 async function reload() {
   // 不再每次重新整理都觸發 migrate（DDL）；資料表存在性由啟動檢查與各社區端點自行確保
-  var res = await fetch('/admin/api/data?key=' + encodeURIComponent(KEY))
+  var res = await fetch('/admin/api/data')
   DATA = await res.json()
   renderStats()
   renderTab()
@@ -3411,8 +3432,7 @@ async function renderHeroSettings() {
   var el = document.getElementById('content')
   el.innerHTML = '<div class="form-box"><p style="color:#888;font-size:14px;">載入中...</p></div>'
   try {
-    var siteBase = (DATA.siteUrl || '').replace(/\/$/, '')
-    var res = await fetch(siteBase + '/api/admin/hero')
+    var res = await fetch('/admin/api/site/hero')
     if (res.ok) {
       var data = await res.json()
       heroSlides = data.slides || []
@@ -3689,11 +3709,10 @@ async function clearLogo() {
 
 async function saveHeroSlides(silent) {
   try {
-    var siteBase = (DATA && DATA.siteUrl ? DATA.siteUrl : 'https://xiaowo-rental.vercel.app').replace(/\/$/, '')
     var slides = heroSlides.filter(function(s){ return s.url && s.url.trim() })
-    var res = await fetch(siteBase + '/api/admin/hero', {
+    var res = await fetch('/admin/api/site/hero', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + KEY },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slides: slides, logoUrl: heroLogoUrl })
     })
     var data = await res.json()
@@ -4201,8 +4220,7 @@ async function renderFooterSettings() {
   var el = document.getElementById('content')
   el.innerHTML = '<div class="form-box"><p style="color:#888;font-size:14px;">載入中...</p></div>'
   try {
-    var siteBase = (DATA.siteUrl || '').replace(/\/$/, '')
-    var res = await fetch(siteBase + '/api/admin/pages', { headers: { 'Authorization': 'Bearer ' + KEY } })
+    var res = await fetch('/admin/api/site/pages')
     if (res.ok) {
       var data = await res.json()
       footerPages = {
@@ -4260,10 +4278,9 @@ function syncFooterCurrentFromInputs() {
 async function saveFooterPages() {
   syncFooterCurrentFromInputs()
   try {
-    var siteBase = (DATA && DATA.siteUrl ? DATA.siteUrl : 'https://xiaowo-rental.vercel.app').replace(/\/$/, '')
-    var res = await fetch(siteBase + '/api/admin/pages', {
+    var res = await fetch('/admin/api/site/pages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + KEY },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(footerPages)
     })
     var data = await res.json()

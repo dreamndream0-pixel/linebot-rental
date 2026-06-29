@@ -1,13 +1,72 @@
 // src/admin/helpers.js — 共用工具函式
 const { Client } = require('@line/bot-sdk')
 const cloudinary = require('cloudinary').v2
+const crypto = require('crypto')
 const prisma = require('../db')
 
 const ADMIN_KEY = process.env.ADMIN_KEY
+const SESSION_COOKIE_NAME = 'xiaowo_admin_session'
+const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000
+
+function sessionSecret() {
+  return process.env.ADMIN_SESSION_SECRET || ADMIN_KEY || 'xiaowo-admin-session'
+}
+
+function b64url(input) {
+  return Buffer.from(input).toString('base64url')
+}
+
+function signPayload(payload) {
+  return crypto.createHmac('sha256', sessionSecret()).update(payload).digest('base64url')
+}
+
+function makeSessionToken(auth) {
+  const payload = b64url(JSON.stringify({
+    role: auth.role,
+    landlordId: auth.landlordId || null,
+    label: auth.label || '',
+    source: auth.source || null,
+    exp: Date.now() + SESSION_MAX_AGE_MS,
+    nonce: crypto.randomBytes(12).toString('base64url'),
+  }))
+  return `${payload}.${signPayload(payload)}`
+}
+
+async function verifySessionToken(token) {
+  if (!token || !token.includes('.')) return null
+  const [payload, sig] = token.split('.')
+  if (!payload || !sig || signPayload(payload) !== sig) return null
+  let data
+  try {
+    data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
+  } catch (_) {
+    return null
+  }
+  if (!data.exp || Date.now() > data.exp) return null
+  if (data.role === 'super') return { role: 'super', landlordId: null, label: '總管理員' }
+  if (data.role === 'landlord' && data.landlordId) {
+    try {
+      const landlord = await prisma.landlord.findUnique({ where: { id: data.landlordId } })
+      if (landlord && landlord.isActive) {
+        return { role: 'landlord', landlordId: landlord.id, label: landlord.name, source: landlord.source }
+      }
+    } catch (e) {
+      console.error('verifySessionToken 查詢房東失敗:', e.message)
+    }
+  }
+  return null
+}
+
+async function createAdminSession(key) {
+  const auth = await resolveRole(key)
+  if (!auth) return null
+  return { auth, token: makeSessionToken(auth), maxAgeMs: SESSION_MAX_AGE_MS }
+}
 
 // ── 權限解析 ─────────────────────────────────────────────────────
 async function resolveRole(key) {
   if (!key || !ADMIN_KEY) return null
+  if (key.startsWith('SESSION:')) return verifySessionToken(key.slice('SESSION:'.length))
   if (key === ADMIN_KEY) return { role: 'super', landlordId: null, label: '總管理員' }
 
   try {
@@ -112,4 +171,14 @@ async function notifyBookingTenant(booking, status, rejectReason = null) {
   }
 }
 
-module.exports = { resolveRole, landlordFilter, ownsRecord, revalidateSite, deleteCloudinaryImages, notifyBookingTenant }
+module.exports = {
+  resolveRole,
+  landlordFilter,
+  ownsRecord,
+  revalidateSite,
+  deleteCloudinaryImages,
+  notifyBookingTenant,
+  createAdminSession,
+  SESSION_COOKIE_NAME,
+  SESSION_MAX_AGE_MS,
+}
