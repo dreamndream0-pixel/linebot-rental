@@ -75,9 +75,18 @@ async function resolveRole(key) {
 
   try {
     const keyHash = hashAdminKey(key)
-    let landlord = await prisma.landlord.findFirst({ where: { adminKeyHash: keyHash } })
+    let landlord = null
+    try {
+      landlord = await prisma.landlord.findFirst({ where: { adminKeyHash: keyHash } })
+    } catch (e) {
+      console.error('adminKeyHash 查詢失敗，改用舊欄位嘗試:', e.message)
+    }
     if (!landlord) {
-      landlord = await prisma.landlord.findUnique({ where: { adminKey: key } })
+      try {
+        landlord = await prisma.landlord.findUnique({ where: { adminKey: key } })
+      } catch (e) {
+        console.error('adminKey 舊欄位查詢失敗:', e.message)
+      }
       if (landlord) {
         // 舊版明文金鑰登入成功後立即遷移成 hash，並清空明文欄位。
         await prisma.landlord.update({

@@ -85,6 +85,15 @@ app.listen(PORT, () => {
 prisma.$connect()
   .then(async () => {
     console.log('✅ 資料庫已連線')
+    // 安全登入必要欄位：部署環境不一定會自動跑 prisma db push，所以啟動時補齊。
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "adminKeyHash" TEXT`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE landlords ALTER COLUMN "adminKey" DROP NOT NULL`)
+      await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "landlords_adminKeyHash_key" ON landlords ("adminKeyHash")`)
+      console.log('✅ 後台金鑰安全欄位已確認')
+    } catch (e) {
+      console.error('⚠️ 後台金鑰安全欄位確認失敗:', e.message)
+    }
     // Runtime DDL can be blocked by production DB locks/timeouts. Run it only when explicitly requested.
     if (process.env.RUN_SCHEMA_CHECK === 'true') {
       try {
