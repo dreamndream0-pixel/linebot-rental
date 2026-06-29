@@ -3693,7 +3693,7 @@ async function saveHeroSlides(silent) {
     var slides = heroSlides.filter(function(s){ return s.url && s.url.trim() })
     var res = await fetch(siteBase + '/api/admin/hero', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + KEY },
       body: JSON.stringify({ slides: slides, logoUrl: heroLogoUrl })
     })
     var data = await res.json()
@@ -4202,7 +4202,7 @@ async function renderFooterSettings() {
   el.innerHTML = '<div class="form-box"><p style="color:#888;font-size:14px;">載入中...</p></div>'
   try {
     var siteBase = (DATA.siteUrl || '').replace(/\/$/, '')
-    var res = await fetch(siteBase + '/api/admin/pages?key=' + encodeURIComponent(KEY))
+    var res = await fetch(siteBase + '/api/admin/pages', { headers: { 'Authorization': 'Bearer ' + KEY } })
     if (res.ok) {
       var data = await res.json()
       footerPages = {
@@ -4261,9 +4261,9 @@ async function saveFooterPages() {
   syncFooterCurrentFromInputs()
   try {
     var siteBase = (DATA && DATA.siteUrl ? DATA.siteUrl : 'https://xiaowo-rental.vercel.app').replace(/\/$/, '')
-    var res = await fetch(siteBase + '/api/admin/pages?key=' + encodeURIComponent(KEY), {
+    var res = await fetch(siteBase + '/api/admin/pages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + KEY },
       body: JSON.stringify(footerPages)
     })
     var data = await res.json()
