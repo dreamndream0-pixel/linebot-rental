@@ -39,6 +39,12 @@ function ymd(d) {
   return d ? new Date(d).toISOString().slice(0, 10) : null
 }
 
+function startOfDay(d) {
+  const x = new Date(d)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+
 async function getOwnedLease(auth, leaseId) {
   const lease = await prisma.lease.findUnique({
     where: { id: leaseId },
@@ -49,30 +55,62 @@ async function getOwnedLease(auth, leaseId) {
   return lease
 }
 
-function buildRentSchedule(lease, records) {
+function buildRentSchedule(lease, rentPayments) {
   if (!lease.leaseStart) return []
   const months = cycleMonths(lease.paymentCycle)
   const start = new Date(lease.leaseStart)
   const leaseEnd = lease.leaseEnd ? new Date(lease.leaseEnd) : addMonths(start, 12)
   const payDay = lease.rentPayDay || start.getDate()
   const rows = []
-  let periodStart = new Date(start)
+  const locked = (rentPayments || [])
+    .filter(p => (p.paidAmount || 0) > 0)
+    .sort((a, b) => new Date(a.periodStart) - new Date(b.periodStart))
+  locked.forEach((p, i) => {
+    rows.push({
+      id: p.id,
+      index: i + 1,
+      label: `${ymd(p.periodStart)}~${ymd(p.periodEnd)}`,
+      periodStart: p.periodStart,
+      periodEnd: p.periodEnd,
+      amount: p.amount,
+      dueDate: p.dueDate,
+      paidAmount: p.paidAmount,
+      paidDate: p.paidDate,
+      payMethod: p.payMethod,
+      receiptUrl: p.receiptUrl,
+      note: p.note,
+      locked: true,
+      unpaid: Math.max(0, (p.amount || 0) - (p.paidAmount || 0)),
+    })
+  })
+
+  const lastLockedEnd = locked.reduce((max, p) => {
+    const t = new Date(p.periodEnd).getTime()
+    return t > max ? t : max
+  }, 0)
+  let periodStart = lastLockedEnd ? new Date(lastLockedEnd + 86400000) : new Date(start)
+  if (periodStart < start) periodStart = new Date(start)
   let idx = 1
   while (periodStart <= leaseEnd && idx <= 120) {
     const nextStart = addMonths(periodStart, months)
     const periodEnd = new Date(Math.min(addMonths(periodStart, months).getTime() - 86400000, leaseEnd.getTime()))
     const due = lease.paymentDueMode === 'CONTRACT_START' ? new Date(periodStart) : fixedDueDate(periodStart, payDay)
     const amount = (lease.rent || 0) * months
-    const paidRecords = records.filter(r => r.type === 'INCOME' && r.category === 'RENT' && ymd(r.recordDate) === ymd(due))
-    const paidAmount = paidRecords.reduce((s, r) => s + r.amount, 0)
     rows.push({
-      index: idx,
+      id: null,
+      index: rows.length + 1,
       label: `${ymd(periodStart)}~${ymd(periodEnd)}`,
+      periodStart,
+      periodEnd,
       amount,
       dueDate: due,
-      paidAmount,
-      paidDate: paidRecords[0]?.recordDate || null,
-      unpaid: amount - paidAmount,
+      paidAmount: 0,
+      paidDate: null,
+      payMethod: null,
+      receiptUrl: null,
+      note: null,
+      locked: false,
+      unpaid: amount,
     })
     periodStart = nextStart
     idx++
@@ -787,14 +825,95 @@ router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
   try {
     const lease = await getOwnedLease(auth, req.params.leaseId)
     if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
-    const [records, utilityReadings] = await Promise.all([
+    const [records, utilityReadings, rentPayments] = await Promise.all([
       prisma.managementRecord.findMany({ where: { managedPropertyId: lease.managedPropertyId, OR: [{ leaseId: lease.id }, { leaseId: null }] }, orderBy: { recordDate: 'asc' } }),
       prisma.utilityReading.findMany({ where: { leaseId: lease.id }, orderBy: { endDate: 'desc' } }),
+      prisma.rentPayment.findMany({ where: { leaseId: lease.id }, orderBy: { periodStart: 'asc' } }),
     ])
-    const rentSchedule = buildRentSchedule(lease, records.filter(r => r.leaseId === lease.id || !r.leaseId))
+    const rentSchedule = buildRentSchedule(lease, rentPayments)
     res.json({ lease, rentSchedule, utilityReadings })
   } catch (e) {
     console.error('租約帳務載入失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/admin/api/managed/lease/:leaseId/payment', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    const b = req.body
+    const kind = b.kind === 'UTILITY' ? 'UTILITY' : 'RENT'
+    const paidAmount = parseInt(b.paidAmount) || 0
+    const paidDate = b.paidDate ? new Date(b.paidDate) : null
+    if (!paidAmount || !paidDate) return res.status(400).json({ error: '請輸入已繳金額與繳費日期' })
+
+    if (kind === 'UTILITY') {
+      const reading = await prisma.utilityReading.findFirst({ where: { id: b.utilityReadingId, leaseId: lease.id } })
+      if (!reading) return res.status(404).json({ error: '找不到水電明細' })
+      const updated = await prisma.utilityReading.update({
+        where: { id: reading.id },
+        data: {
+          paidAmount,
+          paidDate,
+          payMethod: b.payMethod || null,
+          receiptUrl: b.receiptUrl || null,
+          note: b.note !== undefined ? (b.note || null) : reading.note,
+        },
+      })
+      return res.json(updated)
+    }
+
+    const periodStart = b.periodStart ? startOfDay(b.periodStart) : null
+    const periodEnd = b.periodEnd ? startOfDay(b.periodEnd) : null
+    const dueDate = b.dueDate ? startOfDay(b.dueDate) : null
+    const amount = parseInt(b.amount) || paidAmount
+    if (!periodStart || !periodEnd || !dueDate) return res.status(400).json({ error: '缺少租金期別資料' })
+
+    let existing = b.rentPaymentId ? await prisma.rentPayment.findFirst({ where: { id: b.rentPaymentId, leaseId: lease.id } }) : null
+    if (!existing) {
+      existing = await prisma.rentPayment.findFirst({
+        where: { leaseId: lease.id, periodStart, dueDate },
+      })
+    }
+
+    let recordId = existing?.recordId || null
+    const recordData = {
+      managedPropertyId: lease.managedPropertyId,
+      leaseId: lease.id,
+      type: 'INCOME',
+      category: 'RENT',
+      amount: paidAmount,
+      recordDate: paidDate,
+      description: `租金 ${ymd(periodStart)}~${ymd(periodEnd)} ${b.payMethod ? `(${b.payMethod})` : ''}`.trim(),
+    }
+    if (recordId) {
+      await prisma.managementRecord.update({ where: { id: recordId }, data: recordData })
+    } else {
+      const record = await prisma.managementRecord.create({ data: recordData })
+      recordId = record.id
+    }
+
+    const data = {
+      recordId,
+      periodStart,
+      periodEnd,
+      dueDate,
+      amount,
+      paidAmount,
+      paidDate,
+      payMethod: b.payMethod || null,
+      receiptUrl: b.receiptUrl || null,
+      note: b.note || null,
+    }
+    const payment = existing
+      ? await prisma.rentPayment.update({ where: { id: existing.id }, data })
+      : await prisma.rentPayment.create({ data: { leaseId: lease.id, ...data } })
+    res.json(payment)
+  } catch (e) {
+    console.error('更新繳費狀態失敗:', e.message)
     res.status(500).json({ error: e.message })
   }
 })

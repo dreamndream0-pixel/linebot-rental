@@ -5379,28 +5379,39 @@ function leaseDateInput(d) { return d ? new Date(d).toISOString().slice(0, 10) :
 function paymentCycleLabel(v) {
   return { MONTHLY:'月繳', BIMONTHLY:'雙月繳', QUARTERLY:'季繳', SEMIANNUAL:'半年繳', YEARLY:'年繳' }[v] || '月繳'
 }
+function paymentMethodOptions(v) {
+  var opts = [['', '方式'], ['匯款', '匯款'], ['現金', '現金'], ['LINE Pay', 'LINE Pay'], ['其他', '其他']]
+  return opts.map(function(o){ return '<option value="' + o[0] + '"' + (v === o[0] ? ' selected' : '') + '>' + o[1] + '</option>' }).join('')
+}
 function renderRentBillingRows(rows, leaseId) {
-  if (!rows || !rows.length) return '<tr><td colspan="9" style="padding:16px;text-align:center;color:#aaa;">尚無租金繳納明細</td></tr>'
-  return rows.map(function(r) {
+  if (!rows || !rows.length) return '<tr><td colspan="12" style="padding:16px;text-align:center;color:#aaa;">尚無租金繳納明細</td></tr>'
+  return rows.map(function(r, idx) {
+    var key = 'rent_' + idx
     var unpaid = Number(r.unpaid || 0)
     var paid = unpaid <= 0
+    var receipt = r.receiptUrl ? '<a href="' + esc(r.receiptUrl) + '" target="_blank" style="font-size:12px;color:#4A6741;">查看</a>' : '<span style="font-size:12px;color:#aaa;">無</span>'
     return '<tr>' +
       '<td style="padding:8px;font-size:12px;">' + r.index + '</td>' +
-      '<td style="padding:8px;font-size:12px;min-width:150px;">' + esc(r.label || '') + '</td>' +
+      '<td style="padding:8px;font-size:12px;min-width:150px;">' + esc(r.label || '') + (r.locked ? '<br><span style="font-size:11px;color:#4A8A4A;">已繳鎖定</span>' : '') + '</td>' +
       '<td style="padding:8px;font-size:12px;text-align:right;">' + leaseMoney(r.amount) + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + leaseDate(r.dueDate) + '</td>' +
-      '<td style="padding:8px;font-size:12px;text-align:right;color:#2E7D32;">' + leaseMoney(r.paidAmount) + '</td>' +
-      '<td style="padding:8px;font-size:12px;">' + leaseDate(r.paidDate) + '</td>' +
       '<td style="padding:8px;font-size:12px;text-align:right;color:' + (unpaid > 0 ? '#C0524A' : '#2E7D32') + ';">' + leaseMoney(unpaid) + '</td>' +
       '<td style="padding:8px;font-size:12px;text-align:center;">' + (paid ? '<span style="color:#2E7D32;font-weight:700;">已收款</span>' : '<span style="color:#C0524A;font-weight:700;">未繳</span>') + '</td>' +
+      '<td style="padding:8px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳金額" style="width:95px;padding:6px;border:1px solid #E5E0D5;border-radius:7px;font-size:12px;"></td>' +
+      '<td style="padding:8px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="width:130px;padding:6px;border:1px solid #E5E0D5;border-radius:7px;font-size:12px;"></td>' +
+      '<td style="padding:8px;"><select id="' + key + '_method" style="width:90px;padding:6px;border:1px solid #E5E0D5;border-radius:7px;font-size:12px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
+      '<td style="padding:8px;font-size:12px;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="width:92px;font-size:11px;"><br>' + receipt + '</td>' +
+      '<td style="padding:8px;text-align:center;"><button class="btn" style="width:auto;padding:6px 10px;font-size:12px;" onclick="saveRentPayment(\'' + leaseId + '\', \'' + key + '\', \'' + (r.id || '') + '\', \'' + leaseDateInput(r.periodStart) + '\', \'' + leaseDateInput(r.periodEnd) + '\', \'' + leaseDateInput(r.dueDate) + '\', ' + Number(r.amount || 0) + ')">儲存</button></td>' +
       '<td style="padding:8px;text-align:center;"><button class="btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="sendLeasePaymentReminder(\'' + leaseId + '\', \'RENT\', ' + Number(r.amount || 0) + ', \'' + leaseDateInput(r.dueDate) + '\')">LINE提醒</button></td>' +
     '</tr>'
   }).join('')
 }
 function renderUtilityBillingRows(rows, leaseId) {
-  if (!rows || !rows.length) return '<tr><td colspan="11" style="padding:16px;text-align:center;color:#aaa;">尚無水電抄表明細</td></tr>'
+  if (!rows || !rows.length) return '<tr><td colspan="16" style="padding:16px;text-align:center;color:#aaa;">尚無水電抄表明細</td></tr>'
   return rows.map(function(r) {
+    var key = 'util_' + r.id
     var unpaid = Math.max(0, Number(r.amount || 0) - Number(r.paidAmount || 0))
+    var receipt = r.receiptUrl ? '<a href="' + esc(r.receiptUrl) + '" target="_blank" style="font-size:12px;color:#4A6741;">查看</a>' : '<span style="font-size:12px;color:#aaa;">無</span>'
     return '<tr>' +
       '<td style="padding:8px;font-size:12px;">' + leaseDate(r.startDate) + '</td>' +
       '<td style="padding:8px;font-size:12px;text-align:right;">' + Number(r.startDegree || 0).toLocaleString() + '</td>' +
@@ -5412,6 +5423,11 @@ function renderUtilityBillingRows(rows, leaseId) {
       '<td style="padding:8px;font-size:12px;">' + leaseDate(r.dueDate) + '</td>' +
       '<td style="padding:8px;font-size:12px;text-align:right;color:#C0524A;">' + leaseMoney(unpaid) + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + esc(r.note || '') + '</td>' +
+      '<td style="padding:8px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳金額" style="width:95px;padding:6px;border:1px solid #E5E0D5;border-radius:7px;font-size:12px;"></td>' +
+      '<td style="padding:8px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="width:130px;padding:6px;border:1px solid #E5E0D5;border-radius:7px;font-size:12px;"></td>' +
+      '<td style="padding:8px;"><select id="' + key + '_method" style="width:90px;padding:6px;border:1px solid #E5E0D5;border-radius:7px;font-size:12px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
+      '<td style="padding:8px;font-size:12px;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="width:92px;font-size:11px;"><br>' + receipt + '</td>' +
+      '<td style="padding:8px;text-align:center;"><button class="btn" style="width:auto;padding:6px 10px;font-size:12px;" onclick="saveUtilityPayment(\'' + leaseId + '\', \'' + r.id + '\', \'' + key + '\')">儲存</button></td>' +
       '<td style="padding:8px;text-align:center;"><button class="btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="sendLeasePaymentReminder(\'' + leaseId + '\', \'UTILITY\', ' + Number(r.amount || 0) + ', \'' + leaseDateInput(r.dueDate || r.endDate) + '\')">LINE提醒</button></td>' +
     '</tr>'
   }).join('')
@@ -5483,7 +5499,7 @@ async function openLeaseLedger(leaseId) {
       '<button class="btn" style="width:100%;padding:10px;font-size:14px;" onclick="addLeaseRecord(\'' + l.managedId + '\', \'' + l.id + '\')">新增</button>' +
     '</div>' +
     '<h4 style="margin:14px 0 10px;font-size:15px;">租金繳納明細</h4>' +
-    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:980px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="9" style="padding:8px;text-align:center;font-size:13px;">租金明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:8px;text-align:left;font-size:12px;">期別</th><th style="padding:8px;text-align:left;font-size:12px;">說明(起訖)</th><th style="padding:8px;text-align:right;font-size:12px;">應繳租金</th><th style="padding:8px;text-align:left;font-size:12px;">應繳日期</th><th style="padding:8px;text-align:right;font-size:12px;">已繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">繳款日期</th><th style="padding:8px;text-align:right;font-size:12px;">未繳差額</th><th style="padding:8px;text-align:center;font-size:12px;">狀態</th><th style="padding:8px;text-align:center;font-size:12px;">提醒</th></tr></thead><tbody>' + renderRentBillingRows(billing.rentSchedule || [], l.id) + '</tbody></table></div>' +
+    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:1320px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="12" style="padding:8px;text-align:center;font-size:13px;">租金明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:8px;text-align:left;font-size:12px;">期別</th><th style="padding:8px;text-align:left;font-size:12px;">說明(起訖)</th><th style="padding:8px;text-align:right;font-size:12px;">應繳租金</th><th style="padding:8px;text-align:left;font-size:12px;">應繳日期</th><th style="padding:8px;text-align:right;font-size:12px;">未繳差額</th><th style="padding:8px;text-align:center;font-size:12px;">狀態</th><th style="padding:8px;text-align:left;font-size:12px;">已繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">繳款日期</th><th style="padding:8px;text-align:left;font-size:12px;">方式</th><th style="padding:8px;text-align:left;font-size:12px;">匯款圖</th><th style="padding:8px;text-align:center;font-size:12px;">儲存</th><th style="padding:8px;text-align:center;font-size:12px;">提醒</th></tr></thead><tbody>' + renderRentBillingRows(billing.rentSchedule || [], l.id) + '</tbody></table></div>' +
     '<h4 style="margin:14px 0 10px;font-size:15px;">水電明細表</h4>' +
     '<div style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:12px;">' +
       '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">＋ 新增抄表度數</div>' +
@@ -5498,7 +5514,7 @@ async function openLeaseLedger(leaseId) {
       '</div>' +
       '<button class="btn" style="width:100%;padding:10px;font-size:14px;" onclick="addUtilityReading(\'' + l.id + '\')">新增抄表</button>' +
     '</div>' +
-    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:1080px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="11" style="padding:8px;text-align:center;font-size:13px;">水電明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:8px;text-align:left;font-size:12px;">起算日期</th><th style="padding:8px;text-align:right;font-size:12px;">起算度數</th><th style="padding:8px;text-align:left;font-size:12px;">結算日期</th><th style="padding:8px;text-align:right;font-size:12px;">結算度數</th><th style="padding:8px;text-align:right;font-size:12px;">使用度數</th><th style="padding:8px;text-align:right;font-size:12px;">每度</th><th style="padding:8px;text-align:right;font-size:12px;">應繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">應繳日期</th><th style="padding:8px;text-align:right;font-size:12px;">未繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">備註</th><th style="padding:8px;text-align:center;font-size:12px;">提醒</th></tr></thead><tbody>' + renderUtilityBillingRows(billing.utilityReadings || [], l.id) + '</tbody></table></div>' +
+    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:1520px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="16" style="padding:8px;text-align:center;font-size:13px;">水電明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:8px;text-align:left;font-size:12px;">起算日期</th><th style="padding:8px;text-align:right;font-size:12px;">起算度數</th><th style="padding:8px;text-align:left;font-size:12px;">結算日期</th><th style="padding:8px;text-align:right;font-size:12px;">結算度數</th><th style="padding:8px;text-align:right;font-size:12px;">使用度數</th><th style="padding:8px;text-align:right;font-size:12px;">每度</th><th style="padding:8px;text-align:right;font-size:12px;">應繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">應繳日期</th><th style="padding:8px;text-align:right;font-size:12px;">未繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">備註</th><th style="padding:8px;text-align:left;font-size:12px;">已繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">繳款日期</th><th style="padding:8px;text-align:left;font-size:12px;">方式</th><th style="padding:8px;text-align:left;font-size:12px;">匯款圖</th><th style="padding:8px;text-align:center;font-size:12px;">儲存</th><th style="padding:8px;text-align:center;font-size:12px;">提醒</th></tr></thead><tbody>' + renderUtilityBillingRows(billing.utilityReadings || [], l.id) + '</tbody></table></div>' +
     '<h4 style="margin:0 0 10px;font-size:15px;">收支明細</h4>' +
     '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;"><th style="padding:8px;text-align:left;font-size:12px;">日期</th><th style="padding:8px;text-align:left;font-size:12px;">類別</th><th style="padding:8px;text-align:left;font-size:12px;">金額</th><th style="padding:8px;text-align:left;font-size:12px;">說明</th><th style="padding:8px;text-align:center;font-size:12px;">刪除</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '<div style="font-size:11px;color:#aaa;margin-top:10px;">＊新增的收支會綁定此房客租約，並同步出現在該房東/物業的「明細對帳」。</div>' +
@@ -5524,6 +5540,64 @@ async function addUtilityReading(leaseId) {
   })
   if (!res.ok) { showToast('❌ 新增抄表失敗'); return }
   showToast('✅ 已新增水電明細')
+  openLeaseLedger(leaseId)
+}
+
+async function uploadPaymentReceipt(input, targetId) {
+  if (!input.files || !input.files[0]) return
+  var fd = new FormData()
+  fd.append('file', input.files[0])
+  try {
+    var res = await fetch('/admin/api/upload?key=' + encodeURIComponent(KEY), { method: 'POST', body: fd })
+    if (!res.ok) { showToast('❌ 匯款圖上傳失敗'); return }
+    var data = await res.json()
+    var target = document.getElementById(targetId)
+    if (target) target.value = data.url || ''
+    showToast('✅ 匯款圖已上傳，請按儲存')
+  } catch(e) {
+    showToast('❌ 匯款圖上傳失敗')
+  }
+}
+
+async function saveRentPayment(leaseId, key, rentPaymentId, periodStart, periodEnd, dueDate, amount) {
+  var body = {
+    kind: 'RENT',
+    rentPaymentId: rentPaymentId || '',
+    periodStart: periodStart,
+    periodEnd: periodEnd,
+    dueDate: dueDate,
+    amount: amount,
+    paidAmount: val(key + '_paid'),
+    paidDate: val(key + '_date'),
+    payMethod: document.getElementById(key + '_method').value,
+    receiptUrl: val(key + '_receipt')
+  }
+  if (!body.paidAmount || !body.paidDate) { showToast('❌ 請輸入已繳金額與繳費日期'); return }
+  var res = await fetch('/admin/api/managed/lease/' + leaseId + '/payment?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  })
+  var data = {}; try { data = await res.json() } catch(e) {}
+  if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || res.status)); return }
+  showToast('✅ 租金繳費已儲存')
+  openLeaseLedger(leaseId)
+}
+
+async function saveUtilityPayment(leaseId, readingId, key) {
+  var body = {
+    kind: 'UTILITY',
+    utilityReadingId: readingId,
+    paidAmount: val(key + '_paid'),
+    paidDate: val(key + '_date'),
+    payMethod: document.getElementById(key + '_method').value,
+    receiptUrl: val(key + '_receipt')
+  }
+  if (!body.paidAmount || !body.paidDate) { showToast('❌ 請輸入已繳金額與繳費日期'); return }
+  var res = await fetch('/admin/api/managed/lease/' + leaseId + '/payment?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  })
+  var data = {}; try { data = await res.json() } catch(e) {}
+  if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || res.status)); return }
+  showToast('✅ 水電繳費已儲存')
   openLeaseLedger(leaseId)
 }
 

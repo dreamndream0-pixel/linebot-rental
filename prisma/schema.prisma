@@ -658,11 +658,35 @@ model Lease {
   updatedAt     DateTime  @updatedAt
   records       ManagementRecord[]
   utilityReadings UtilityReading[]
+  rentPayments  RentPayment[]
 
   @@index([managedPropertyId])
   @@index([leaseEnd])
   @@index([status])
   @@map("leases")
+}
+
+model RentPayment {
+  id          String   @id @default(cuid())
+  leaseId     String
+  lease       Lease    @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  recordId    String?
+
+  periodStart DateTime
+  periodEnd   DateTime
+  dueDate     DateTime
+  amount      Int      @default(0)
+  paidAmount  Int      @default(0)
+  paidDate    DateTime?
+  payMethod   String?
+  receiptUrl  String?
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([leaseId])
+  @@index([dueDate])
+  @@map("rent_payments")
 }
 
 model UtilityReading {
@@ -680,6 +704,8 @@ model UtilityReading {
   dueDate     DateTime?
   paidAmount  Int      @default(0)
   paidDate    DateTime?
+  payMethod   String?
+  receiptUrl  String?
   note        String?
   createdAt   DateTime @default(now())
 
