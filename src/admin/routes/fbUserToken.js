@@ -28,6 +28,38 @@ function ownerKey(auth) {
   }
 }
 
+function inviteSecret() {
+  return process.env.FB_USER_LINK_SECRET || process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_KEY || FB_APP_SECRET || 'xiaowo-fb-user-link'
+}
+
+function signInvite(payload) {
+  return crypto.createHmac('sha256', inviteSecret()).update(payload).digest('base64url')
+}
+
+function makeInvite(ownerType, ownerId) {
+  const payload = Buffer.from(JSON.stringify({ ownerType, ownerId })).toString('base64url')
+  return `${payload}.${signInvite(payload)}`
+}
+
+function verifyInvite(token) {
+  const [payload, sig] = String(token || '').split('.')
+  if (!payload || !sig || signInvite(payload) !== sig) return null
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
+    if (!data.ownerType || !data.ownerId) return null
+    return data
+  } catch (_) {
+    return null
+  }
+}
+
+async function ownerLabel(ownerType, ownerId) {
+  if (ownerType === 'SUPER') return '總管理員'
+  const landlord = await prisma.landlord.findUnique({ where: { id: ownerId }, select: { name: true, email: true, isActive: true } })
+  if (!landlord || !landlord.isActive) return null
+  return landlord.name || landlord.email || ownerId
+}
+
 async function ensureTable() {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS fb_user_auth_tokens (
@@ -86,6 +118,12 @@ function mask(row) {
   }
 }
 
+function expose(row) {
+  const data = mask(row)
+  if (row?.userToken) data.userToken = row.userToken
+  return data
+}
+
 async function fetchPages(userToken) {
   const pagesData = await (await fetch(`${FB_API_BASE}/me/accounts?fields=id,name&access_token=${encodeURIComponent(userToken)}`)).json()
   if (pagesData.error) throw new Error(pagesData.error.message)
@@ -97,6 +135,48 @@ router.get('/admin/api/fb-user-token/status', async (req, res) => {
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
   try {
     res.json(mask(await getSaved(auth)))
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.get('/admin/api/fb-user-token/links', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    await ensureTable()
+    if (auth.role === 'super') {
+      const [landlords, rows] = await Promise.all([
+        prisma.landlord.findMany({
+          where: { isActive: true },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, name: true, email: true },
+        }),
+        prisma.$queryRawUnsafe(`SELECT * FROM fb_user_auth_tokens WHERE "ownerType" = 'LANDLORD'`),
+      ])
+      const byOwner = new Map(rows.map(r => [r.ownerId, r]))
+      return res.json({
+        items: landlords.map(l => ({
+          ownerType: 'LANDLORD',
+          ownerId: l.id,
+          name: l.name,
+          email: l.email,
+          authUrl: `${publicBase(req)}/fb-user-auth/${makeInvite('LANDLORD', l.id)}`,
+          token: expose(byOwner.get(l.id)),
+        })),
+      })
+    }
+    const saved = await getSaved(auth)
+    res.json({
+      items: [{
+        ownerType: 'LANDLORD',
+        ownerId: auth.landlordId,
+        name: auth.label,
+        email: '',
+        authUrl: `${publicBase(req)}/fb-user-auth/${makeInvite('LANDLORD', auth.landlordId)}`,
+        token: expose(saved),
+      }],
+    })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
@@ -135,6 +215,37 @@ router.get('/admin/api/fb-user-token/connect', async (req, res) => {
   res.redirect(url)
 })
 
+router.get('/fb-user-auth/:invite', async (req, res) => {
+  const invite = verifyInvite(req.params.invite)
+  if (!invite) return res.status(400).send('授權連結無效')
+  const label = await ownerLabel(invite.ownerType, invite.ownerId)
+  if (!label) return res.status(404).send('找不到可用房東')
+  const connectUrl = `/admin/api/fb-user-token/public-connect?invite=${encodeURIComponent(req.params.invite)}`
+  res.send(`<!doctype html><html lang="zh-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Facebook 授權</title>
+    <style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f7f5f1;margin:0;color:#1f2a24}.card{max-width:520px;margin:56px auto;background:#fff;border:1px solid #e5e0d5;border-radius:18px;padding:26px;box-shadow:0 12px 32px rgba(30,38,32,.08)}a{display:inline-block;background:#1877f2;color:#fff;text-decoration:none;border-radius:12px;padding:13px 18px;font-weight:700}p{line-height:1.7;color:#666}</style></head>
+    <body><div class="card"><h1>Facebook 授權</h1><p>授權對象：<strong>${String(label).replace(/</g, '&lt;')}</strong></p><p>請點下方按鈕登入 Facebook 並同意授權。完成後系統會保存你的 Facebook 個人授權，用於後續重抓粉專清單。</p><a href="${connectUrl}">授權 Facebook</a></div></body></html>`)
+})
+
+router.get('/admin/api/fb-user-token/public-connect', async (req, res) => {
+  const invite = verifyInvite(req.query.invite)
+  if (!invite) return res.status(400).send(popupClose('授權連結無效。'))
+  const label = await ownerLabel(invite.ownerType, invite.ownerId)
+  if (!label) return res.status(404).send(popupClose('找不到可用房東。'))
+  if (!FB_APP_ID || !FB_APP_SECRET) return res.status(500).send(popupClose('系統尚未設定 FB_APP_ID / FB_APP_SECRET。'))
+
+  const state = crypto.randomBytes(16).toString('hex')
+  states.set(state, { ownerType: invite.ownerType, ownerId: invite.ownerId, expires: Date.now() + 10 * 60 * 1000 })
+  cleanup(states)
+  const scope = 'pages_show_list,pages_read_engagement'
+  const url = 'https://www.facebook.com/v21.0/dialog/oauth'
+    + '?client_id=' + encodeURIComponent(FB_APP_ID)
+    + '&redirect_uri=' + encodeURIComponent(redirectUri(req))
+    + '&response_type=code'
+    + '&scope=' + encodeURIComponent(scope)
+    + '&state=' + state
+  res.redirect(url)
+})
+
 router.get('/admin/api/fb-user-token/callback', async (req, res) => {
   const { code, state, error, error_description } = req.query
   if (error) return res.send(popupClose('授權未完成：' + (error_description || error)))
@@ -144,8 +255,15 @@ router.get('/admin/api/fb-user-token/callback', async (req, res) => {
     return res.status(400).send(popupClose('授權連結已失效，請重新開始。'))
   }
   states.delete(state)
-  const auth = await resolveRole(entry.key)
-  if (!auth) return res.status(401).send(popupClose('授權失敗：登入狀態無效。'))
+  let owner
+  if (entry.key) {
+    const auth = await resolveRole(entry.key)
+    if (!auth) return res.status(401).send(popupClose('授權失敗：登入狀態無效。'))
+    owner = ownerKey(auth)
+  } else {
+    owner = { ownerType: entry.ownerType, ownerId: entry.ownerId }
+    if (!(await ownerLabel(owner.ownerType, owner.ownerId))) return res.status(404).send(popupClose('找不到可用房東。'))
+  }
 
   try {
     await ensureTable()
@@ -170,7 +288,6 @@ router.get('/admin/api/fb-user-token/callback', async (req, res) => {
     const me = await (await fetch(`${FB_API_BASE}/me?fields=id,name&access_token=${encodeURIComponent(userToken)}`)).json()
     if (me.error) throw new Error(me.error.message)
     const pages = await fetchPages(userToken)
-    const o = ownerKey(auth)
     await prisma.$executeRawUnsafe(
       `INSERT INTO fb_user_auth_tokens
         (id, "ownerType", "ownerId", "fbUserId", "fbName", "userToken", "tokenExpiresAt", "pagesJson", "createdAt", "updatedAt")
@@ -183,8 +300,8 @@ router.get('/admin/api/fb-user-token/callback', async (req, res) => {
         "pagesJson" = $8,
         "updatedAt" = NOW()`,
       crypto.randomBytes(12).toString('hex'),
-      o.ownerType,
-      o.ownerId,
+      owner.ownerType,
+      owner.ownerId,
       me.id || null,
       me.name || null,
       userToken,

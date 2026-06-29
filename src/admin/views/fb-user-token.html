@@ -21,6 +21,7 @@
     .muted { color: #8b8b86; font-size: 13px; }
     .ok { color: #2e7d32; font-weight: 700; }
     .bad { color: #c0524a; font-weight: 700; }
+    .token { word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: #f2eee7; border-radius: 10px; padding: 10px; margin-top: 6px; }
     ul { margin: 8px 0 0 20px; padding: 0; color: #555; }
     li { margin: 5px 0; }
   </style>
@@ -40,6 +41,7 @@
         <div id="callbackUrl" style="word-break:break-all;margin-top:4px;font-weight:700;"></div>
       </div>
       <div id="status" class="box muted">讀取中...</div>
+      <div id="links" class="box muted">授權連結讀取中...</div>
       <div class="row">
         <button class="primary" onclick="connectFbUser()">連結 / 重新授權 Facebook</button>
         <button class="sage" onclick="refreshPages()">重抓粉專清單</button>
@@ -101,9 +103,38 @@
           return
         }
         render(await api('/admin/api/fb-user-token/status'))
+        await loadLinks()
       } catch(e) {
         document.getElementById('status').innerHTML = '<div class="bad">讀取失敗：' + escapeHtml(e.message) + '</div>'
       }
+    }
+    async function loadLinks() {
+      try {
+        const data = await api('/admin/api/fb-user-token/links')
+        const items = data.items || []
+        document.getElementById('links').innerHTML = '<div style="font-weight:700;margin-bottom:8px;">房東授權連結 / Token</div>' + (items.map(renderLinkItem).join('') || '<div class="muted">沒有房東資料</div>')
+      } catch(e) {
+        document.getElementById('links').innerHTML = '<div class="bad">授權連結讀取失敗：' + escapeHtml(e.message) + '</div>'
+      }
+    }
+    function renderLinkItem(item) {
+      const token = item.token && item.token.userToken ? item.token.userToken : ''
+      const connected = item.token && item.token.connected
+      return '<div style="border-top:1px solid #eee0d2;padding:12px 0;">' +
+        '<div style="font-weight:700;">' + escapeHtml(item.name || '-') + ' <span class="muted">' + escapeHtml(item.email || '') + '</span></div>' +
+        '<div class="muted" style="margin-top:6px;">給房東的授權連結</div>' +
+        '<div class="token">' + escapeHtml(item.authUrl || '') + '</div>' +
+        '<button class="ghost" style="margin-top:8px;padding:8px 12px;" onclick="copyText(\'' + jsString(item.authUrl || '') + '\')">複製授權連結</button>' +
+        '<div class="muted" style="margin-top:10px;">EAA User Token：' + (connected ? '<span class="ok">已取得</span>' : '<span class="bad">尚未取得</span>') + '</div>' +
+        (token ? '<div class="token">' + escapeHtml(token) + '</div><button class="ghost" style="margin-top:8px;padding:8px 12px;" onclick="copyText(\'' + jsString(token) + '\')">複製 Token</button>' : '') +
+      '</div>'
+    }
+    function jsString(s) {
+      return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')
+    }
+    function copyText(s) {
+      if (navigator.clipboard) navigator.clipboard.writeText(s).then(function(){ alert('已複製') })
+      else prompt('請複製：', s)
     }
     async function connectFbUser() {
       try {
