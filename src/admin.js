@@ -184,12 +184,17 @@ router.use(require('./admin/routes/contactNotify'))
 router.use(require('./admin/routes/internalLandlord'))
 router.use(require('./admin/routes/webusers'))
 router.use(require('./admin/routes/social'))
+router.use(require('./admin/routes/fbUserToken'))
 router.use(require('./admin/routes/managedProperty'))
 
 router.use('/admin/assets', express.static(path.join(__dirname, 'admin/assets')))
 
 router.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin/views/admin.html'))
+})
+
+router.get('/admin/fb-user-token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin/views/fb-user-token.html'))
 })
 
 module.exports = router
