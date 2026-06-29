@@ -5356,12 +5356,12 @@ async function openLeaseLedger(leaseId) {
     '</div>' +
     '<div style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:14px;">' +
       '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">＋ 新增收支</div>' +
-      '<div style="display:grid;grid-template-columns:110px 120px 1fr 150px 1.5fr;gap:8px;margin-bottom:10px;">' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px;">' +
         '<select id="lease_rec_type" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select>' +
         '<select id="lease_rec_category" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;"><option value="RENT">租金</option><option value="UTILITY">水電</option><option value="REPAIR">維修</option><option value="OTHER">其他</option></select>' +
         '<input id="lease_rec_amount" type="number" placeholder="金額" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
         '<input id="lease_rec_date" type="date" value="' + today + '" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
-        '<input id="lease_rec_desc" placeholder="說明" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<input id="lease_rec_desc" placeholder="說明" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;min-width:0;">' +
       '</div>' +
       '<button class="btn" style="width:100%;padding:10px;font-size:14px;" onclick="addLeaseRecord(\'' + l.managedId + '\', \'' + l.id + '\')">新增</button>' +
     '</div>' +
