@@ -635,6 +635,7 @@ router.post('/admin/api/managed/:id/lease', express.json(), async (req, res) => 
       meterCurrent: parseInt(b.meterCurrent) || 0,
       meterNext: parseInt(b.meterNext) || 0,
       meterRate: parseFloat(b.meterRate) || 0,
+      meterInitial: parseInt(b.meterInitial) || 0,
     }
 
     let lease

@@ -4514,8 +4514,8 @@ async function renderManagedTab() {
 
   el.innerHTML =
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;">' +
-      '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#5A7D8C;" onclick="btnLoad(this, showLeaseList)">📋 代管清單</button>' +
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#7D6A9A;" onclick="btnLoad(this, showCommissionList)">📁 委託列表（' + MANAGED.list.length + '）</button>' +
+      '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#5A7D8C;" onclick="btnLoad(this, showLeaseList)">📋 代管清單</button>' +
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#6B7F6E;" onclick="btnLoad(this, showManagedReport)">📊 收支報表</button>' +
     '</div>' +
     '<div id="managedReportBox"></div>'
@@ -5134,6 +5134,7 @@ async function openLeaseForm(leaseId) {
           '<option value="METER"' + (l.utilMode === 'METER' ? ' selected' : '') + '>台水台電（依實際帳單，免填費率）</option>' +
         '</select>' +
         '<div id="utilRateBox">' + mInput('每度費率(元)', 'l_meterRate', l.meterRate, 'number') + '</div>' +
+        mInput('電表初次抄表（度）', 'l_meterInitial', l.meterInitial || 0, 'number') +
         '<div style="font-size:11px;color:#999;">抄表度數與金額請到「電費明細表」逐期新增</div>' +
       '</div>' +
       '<div style="font-size:11px;color:#999;margin-top:8px;">提醒會在繳費日前 3 天自動推播</div>' +
@@ -5247,6 +5248,7 @@ async function saveLease(leaseId) {
     utilRemindOn: document.getElementById('l_utilRemindOn').checked,
     utilMode: document.getElementById('l_utilMode') ? document.getElementById('l_utilMode').value : 'FIXED',
     meterRate: val('l_meterRate'),
+    meterInitial: val('l_meterInitial'),
   }
   if (!body.tenantName) { showToast('❌ 承租人姓名必填'); return }
   if (leaseId) body.leaseId = leaseId

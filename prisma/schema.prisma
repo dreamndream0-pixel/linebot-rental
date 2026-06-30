@@ -655,6 +655,7 @@ model Lease {
   meterCurrent  Int       @default(0)  // 本期度數
   meterNext     Int       @default(0)  // 下期度數
   meterRate     Float     @default(0)  // 每度費率（元）
+  meterInitial  Int       @default(0)  // 電表初次抄表（入住時的起始度數）
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
