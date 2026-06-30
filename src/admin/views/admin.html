@@ -4518,6 +4518,8 @@ async function renderManagedTab() {
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#7D6A9A;" onclick="btnLoad(this, showCommissionList)">📁 委託列表（' + MANAGED.list.length + '）</button>' +
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#5A7D8C;" onclick="btnLoad(this, showLeaseList)">📋 代管清單</button>' +
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#6B7F6E;" onclick="btnLoad(this, showManagedReport)">📊 收支報表</button>' +
+      '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#8B6A42;margin-left:auto;" onclick="btnLoad(this, syncRagic)">🔄 合約同步</button>' +
+      '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#4A7A6A;" onclick="btnLoad(this, syncRagicUtility)">⚡ 電費同步</button>' +
     '</div>' +
     '<div id="managedReportBox"></div>'
 }
@@ -4894,6 +4896,21 @@ function showCommissionList() {
     '</div>'
 }
 
+// ── Ragic 同步 ─────────────────────────────────────────────────
+async function syncRagic() {
+  var res = await fetch('/admin/api/ragic/sync?key=' + encodeURIComponent(KEY), { method: 'POST' })
+  var data = await res.json()
+  if (!res.ok) { showToast('❌ 合約同步失敗：' + (data.error || res.status)); return }
+  showToast('✅ 合約同步完成！新增 ' + data.created + ' 筆 / 更新 ' + data.updated + ' 筆（共 ' + data.total + ' 筆）')
+}
+
+async function syncRagicUtility() {
+  var res = await fetch('/admin/api/ragic/sync-utility?key=' + encodeURIComponent(KEY), { method: 'POST' })
+  var data = await res.json()
+  if (!res.ok) { showToast('❌ 電費同步失敗：' + (data.error || res.status)); return }
+  showToast('✅ 電費同步完成！新增 ' + data.readingCreated + ' 筆抄表 / 更新 ' + data.meterUpdated + ' 筆初始度數')
+}
+
 // ── 收支報表 ───────────────────────────────────────────────────
 async function showManagedReport() {
   var box = document.getElementById('managedReportBox')
@@ -5140,6 +5157,14 @@ async function openLeaseForm(leaseId) {
       '</div>' +
       '<div style="font-size:11px;color:#999;margin-top:8px;">提醒會在繳費日前 3 天自動推播</div>' +
     '</div>' +
+    // 停車位
+    '<label style="font-size:12px;color:#888;display:block;margin:10px 0 4px;">停車位</label>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+      mInput('車位編號', 'l_parkingSpotId', l.parkingSpotId || '') +
+      mInput('車格', 'l_parkingSpace', l.parkingSpace || '') +
+      mInput('停車費/月(元)', 'l_parkingFee', l.parkingFee || 0, 'number') +
+      mInput('車牌', 'l_vehiclePlate', l.vehiclePlate || '') +
+    '</div>' +
     // 租約文件
     '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">租約文件</label>' +
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +
@@ -5250,6 +5275,10 @@ async function saveLease(leaseId) {
     utilMode: document.getElementById('l_utilMode') ? document.getElementById('l_utilMode').value : 'FIXED',
     meterRate: val('l_meterRate'),
     meterInitial: val('l_meterInitial'),
+    parkingSpotId: document.getElementById('l_parkingSpotId').value.trim() || null,
+    parkingSpace: document.getElementById('l_parkingSpace').value.trim() || null,
+    parkingFee: val('l_parkingFee'),
+    vehiclePlate: document.getElementById('l_vehiclePlate').value.trim() || null,
   }
   if (!body.tenantName) { showToast('❌ 承租人姓名必填'); return }
   if (leaseId) body.leaseId = leaseId

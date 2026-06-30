@@ -657,6 +657,12 @@ model Lease {
   meterRate     Float     @default(0)  // 每度費率（元）
   meterInitial  Int       @default(0)  // 電表初次抄表（入住時的起始度數）
 
+  parkingSpotId String?   // 車位編號
+  parkingSpace  String?   // 車格
+  parkingFee    Int       @default(0)  // 停車位月租金
+  vehiclePlate  String?   // 車牌
+  ragicId       String?   @unique  // Ragic 合約編號（同步用）
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   records       ManagementRecord[]

@@ -636,6 +636,10 @@ router.post('/admin/api/managed/:id/lease', express.json(), async (req, res) => 
       meterNext: parseInt(b.meterNext) || 0,
       meterRate: parseFloat(b.meterRate) || 0,
       meterInitial: parseInt(b.meterInitial) || 0,
+      parkingSpotId: b.parkingSpotId || null,
+      parkingSpace: b.parkingSpace || null,
+      parkingFee: parseInt(b.parkingFee) || 0,
+      vehiclePlate: b.vehiclePlate || null,
     }
 
     let lease
@@ -1087,6 +1091,198 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
     res.json({ ok: true })
   } catch (e) {
     console.error('手動繳費提醒失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── Ragic 同步 ────────────────────────────────────────────────────
+// POST /admin/api/ragic/sync?key=...
+// 需在後台設定 RAGIC_API_KEY 環境變數，以及 RAGIC_FORM_URL（如 https://ap11.ragic.com/urbanite/表單名稱/1）
+const RAGIC_PAYMENT_CYCLE = { '月繳':'MONTHLY','雙月繳':'BIMONTHLY','季繳':'QUARTERLY','半年繳':'SEMIANNUAL','年繳':'YEARLY' }
+const RAGIC_BUILDING_TITLES = {
+  '紅寶石|11':'紅寶石 11棟','紅寶石|21':'紅寶石 21棟','紅寶石|28':'紅寶石 28棟',
+  '致富讚|22':'致富讚 22棟','青雲巷|25-21':'青雲巷 25-21棟'
+}
+
+router.post('/admin/api/ragic/sync', async (req, res) => {
+  const auth = await resolveRole(req)
+  if (!auth || auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+
+  const apiKey = process.env.RAGIC_API_KEY
+  const formUrl = process.env.RAGIC_FORM_URL
+  if (!apiKey || !formUrl) return res.status(400).json({ error: 'RAGIC_API_KEY 或 RAGIC_FORM_URL 未設定' })
+
+  try {
+    const fetch = (...args) => import('node-fetch').then(m => m.default(...args))
+    const resp = await fetch(`${formUrl}?api_key=${apiKey}&limit=1000`, {
+      headers: { 'Content-Type': 'application/json' }
+    })
+    if (!resp.ok) return res.status(502).json({ error: `Ragic API 錯誤 ${resp.status}` })
+    const data = await resp.json()
+    const rows = Object.values(data).filter(r => typeof r === 'object' && r['承租狀態'] === '承租中')
+
+    // 取得現有各棟 ID
+    const mpList = await prisma.managedProperty.findMany({ select: { id: true, title: true } })
+    const mpByTitle = Object.fromEntries(mpList.map(m => [m.title, m.id]))
+
+    let created = 0, updated = 0
+    for (const row of rows) {
+      const ragicId = row['合約編號']; if (!ragicId) continue
+      const buildingKey = `${row['社區名稱']}|${row['房屋號']}`
+      const title = RAGIC_BUILDING_TITLES[buildingKey]
+      const managedPropertyId = title && mpByTitle[title]
+      if (!managedPropertyId) continue
+
+      const data = {
+        tenantName: row['承租人'] || '',
+        roomLabel: row['套房編號'] || '',
+        rent: parseInt(row['租金/月']) || 0,
+        deposit: parseInt(row['押金/2月']) || 0,
+        paymentCycle: RAGIC_PAYMENT_CYCLE[row['繳費方式']] || 'MONTHLY',
+        lineUserId: row['LINE User ID'] || null,
+        meterRate: parseFloat(row['電費單價(/度)']) || 0,
+        leaseStart: row['合約日期起日'] ? new Date(row['合約日期起日'].replace(/\//g,'-')) : null,
+        leaseEnd: row['合約日期迄日'] ? new Date(row['合約日期迄日'].replace(/\//g,'-')) : null,
+        contractFile: row['合約檔案'] || null,
+        vehiclePlate: row['車牌'] || null,
+        parkingSpotId: row['車位編號'] || null,
+        parkingSpace: row['車格'] || null,
+        parkingFee: parseInt(row['車位租金/月']) || 0,
+        note: row['其他備註'] || null,
+        managedPropertyId,
+      }
+
+      const existing = await prisma.lease.findFirst({ where: { ragicId } })
+      if (existing) {
+        await prisma.lease.update({ where: { id: existing.id }, data })
+        updated++
+      } else {
+        await prisma.lease.create({ data: { ...data, ragicId, status: 'ACTIVE' } })
+        created++
+      }
+
+      // 財務摘要記錄
+      const rentTotal = parseInt(row['租金總繳金額']) || 0
+      const utilTotal = parseInt(row['預繳電費總額']) || 0
+      const lease = await prisma.lease.findFirst({ where: { ragicId } })
+      if (lease) {
+        if (rentTotal > 0) {
+          const descKey = `[ragic:${ragicId}:rent]`
+          const ex = await prisma.managementRecord.findFirst({ where: { description: descKey } })
+          if (ex) await prisma.managementRecord.update({ where: { id: ex.id }, data: { amount: rentTotal } })
+          else await prisma.managementRecord.create({ data: { managedPropertyId, leaseId: lease.id, type: 'INCOME', category: 'RENT', amount: rentTotal, description: descKey, recordDate: new Date() } })
+        }
+        if (utilTotal > 0) {
+          const descKey = `[ragic:${ragicId}:util]`
+          const ex = await prisma.managementRecord.findFirst({ where: { description: descKey } })
+          if (ex) await prisma.managementRecord.update({ where: { id: ex.id }, data: { amount: utilTotal } })
+          else await prisma.managementRecord.create({ data: { managedPropertyId, leaseId: lease.id, type: 'INCOME', category: 'UTILITY', amount: utilTotal, description: descKey, recordDate: new Date() } })
+        }
+      }
+    }
+
+    res.json({ ok: true, created, updated, total: rows.length, syncAt: new Date().toISOString() })
+  } catch (e) {
+    console.error('Ragic 同步失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── Ragic 電費明細同步 ─────────────────────────────────────────
+// POST /admin/api/ragic/sync-utility?key=...
+// 環境變數: RAGIC_UTILITY_FORM_URL（如 https://ap11.ragic.com/urbanite/電費明細/1）
+router.post('/admin/api/ragic/sync-utility', async (req, res) => {
+  const auth = await resolveRole(req)
+  if (!auth || auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+
+  const apiKey = process.env.RAGIC_API_KEY
+  const formUrl = process.env.RAGIC_UTILITY_FORM_URL
+  if (!apiKey || !formUrl) return res.status(400).json({ error: 'RAGIC_API_KEY 或 RAGIC_UTILITY_FORM_URL 未設定' })
+
+  try {
+    const fetch = (...args) => import('node-fetch').then(m => m.default(...args))
+    const resp = await fetch(`${formUrl}?api_key=${apiKey}&limit=2000`, {
+      headers: { 'Content-Type': 'application/json' }
+    })
+    if (!resp.ok) return res.status(502).json({ error: `Ragic API 錯誤 ${resp.status}` })
+    const data = await resp.json()
+
+    // Ragic 回傳格式: { "1": {欄位}, "2": {欄位}, ... }
+    const rows = Object.values(data).filter(r => typeof r === 'object' && r['合約編號'])
+
+    // 依合約編號分組並排序
+    const byLease = {}
+    for (const row of rows) {
+      const ragicId = row['合約編號']
+      if (!byLease[ragicId]) byLease[ragicId] = []
+      byLease[ragicId].push(row)
+    }
+    for (const ragicId of Object.keys(byLease)) {
+      byLease[ragicId].sort((a, b) => {
+        const da = (a['電費起算日期'] || '').replace(/\//g, '-')
+        const db = (b['電費起算日期'] || '').replace(/\//g, '-')
+        return da.localeCompare(db)
+      })
+    }
+
+    let readingCreated = 0, readingSkipped = 0, meterUpdated = 0
+
+    for (const [ragicId, leaseRows] of Object.entries(byLease)) {
+      const leaseRes = await prisma.lease.findFirst({ where: { ragicId } })
+      if (!leaseRes) continue
+      const leaseId = leaseRes.id
+
+      // 最初度數
+      const firstRow = leaseRows[0]
+      const meterInitial = parseInt(firstRow['上期度數']) || 0
+      if (meterInitial > 0) {
+        await prisma.lease.update({ where: { id: leaseId }, data: { meterInitial } })
+        meterUpdated++
+      }
+
+      // 逐期匯入（有結算日期+本期度數就匯入）
+      for (const row of leaseRows) {
+        const startDate = (row['電費起算日期'] || '').replace(/\//g, '-') || null
+        const startDegree = parseInt(row['上期度數']) || 0
+        const endDate = (row['電費結算日期'] || '').replace(/\//g, '-') || null
+        const endDegree = parseInt(row['本期度數']) || 0
+        const usedDegree = parseInt(row['使用度數']) || 0
+        const rate = parseFloat(row['電費單價(度)']) || 6
+        const amount = parseInt(row['電費金額']) || 0
+        const dueDate = (row['應繳納日期'] || '').replace(/\//g, '-') || null
+        const paidAmount = parseInt(row['已繳款金額']) || 0
+        const paidDate = (row['已繳款日期'] || '').replace(/\//g, '-') || null
+
+        if (!endDate || !startDate || !endDegree) continue
+
+        // 防重複
+        const ex = await prisma.utilityReading.findFirst({
+          where: { leaseId, startDegree, startDate: new Date(startDate) }
+        })
+        if (ex) { readingSkipped++; continue }
+
+        await prisma.utilityReading.create({
+          data: {
+            leaseId,
+            startDate: new Date(startDate),
+            startDegree,
+            endDate: new Date(endDate),
+            endDegree,
+            usedDegree,
+            rate,
+            amount,
+            dueDate: dueDate ? new Date(dueDate) : null,
+            paidAmount,
+            paidDate: paidDate ? new Date(paidDate) : null,
+          }
+        })
+        readingCreated++
+      }
+    }
+
+    res.json({ ok: true, readingCreated, readingSkipped, meterUpdated, syncAt: new Date().toISOString() })
+  } catch (e) {
+    console.error('Ragic 電費同步失敗:', e.message)
     res.status(500).json({ error: e.message })
   }
 })
