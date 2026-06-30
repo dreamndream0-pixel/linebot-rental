@@ -975,6 +975,95 @@ router.post('/admin/api/managed/lease/:leaseId/utility-reading', express.json(),
   }
 })
 
+router.put('/admin/api/managed/lease/:leaseId/utility-reading/:readingId', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    const reading = await prisma.utilityReading.findFirst({ where: { id: req.params.readingId, leaseId: lease.id } })
+    if (!reading) return res.status(404).json({ error: '找不到水電明細' })
+    const b = req.body
+    const startDegree = parseInt(b.startDegree) || 0
+    const endDegree = parseInt(b.endDegree) || 0
+    const usedDegree = Math.max(0, endDegree - startDegree)
+    const rate = parseFloat(b.rate) || 0
+    const amount = Math.round(usedDegree * rate)
+    const updated = await prisma.utilityReading.update({
+      where: { id: reading.id },
+      data: {
+        startDate: b.startDate ? new Date(b.startDate) : reading.startDate,
+        startDegree,
+        endDate: b.endDate ? new Date(b.endDate) : reading.endDate,
+        endDegree,
+        usedDegree,
+        rate,
+        amount,
+        dueDate: b.dueDate ? new Date(b.dueDate) : reading.dueDate,
+        note: b.note !== undefined ? (b.note || null) : reading.note,
+      },
+    })
+    try {
+      const rec = await prisma.managementRecord.findFirst({
+        where: { leaseId: lease.id, category: 'UTILITY', amount: reading.amount },
+        orderBy: { recordDate: 'desc' }
+      })
+      if (rec) {
+        await prisma.managementRecord.update({
+          where: { id: rec.id },
+          data: { amount, recordDate: updated.dueDate || updated.endDate, description: `電費 ${startDegree}→${endDegree} 度，${usedDegree} 度 x ${rate} 元` }
+        })
+      }
+    } catch(_) {}
+    res.json(updated)
+  } catch (e) {
+    console.error('更新抄表失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.delete('/admin/api/managed/lease/:leaseId/rent-payment/:paymentId', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    const payment = await prisma.rentPayment.findFirst({ where: { id: req.params.paymentId, leaseId: lease.id } })
+    if (!payment) return res.status(404).json({ error: '找不到租金記錄' })
+    if (payment.recordId) {
+      await prisma.managementRecord.deleteMany({ where: { id: payment.recordId } })
+    }
+    await prisma.rentPayment.delete({ where: { id: payment.id } })
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('刪除租金記錄失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.delete('/admin/api/managed/lease/:leaseId/utility-reading/:readingId', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    const reading = await prisma.utilityReading.findFirst({ where: { id: req.params.readingId, leaseId: lease.id } })
+    if (!reading) return res.status(404).json({ error: '找不到水電記錄' })
+    try {
+      const rec = await prisma.managementRecord.findFirst({
+        where: { leaseId: lease.id, category: 'UTILITY', amount: reading.amount },
+        orderBy: { recordDate: 'desc' }
+      })
+      if (rec) await prisma.managementRecord.delete({ where: { id: rec.id } })
+    } catch(_) {}
+    await prisma.utilityReading.delete({ where: { id: reading.id } })
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('刪除抄表記錄失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
