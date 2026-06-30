@@ -4708,7 +4708,7 @@ function renderManagedDetail() {
   var incomeRows = (m.incomes || []).map(function(r) {
     var sign = r.type === 'INCOME' ? '+' : '−'
     var color = r.type === 'INCOME' ? '#4A8A4A' : '#C0524A'
-    var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', OTHER:'其他' }[r.category] || r.category
+    var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'汽車位', OTHER:'其他' }[r.category] || r.category
     var settled = !!r.payoutId
     return '<tr>' +
       '<td style="padding:8px;font-size:13px;">' + new Date(r.recordDate).toLocaleDateString('zh-TW') + '</td>' +
@@ -4725,7 +4725,7 @@ function renderManagedDetail() {
     var detailRows = (p.records || []).map(function(r) {
       var sign = r.type === 'INCOME' ? '+' : '−'
       var color = r.type === 'INCOME' ? '#4A8A4A' : '#C0524A'
-      var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', OTHER:'其他' }[r.category] || r.category
+      var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'汽車位', OTHER:'其他' }[r.category] || r.category
       return '<tr><td style="padding:6px 8px;font-size:12px;">' + new Date(r.recordDate).toLocaleDateString('zh-TW') + '</td><td style="padding:6px 8px;font-size:12px;">' + catLabel + '</td><td style="padding:6px 8px;font-size:12px;color:' + color + ';font-weight:700;">' + sign + ' NT$ ' + Number(r.amount).toLocaleString() + '</td><td style="padding:6px 8px;font-size:12px;color:#888;">' + esc(r.description || '') + '</td></tr>'
     }).join('') || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#aaa;">沒有綁定明細</td></tr>'
     var detailId = 'payout_detail_' + p.id
@@ -4819,7 +4819,7 @@ function renderPayoutPreview(data) {
   var rows = (data.records || []).map(function(r) {
     var sign = r.type === 'INCOME' ? '+' : '−'
     var color = r.type === 'INCOME' ? '#4A8A4A' : '#C0524A'
-    var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', OTHER:'其他' }[r.category] || r.category
+    var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'汽車位', OTHER:'其他' }[r.category] || r.category
     return '<tr>' +
       '<td style="padding:8px;font-size:12px;">' + new Date(r.recordDate).toLocaleDateString('zh-TW') + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + catLabel + '</td>' +
@@ -5491,11 +5491,11 @@ async function openLeaseLedger(leaseId) {
   })
   var income = inPeriod.filter(function(r){ return r.type === 'INCOME' }).reduce(function(s,r){ return s + r.amount }, 0)
   var expense = inPeriod.filter(function(r){ return r.type === 'EXPENSE' }).reduce(function(s,r){ return s + r.amount }, 0)
-  var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', OTHER:'其他' }
+  var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'汽車位', OTHER:'其他' }
   var today = new Date().toISOString().slice(0, 10)
   var lastReading = (billing.utilityReadings || [])[0]
   var readingStartDate = lastReading ? leaseDateInput(lastReading.endDate) : ''
-  var readingStartDegree = lastReading ? Number(lastReading.endDegree || 0) : Number((billing.lease && billing.lease.meterCurrent) || 0)
+  var readingStartDegree = lastReading ? Number(lastReading.endDegree || 0) : Number((billing.lease && billing.lease.meterInitial) || 0)
   var defaultRate = Number((billing.lease && billing.lease.meterRate) || l.meterRate || 0)
   var rows = inPeriod.map(function(r){
     return '<tr><td style="padding:8px;font-size:12px;">' + leaseDate(r.recordDate) + '</td>' +
@@ -5525,7 +5525,7 @@ async function openLeaseLedger(leaseId) {
       '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">＋ 新增收支</div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px;">' +
         '<select id="lease_rec_type" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select>' +
-        '<select id="lease_rec_category" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;"><option value="RENT">租金</option><option value="UTILITY">水電</option><option value="REPAIR">維修</option><option value="OTHER">其他</option></select>' +
+        '<select id="lease_rec_category" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;"><option value="RENT">租金</option><option value="UTILITY">水電</option><option value="REPAIR">維修</option><option value="PARKING">汽車位</option><option value="OTHER">其他</option></select>' +
         '<input id="lease_rec_amount" type="number" placeholder="金額" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
         '<input id="lease_rec_date" type="date" value="' + today + '" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
         '<input id="lease_rec_desc" placeholder="說明" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;min-width:0;">' +
