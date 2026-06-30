@@ -2698,6 +2698,7 @@ var FEATURE_MODULES = [
   { key: 'community',  label: '🏘️ 社區管理',          desc: '社區環境介紹與照片' },
   { key: 'csvImport',  label: '📊 CSV 匯出/匯入',      desc: '批次新增、更新房源資料' },
   { key: 'social',     label: '📣 社群發布',           desc: '房源一鍵發文到 Facebook／Instagram／Threads' },
+  { key: 'managed',   label: '🏢 包租代管',           desc: '包租代管委託、租約管理、繳費明細追蹤' },
 ]
 
 function openFeaturesEditor(landlordId) {
@@ -5494,7 +5495,7 @@ async function openLeaseLedger(leaseId) {
   var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'汽車位', OTHER:'其他' }
   var today = new Date().toISOString().slice(0, 10)
   var lastReading = (billing.utilityReadings || [])[0]
-  var readingStartDate = lastReading ? leaseDateInput(lastReading.endDate) : ''
+  var readingStartDate = lastReading ? leaseDateInput(lastReading.endDate) : leaseDateInput(l.leaseStart)
   var readingStartDegree = lastReading ? Number(lastReading.endDegree || 0) : Number((billing.lease && billing.lease.meterInitial) || 0)
   var defaultRate = Number((billing.lease && billing.lease.meterRate) || l.meterRate || 0)
   var rows = inPeriod.map(function(r){
