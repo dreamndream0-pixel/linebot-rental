@@ -3663,19 +3663,28 @@ async function renderHeroSettings() {
 }
 
 // ── 房東自己的首頁設定（Logo + 輪播圖，與主站規格相同）──────────
-var landlordBrandState = { siteLogo: '', siteSlides: [] }
+var landlordBrandState = { siteName: '', siteLogo: '', siteSlides: [] }
 
 function renderLandlordBrandSettings() {
   var el = document.getElementById('content')
   var me = DATA.selfLandlord || (DATA.landlords || []).find(function(l){ return l.id === DATA.landlordId }) || {}
   var feats = {}
   try { feats = me.features ? JSON.parse(me.features) : {} } catch(_) {}
-  landlordBrandState = { siteLogo: me.siteLogo || '', siteSlides: feats.siteSlides || [] }
+  landlordBrandState = { siteName: me.siteName || '', siteLogo: me.siteLogo || '', siteSlides: feats.siteSlides || [] }
 
   el.innerHTML = [
     '<div class="form-box">',
     '<h3 style="font-size:16px;font-weight:700;margin-bottom:6px;">🖼️ 首頁設定</h3>',
     '<p style="font-size:13px;color:#aaa;margin-bottom:24px;">設定只影響您的個人房東官網，與小蝸主站完全分開</p>',
+
+    // ── 官網名稱 ──
+    '<div style="margin-bottom:24px;">',
+    '<h4 style="font-size:14px;font-weight:700;margin-bottom:8px;">🌐 官網名稱</h4>',
+    '<p style="font-size:12px;color:#aaa;margin-bottom:10px;">顯示在房源頁面右側的房東卡片，讓租客識別您的品牌</p>',
+    '<input id="brandSiteName" value="' + esc(landlordBrandState.siteName) + '" placeholder="例：小宇優質套房、幸福租屋" style="width:100%;padding:10px 14px;border:1px solid var(--oat-mid);border-radius:10px;font-size:14px;box-sizing:border-box;outline:none;background:var(--oat-light);">',
+    '</div>',
+
+    '<hr style="border:none;border-top:1px solid var(--oat-mid);margin:0 0 24px;">',
 
     // ── Logo ──
     '<div style="margin-bottom:24px;">',
@@ -3792,9 +3801,11 @@ function clearBrandLogo() {
 
 async function saveLandlordBrand() {
   if (!DATA.landlordId) { showToast('❌ 無法儲存：缺少房東 ID'); return }
+  var nameInput = document.getElementById('brandSiteName')
+  if (nameInput) landlordBrandState.siteName = nameInput.value.trim()
   var res = await fetch('/admin/api/landlord/' + DATA.landlordId + '/site?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ siteLogo: landlordBrandState.siteLogo, siteSlides: landlordBrandState.siteSlides }),
+    body: JSON.stringify({ siteName: landlordBrandState.siteName, siteLogo: landlordBrandState.siteLogo, siteSlides: landlordBrandState.siteSlides }),
   })
   if (!res.ok) {
     var errText = ''
@@ -3804,6 +3815,7 @@ async function saveLandlordBrand() {
   }
   showToast('✅ 首頁設定已儲存')
   if (DATA.selfLandlord) {
+    DATA.selfLandlord.siteName = landlordBrandState.siteName
     DATA.selfLandlord.siteLogo = landlordBrandState.siteLogo
     try {
       var feats = DATA.selfLandlord.features ? JSON.parse(DATA.selfLandlord.features) : {}
