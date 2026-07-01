@@ -643,7 +643,7 @@ router.post('/admin/api/social/ig/import-property', express.json(), async (req, 
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  const { title, price, type, city, district, size, deposit, description, imageUrls, status, ownerId } = req.body
+  const { title, price, type, city, district, address, size, deposit, description, imageUrls, status, ownerId, amenities, tags } = req.body
   if (!title || !price) return res.status(400).json({ error: 'title 和 price 為必填' })
 
   const targetOwnerId = auth.role === 'landlord' ? auth.landlordId : (ownerId || null)
@@ -677,7 +677,7 @@ router.post('/admin/api/social/ig/import-property', express.json(), async (req, 
       status: status || 'AVAILABLE',
       city: city || '台中市',
       district: district || '',
-      address: '',
+      address: address || '',
       size: parseFloat(size) || 0,
       price: parseInt(price),
       deposit: deposit || '兩個月',
@@ -685,6 +685,20 @@ router.post('/admin/api/social/ig/import-property', express.json(), async (req, 
       images: { create: hostedUrls.map((url, i) => ({ url, order: i, isCover: i === 0 })) },
     },
   })
+
+  // 寫入設備與標籤
+  if (Array.isArray(amenities) && amenities.length) {
+    await prisma.propertyAmenity.createMany({
+      data: amenities.map(name => ({ propertyId: property.id, name })),
+      skipDuplicates: true,
+    })
+  }
+  if (Array.isArray(tags) && tags.length) {
+    await prisma.propertyTag.createMany({
+      data: tags.map(name => ({ propertyId: property.id, name })),
+      skipDuplicates: true,
+    })
+  }
 
   await revalidateSite(['/listings', `/site/${targetOwnerId}`, `/property/${property.id}`])
   res.json({ ok: true, propertyId: property.id, title: property.title })
