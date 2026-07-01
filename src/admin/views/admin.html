@@ -4518,9 +4518,11 @@ async function renderManagedTab() {
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#7D6A9A;" onclick="btnLoad(this, showCommissionList)">📁 委託列表（' + MANAGED.list.length + '）</button>' +
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#5A7D8C;" onclick="btnLoad(this, showLeaseList)">📋 代管清單</button>' +
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#6B7F6E;" onclick="btnLoad(this, showManagedReport)">📊 收支報表</button>' +
-      '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#8B6A42;margin-left:auto;" onclick="btnLoad(this, syncRagic)">🔄 合約同步</button>' +
-      '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#4A7A6A;" onclick="btnLoad(this, syncRagicUtility)">⚡ 電費同步</button>' +
-      '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#7A5A3A;" onclick="btnLoad(this, syncRagicRent)">💰 租金同步</button>' +
+      (DATA.role === 'super' ? (
+        '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#8B6A42;margin-left:auto;" onclick="btnLoad(this, syncRagic)">🔄 合約同步</button>' +
+        '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#4A7A6A;" onclick="btnLoad(this, syncRagicUtility)">⚡ 電費同步</button>' +
+        '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#7A5A3A;" onclick="btnLoad(this, syncRagicRent)">💰 租金同步</button>'
+      ) : '') +
     '</div>' +
     '<div id="managedReportBox"></div>'
 }
