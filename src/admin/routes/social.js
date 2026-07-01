@@ -550,6 +550,94 @@ router.post('/admin/api/social/fb/page', express.json(), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── IG 文案解析：正則 fallback ───────────────────────────────────
+function parseIgCaption(text) {
+  const r = {}
+  // 月租金
+  const pm = text.match(/月租[金]?\s*[：:\$＄]*\s*\$?\s*([\d,]+)|([\d,]+)\s*[元\/]\s*月|\$\s*([\d,]+)/)
+  if (pm) { const n = (pm[1]||pm[2]||pm[3]||'').replace(/,/g,''); if (n) r.price = parseInt(n) }
+  // 坪數
+  const sm = text.match(/([\d.]+)\s*坪/)
+  if (sm) r.size = parseFloat(sm[1])
+  // 行政區（台中）
+  const districts = ['中區','東區','西區','南區','北區','西屯區','南屯區','北屯區','豐原區','大里區','太平區','清水區','沙鹿區','梧棲區','烏日區','大甲區','東勢區','大肚區','神岡區','潭子區','外埔區','后里區','龍井區','霧峰區','石岡區','新社區','和平區','大安區','苑裡區']
+  for (const d of districts) { if (text.includes(d)) { r.district = d; break } }
+  // 縣市
+  const cm = text.match(/(台中|台北|新北|桃園|台南|高雄|新竹|苗栗|彰化|南投|嘉義|屏東)/)
+  if (cm) r.city = cm[1] + (cm[0].endsWith('市')||cm[0].endsWith('縣') ? '' : '市')
+  // 類型
+  if (/雅房/.test(text)) r.type = 'STUDIO'
+  else if (/整層|整棟|公寓|透天/.test(text)) r.type = 'SUITE'
+  else if (/獨立套房/.test(text)) r.type = 'WHOLE_UNIT'
+  else if (/套房/.test(text)) r.type = 'ROOM'
+  // 押金
+  const dm = text.match(/押[金]?\s*(一|兩|三|四|五|[\d]+)\s*個月/)
+  if (dm) r.deposit = dm[1] + '個月'
+  // 設備
+  const amenities = ['冷氣','冷暖氣','冰箱','洗衣機','熱水器','網路','第四台','電視','瓦斯爐','微波爐','烘衣機','床組','書桌','衣櫃','獨立衛浴']
+  r.amenities = amenities.filter(k => text.includes(k))
+  // 標籤
+  const tags = ['近捷運','近公車','近學校','含水費','含電費','含管理費','含車位','機車位','汽車位','可養寵物','不養寵物','女性限定','男性限定','頂樓加蓋']
+  r.tags = tags.filter(k => text.includes(k))
+  return r
+}
+
+// ── IG 文案 AI 解析端點 ──────────────────────────────────────────
+router.post('/admin/api/social/ig/parse-caption', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  const caption = String(req.body.caption || '').trim()
+  if (!caption) return res.json({ parsed: {} })
+
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 700,
+          messages: [{
+            role: 'user',
+            content: `從以下 Instagram 租屋貼文萃取房源資訊，以 JSON 格式回傳，不要加說明或 markdown。
+
+文案：
+"""
+${caption.slice(0, 2000)}
+"""
+
+欄位（無法判斷填 null）：
+- title: string 房源標題（10-20字，簡潔精確，無法判斷時填 null）
+- price: number 月租金（純數字）
+- size: number 坪數（純數字）
+- type: "SUITE"|"ROOM"|"STUDIO"|"WHOLE_UNIT"（SUITE=整層/公寓, ROOM=套房, STUDIO=雅房, WHOLE_UNIT=獨立套房）
+- city: string 縣市（例"台中市"，沒提就填"台中市"）
+- district: string 行政區（例"北區"）
+- address: string 路名或地址（沒有填 null）
+- deposit: string 押金（例"兩個月"，沒提填 null）
+- amenities: string[] 從以下選符合的：冷氣、冷暖氣、冰箱、洗衣機、熱水器、網路、第四台、電視、瓦斯爐、微波爐、烘衣機、床組、書桌、衣櫃、獨立衛浴
+- tags: string[] 從以下選符合的，也可自訂重要特色：近捷運、近公車、近學校、含水費、含電費、含管理費、含車位、機車位、汽車位、可養寵物、不養寵物、女性限定、男性限定、頂樓加蓋
+
+只回傳 JSON。`,
+          }],
+        }),
+      })
+      if (resp.ok) {
+        const data = await resp.json()
+        const text = (data.content?.[0]?.text || '').trim().replace(/^```(?:json)?\n?|\n?```$/g, '')
+        return res.json({ parsed: JSON.parse(text), source: 'ai' })
+      }
+    } catch (_) {}
+  }
+
+  res.json({ parsed: parseIgCaption(caption), source: 'regex' })
+})
+
 // ── IG 匯入：把 IG 貼文照片建立為新房源 ────────────────────────────
 router.post('/admin/api/social/ig/import-property', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
