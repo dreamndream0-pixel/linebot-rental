@@ -577,32 +577,80 @@ router.post('/admin/api/social/fb/page', express.json(), async (req, res) => {
 // ── IG 文案解析：正則 fallback ───────────────────────────────────
 function parseIgCaption(text) {
   const r = {}
-  // 月租金
-  const pm = text.match(/月租[金]?\s*[：:\$＄]*\s*\$?\s*([\d,]+)|([\d,]+)\s*[元\/]\s*月|\$\s*([\d,]+)/)
-  if (pm) { const n = (pm[1]||pm[2]||pm[3]||'').replace(/,/g,''); if (n) r.price = parseInt(n) }
-  // 坪數
-  const sm = text.match(/([\d.]+)\s*坪/)
-  if (sm) r.size = parseFloat(sm[1])
-  // 行政區（台中）
+  // 月租金（支援區間取低值，支援逗號分隔數字）
+  const pm = text.match(/月租[金]?\s*[：:\$＄NT$]*\s*([\d,]+)\s*[-~～]\s*([\d,]+)|月租[金]?\s*[：:\$＄NT$]*\s*([\d,]+)|([\d,]+)\s*[元\/]\s*月|\$\s*([\d,]+)/)
+  if (pm) {
+    const n = pm[1] ? pm[1] : (pm[3]||pm[4]||pm[5]||'')
+    const cleaned = n.replace(/,/g,'')
+    if (cleaned) r.price = parseInt(cleaned)
+  }
+  // 坪數（支援「約」「~」前綴）
+  const sm = text.match(/約?\s*([\d.]+)\s*[~～-]\s*[\d.]+\s*坪|約?\s*([\d.]+)\s*坪/)
+  if (sm) r.size = parseFloat(sm[1] || sm[2])
+  // 行政區
   const districts = ['中區','東區','西區','南區','北區','西屯區','南屯區','北屯區','豐原區','大里區','太平區','清水區','沙鹿區','梧棲區','烏日區','大甲區','東勢區','大肚區','神岡區','潭子區','外埔區','后里區','龍井區','霧峰區','石岡區','新社區','和平區','大安區','苑裡區']
   for (const d of districts) { if (text.includes(d)) { r.district = d; break } }
   // 縣市
-  const cm = text.match(/(台中|台北|新北|桃園|台南|高雄|新竹|苗栗|彰化|南投|嘉義|屏東)/)
-  if (cm) r.city = cm[1] + (cm[0].endsWith('市')||cm[0].endsWith('縣') ? '' : '市')
-  // 類型（SUITE=套房, ROOM=雅房, WHOLE_FLOOR=整層住家, SHARED_SUITE=分租套房）
+  const cm = text.match(/(台中市?|台北市?|新北市?|桃園市?|台南市?|高雄市?|新竹[市縣]?|苗栗縣?|彰化縣?|南投縣?|嘉義[市縣]?|屏東縣?)/)
+  if (cm) {
+    let city = cm[1]
+    if (!city.endsWith('市') && !city.endsWith('縣')) city += '市'
+    r.city = city
+  }
+  // 類型
   if (/分租套房/.test(text)) r.type = 'SHARED_SUITE'
   else if (/雅房/.test(text)) r.type = 'ROOM'
-  else if (/整層|整棟|公寓|透天/.test(text)) r.type = 'WHOLE_FLOOR'
+  else if (/整層|整棟|公寓|透天|兩房|三房|四房/.test(text)) r.type = 'WHOLE_FLOOR'
   else if (/套房/.test(text)) r.type = 'SUITE'
   // 押金
-  const dm = text.match(/押[金]?\s*(一|兩|三|四|五|[\d]+)\s*個月/)
-  if (dm) r.deposit = dm[1] + '個月'
-  // 設備
-  const amenities = ['冷氣','冷暖氣','冰箱','洗衣機','熱水器','網路','第四台','電視','瓦斯爐','微波爐','烘衣機','床組','書桌','衣櫃','獨立衛浴']
-  r.amenities = amenities.filter(k => text.includes(k))
-  // 標籤
-  const tags = ['近捷運','近公車','近學校','含水費','含電費','含管理費','含車位','機車位','汽車位','可養寵物','不養寵物','女性限定','男性限定','頂樓加蓋']
-  r.tags = tags.filter(k => text.includes(k))
+  const dm = text.match(/押[金]?\s*(一|兩|三|四|五|[\d]+)\s*個月|押[金]?\s*([\d]+)/)
+  if (dm) r.deposit = (dm[1] || dm[2]) + '個月'
+  // 設備（擴充同義詞）
+  const amenityMap = [
+    ['冷暖氣', /冷暖[氣空調]|變頻冷暖/],
+    ['冷氣',   /冷[氣空調]/],
+    ['冰箱',   /冰箱/],
+    ['洗衣機', /洗衣機|洗脫烘|洗脫/],
+    ['烘衣機', /烘衣機|烘乾機|洗脫烘/],
+    ['熱水器', /熱水器/],
+    ['網路',   /網路|Wi-Fi|光纖|寬頻/i],
+    ['第四台', /第四台|有線電視|MOD/],
+    ['電視',   /電視/],
+    ['瓦斯爐', /瓦斯爐|廚具|廚房設備/],
+    ['微波爐', /微波爐/],
+    ['床組',   /床[架墊組]|雙人床|單人床/],
+    ['書桌',   /書桌|桌椅/],
+    ['衣櫃',   /衣櫃|衣架間/],
+    ['獨立衛浴',/獨[立]?衛[浴]?|獨洗|獨浴|衛浴獨立/],
+  ]
+  const seenAmenities = new Set()
+  for (const [name, re] of amenityMap) {
+    if (!seenAmenities.has(name) && re.test(text)) seenAmenities.add(name)
+  }
+  r.amenities = [...seenAmenities]
+  // 標籤（擴充同義詞）
+  const tagMap = [
+    ['近捷運',   /近捷運|捷運旁|捷運步行/],
+    ['近公車',   /近公車|公車站/],
+    ['近學校',   /近[學大]校|學區/],
+    ['含水費',   /含水費|水費含|水費免費/],
+    ['含電費',   /含電費|電費含|電費免費/],
+    ['含管理費', /含管理費|管理費含/],
+    ['含車位',   /含車位/],
+    ['機車位',   /機車位|機車停車/],
+    ['汽車位',   /汽車位|汽車停車|停車位/],
+    ['可養寵物', /可[養帶]?寵[物]?|寵物[友善OK可]/],
+    ['不養寵物', /不[養帶]寵[物]?|謝絕寵物/],
+    ['女性限定', /女性[限專]|限[住]?女/],
+    ['男性限定', /男性[限專]|限[住]?男/],
+    ['頂樓加蓋', /頂[樓加]蓋/],
+    ['可租補',   /可[申請]?租補|青年租屋|租金補貼/],
+  ]
+  const seenTags = new Set()
+  for (const [name, re] of tagMap) {
+    if (re.test(text)) seenTags.add(name)
+  }
+  r.tags = [...seenTags]
   return r
 }
 
@@ -624,37 +672,60 @@ router.post('/admin/api/social/ig/parse-caption', express.json(), async (req, re
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 700,
-          messages: [{
-            role: 'user',
-            content: `從以下 Instagram 租屋貼文萃取房源資訊，以 JSON 格式回傳，不要加說明或 markdown。
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1200,
+          messages: [
+            {
+              role: 'user',
+              content: `從以下 Instagram 租屋貼文萃取房源資訊，以合法 JSON 格式回傳，不加任何說明或 markdown。
 
 文案：
 """
-${caption.slice(0, 2000)}
+${caption.slice(0, 3000)}
 """
 
-欄位（無法判斷填 null）：
-- title: string 房源標題（10-20字，簡潔精確，無法判斷時填 null）
-- price: number 月租金（純數字）
-- size: number 坪數（純數字）
-- type: "SUITE"|"ROOM"|"WHOLE_FLOOR"|"SHARED_SUITE"（SUITE=套房, ROOM=雅房, WHOLE_FLOOR=整層住家/整層/公寓/透天, SHARED_SUITE=分租套房）
-- city: string 縣市（例"台中市"，沒提就填"台中市"）
-- district: string 行政區（例"北區"）
-- address: string 路名或地址（沒有填 null）
-- deposit: string 押金（例"兩個月"，沒提填 null）
-- amenities: string[] 從以下選符合的：冷氣、冷暖氣、冰箱、洗衣機、熱水器、網路、第四台、電視、瓦斯爐、微波爐、烘衣機、床組、書桌、衣櫃、獨立衛浴
-- tags: string[] 從以下選符合的，也可自訂重要特色：近捷運、近公車、近學校、含水費、含電費、含管理費、含車位、機車位、汽車位、可養寵物、不養寵物、女性限定、男性限定、頂樓加蓋
+【欄位定義】（無法判斷填 null）
+- title: string｜用「地點＋房型＋特色」組成，10-20字。例："北屯青島路精裝套房"、"西屯逢甲整層三房"
+- price: number｜月租金純數字。遇到區間（如17000-18000）取低值；"$18,000"去掉符號→18000
+- size: number｜坪數純數字。"約12坪"→12；"10~12坪"→10；沒有填 null
+- type: "SUITE"|"ROOM"|"WHOLE_FLOOR"|"SHARED_SUITE"
+  • SUITE＝套房（有獨立衛浴的套房、獨立套房）
+  • ROOM＝雅房（雅房、無獨衛的一般房間）
+  • WHOLE_FLOOR＝整層住家（整層、整棟、公寓、透天、兩房、三房、四房）
+  • SHARED_SUITE＝分租套房（分租）
+- city: string｜縣市全名，沒提填"台中市"
+- district: string｜行政區全名（例"北屯區"），沒有填 null
+- address: string｜路名或門牌（例"青島路一段"），沒有填 null
+- deposit: string｜押金描述，例"兩個月"、"一個月"，沒提填 null
+- amenities: string[]｜只從清單挑符合的（含同義詞）：
+  冷氣（含冷暖氣/冷氣空調）、冷暖氣（變頻冷暖/冷暖/冷暖空調）、冰箱、
+  洗衣機（含洗脫/洗脫烘）、烘衣機（含洗脫烘/烘乾）、熱水器（含電熱水器）、
+  網路（含光纖/Wi-Fi/網路寬頻）、第四台（有線電視/MOD）、電視、
+  瓦斯爐（含廚房/爐具）、微波爐、床組（含床架/床墊/雙人床/單人床）、
+  書桌（含桌椅）、衣櫃（含衣架）、獨立衛浴（含獨衛/獨立衛/獨立浴廁/衛浴獨立）
+- tags: string[]｜從清單選符合的，再自訂最多5個文中明確提到的特色：
+  近捷運、近公車、近學校、含水費、含電費、含管理費、含車位、機車位、汽車位、
+  可養寵物（可寵/寵物友善）、不養寵物、女性限定、男性限定、頂樓加蓋、
+  可租補（可申請租屋補貼/青年租屋補貼/租補）
 
-只回傳 JSON。`,
-          }],
+只回傳 JSON，第一個字必須是 {。`,
+            },
+            { role: 'assistant', content: '{' },
+          ],
         }),
       })
       if (resp.ok) {
         const data = await resp.json()
-        const text = (data.content?.[0]?.text || '').trim().replace(/^```(?:json)?\n?|\n?```$/g, '')
-        return res.json({ parsed: JSON.parse(text), source: 'ai' })
+        const raw = ('{' + (data.content?.[0]?.text || '')).trim().replace(/^```(?:json)?\n?|\n?```$/g, '')
+        try {
+          return res.json({ parsed: JSON.parse(raw), source: 'ai' })
+        } catch (_) {
+          // JSON 不完整時嘗試找最後一個完整物件
+          const m = raw.match(/^\{[\s\S]*\}/)
+          if (m) {
+            try { return res.json({ parsed: JSON.parse(m[0]), source: 'ai' }) } catch (_) {}
+          }
+        }
       }
     } catch (_) {}
   }
