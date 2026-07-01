@@ -4108,7 +4108,11 @@ function drawSocialTab() {
     platformRow('threads', '🧵 Threads', false),
     '</div>',
 
-    '<button class="btn" style="width:auto;padding:12px 32px;" onclick="btnLoad(this, submitSocialPost)">🚀 立即發布</button>',
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">',
+    '<button class="btn" style="width:auto;padding:12px 28px;" onclick="btnLoad(this, function(){ return submitSocialPost(\'feed\') })">🚀 發布貼文</button>',
+    '<button class="btn" style="width:auto;padding:12px 28px;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);border:none;" onclick="btnLoad(this, function(){ return submitSocialPost(\'story\') })">🎞 發限時動態</button>',
+    '<span style="font-size:11px;color:var(--gray-light);">限時動態僅發封面圖，無文案</span>',
+    '</div>',
     '<div id="socialPostResult" style="margin-top:14px;font-size:13px;line-height:1.8;"></div>',
     '</div>',
 
@@ -4863,31 +4867,45 @@ async function igPublishPlan() {
   return true
 }
 
-async function submitSocialPost() {
+async function submitSocialPost(postType) {
+  var isStory = postType === 'story'
   var resultEl = document.getElementById('socialPostResult')
   var platforms = Object.keys(socialSelectedPlatforms).filter(function(k){ return socialSelectedPlatforms[k] })
   var caption = (document.getElementById('socialCaption') || {}).value || ''
   if (!socialSelectedPropertyId) { showToast('❌ 請先選擇房源'); return false }
   if (!platforms.length) { showToast('❌ 請選擇至少一個發布平台'); return false }
-  if (!caption.trim()) { showToast('❌ 發文內容不可空白'); return false }
+  if (!isStory && !caption.trim()) { showToast('❌ 發文內容不可空白'); return false }
 
-  resultEl.innerHTML = '發布中...'
+  // 限時動態只支援 Instagram
+  if (isStory) {
+    var hasIg = platforms.indexOf('instagram') !== -1
+    if (!hasIg) { showToast('❌ 限時動態目前只支援 Instagram，請勾選 Instagram'); return false }
+    platforms = ['instagram']
+  }
+
+  resultEl.innerHTML = isStory ? '發布限時動態中...' : '發布中...'
   try {
     var res = await fetch('/admin/api/social/post?key=' + encodeURIComponent(KEY), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ propertyId: socialSelectedPropertyId, platforms: platforms, caption: caption }),
+      body: JSON.stringify({
+        propertyId: socialSelectedPropertyId,
+        platforms: platforms,
+        caption: caption,
+        postType: postType || 'feed',
+      }),
     })
     var data = await res.json()
     if (!res.ok) { resultEl.innerHTML = '❌ ' + (data.error || '發布失敗'); return false }
     var labels = { instagram: 'Instagram', facebook: 'FB 粉專', threads: 'Threads' }
     resultEl.innerHTML = Object.keys(data.results).map(function(k) {
       var r = data.results[k]
+      var typeTag = r.type === 'story' ? '（限時動態）' : ''
       return r.ok
-        ? '<div>✅ ' + labels[k] + '：發布成功</div>'
+        ? '<div>✅ ' + labels[k] + typeTag + '：發布成功</div>'
         : '<div>❌ ' + labels[k] + '：' + esc(r.error || '失敗') + '</div>'
     }).join('')
-    showToast('已送出發布請求')
+    showToast(isStory ? '✅ 限時動態已發布' : '已送出發布請求')
     return true
   } catch (e) {
     resultEl.innerHTML = '❌ 連線失敗：' + e.message

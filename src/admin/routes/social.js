@@ -161,6 +161,17 @@ async function igPublish(accountId, accessToken, creationId) {
   return data.id
 }
 
+async function postStoryToInstagram({ accountId, accessToken, imageUrl }) {
+  if (!accountId || !accessToken) throw new Error('尚未設定 Instagram 帳號 ID 或 Access Token')
+  if (!imageUrl) throw new Error('此房源沒有照片，無法發布限時動態')
+  const id = await igCreateContainer(accountId, accessToken, {
+    media_type: 'STORIES',
+    image_url: imageUrl,
+  })
+  await igWaitFinished(id, accessToken)
+  return igPublish(accountId, accessToken, id)
+}
+
 async function postToInstagram({ accountId, accessToken, imageUrls, caption }) {
   if (!accountId || !accessToken) throw new Error('尚未設定 Instagram 帳號 ID 或 Access Token')
   const urls = (imageUrls || []).filter(Boolean).slice(0, 10) // IG 輪播上限 10 張
@@ -233,7 +244,7 @@ router.post('/admin/api/social/post', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  const { propertyId, platforms } = req.body
+  const { propertyId, platforms, postType } = req.body
   if (!propertyId || !Array.isArray(platforms) || !platforms.length) {
     return res.status(400).json({ error: '請選擇房源與至少一個發布平台' })
   }
@@ -248,10 +259,13 @@ router.post('/admin/api/social/post', express.json(), async (req, res) => {
   }
 
   const config = await getConfig(auth)
-  // 前端可傳入編輯過的文案；沒給才用預設組字
-  const caption = (typeof req.body.caption === 'string' && req.body.caption.trim())
-    ? req.body.caption.trim()
-    : buildCaption(property)
+  const isStory = postType === 'story'
+  // 前端可傳入編輯過的文案；沒給才用預設組字（限時動態不帶 caption）
+  const caption = isStory ? '' : (
+    (typeof req.body.caption === 'string' && req.body.caption.trim())
+      ? req.body.caption.trim()
+      : buildCaption(property)
+  )
   const imageUrls = property.images.map(i => i.url).filter(Boolean)
   const results = {}
 
@@ -259,10 +273,17 @@ router.post('/admin/api/social/post', express.json(), async (req, res) => {
     try {
       if (platform === 'instagram') {
         const ig = config.instagram || {}
-        const postId = await postToInstagram({
-          accountId: ig.accountId, accessToken: ig.accessToken, imageUrls, caption,
-        })
-        results.instagram = { ok: true, postId }
+        if (isStory) {
+          const postId = await postStoryToInstagram({
+            accountId: ig.accountId, accessToken: ig.accessToken, imageUrl: imageUrls[0],
+          })
+          results.instagram = { ok: true, postId, type: 'story' }
+        } else {
+          const postId = await postToInstagram({
+            accountId: ig.accountId, accessToken: ig.accessToken, imageUrls, caption,
+          })
+          results.instagram = { ok: true, postId }
+        }
       } else if (platform === 'facebook') {
         const fb = config.facebook || {}
         const page = (fb.pages || []).find(p => p.id === fb.pageId) || (fb.pages || [])[0]
