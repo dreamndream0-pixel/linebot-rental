@@ -1400,6 +1400,8 @@ function batchToolbarHtml() {
     '<span style="font-size:13px;color:var(--gray-mid);">精選：</span>' +
     '<button class="action-btn" style="padding:6px 14px;font-size:13px;" onclick="applyBatchFeatured(true)">☆ 設精選</button>' +
     '<button class="action-btn" style="padding:6px 14px;font-size:13px;" onclick="applyBatchFeatured(false)">取消精選</button>' +
+    '<span style="' + dividerSt + '"></span>' +
+    '<button class="action-btn" style="padding:6px 16px;font-size:13px;background:#C0524A;color:white;border-color:#C0524A;" onclick="applyBatchDelete()">🗑 刪除</button>' +
     '</div>'
 }
 
@@ -1874,6 +1876,24 @@ async function applyBatchFeatured(featured) {
     if (!res.ok) { showToast('❌ ' + (data.error || '精選更新失敗')); return }
     showToast('✅ 已更新精選 ' + (data.updated || ids.length) + ' 間')
   } catch(e) { showToast('❌ 精選更新失敗，請稍後再試'); return }
+  await reload()
+}
+
+async function applyBatchDelete() {
+  var checked = Array.from(document.querySelectorAll('.prop-cb:checked'))
+  if (!checked.length) { showToast('請先勾選房源'); return }
+  if (!confirm('確定刪除這 ' + checked.length + ' 間房源？\n刪除後房源將下架並從前台隱藏，照片也會一併清除，無法復原。')) return
+  var ids = checked.map(function(cb){ return cb.dataset.id })
+  showToast('刪除中…')
+  try {
+    var res = await fetch('/admin/api/properties/batch-delete?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids })
+    })
+    var data = await res.json().catch(function(){ return {} })
+    if (!res.ok) { showToast('❌ ' + (data.error || '刪除失敗')); return }
+    showToast('✅ 已刪除 ' + (data.deleted || ids.length) + ' 間房源')
+  } catch(e) { showToast('❌ 刪除失敗，請稍後再試'); return }
   await reload()
 }
 

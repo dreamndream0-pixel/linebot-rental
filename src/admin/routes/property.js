@@ -280,6 +280,41 @@ router.post('/admin/api/properties/batch-featured', express.json(), async (req, 
   }
 })
 
+// ── 批次刪除 ─────────────────────────────────────────────────────
+router.post('/admin/api/properties/batch-delete', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  const { ids } = req.body
+  if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids 必填' })
+
+  const where = { id: { in: ids }, deletedAt: null }
+  if (auth.role === 'landlord') where.ownerId = auth.landlordId
+  const targets = await prisma.property.findMany({
+    where,
+    include: { images: { select: { url: true } } },
+  })
+  if (!targets.length) return res.status(404).json({ error: '找不到可刪除的房源' })
+  const targetIds = targets.map(p => p.id)
+
+  await prisma.property.updateMany({
+    where: { id: { in: targetIds } },
+    data: { deletedAt: new Date(), status: 'PAUSED' },
+  })
+
+  const imageUrls = targets.flatMap(p => p.images.map(i => i.url))
+  deleteCloudinaryImages(imageUrls).catch(() => {})
+
+  const ownerIds = [...new Set(targets.map(p => p.ownerId).filter(Boolean))]
+  revalidateSite([
+    '/listings',
+    ...ownerIds.map(o => `/site/${o}`),
+    ...targetIds.map(id => `/property/${id}`),
+  ]).catch(() => {})
+
+  res.json({ ok: true, deleted: targetIds.length })
+})
+
 // ── 單筆房源完整資料（編輯表單用：含全部 images / tags / amenities / communityId）──
 router.get('/admin/api/property/:id', async (req, res) => {
   const auth = await resolveRole(req.query.key)
