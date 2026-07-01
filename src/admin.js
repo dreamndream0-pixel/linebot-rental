@@ -98,19 +98,6 @@ router.post('/admin/api/logout', (_req, res) => {
   res.json({ ok: true })
 })
 
-// POST /admin/api/switch-to-super — 指定仲介房東切換回總管理員（憑現有 session，不需再輸入金鑰）
-router.post('/admin/api/switch-to-super', async (req, res) => {
-  const auth = await resolveRole(req.query.key)
-  const BROKER_ID = process.env.BROKER_LANDLORD_ID || 'cmqbys4qr0004keruq1niq5xz'
-  if (!auth || auth.role !== 'landlord' || auth.landlordId !== BROKER_ID) {
-    return res.status(403).json({ error: 'forbidden' })
-  }
-  const session = await createAdminSession(process.env.ADMIN_KEY)
-  if (!session) return res.status(500).json({ error: '無法建立管理員 session' })
-  setSessionCookie(res, session.token)
-  res.json({ ok: true, account: session.auth.label, role: session.auth.role })
-})
-
 // 後台金鑰可放在 HTTP header（X-Admin-Key），避免金鑰出現在網址 / 伺服器日誌。
 // 為了相容舊呼叫，header 不存在時仍沿用網址上的 ?key=。
 // 注意：Express 的 req.query 是 getter（每次存取重新解析 URL），直接改 req.query.key
@@ -124,6 +111,20 @@ router.use((req, _res, next) => {
   else if (q.key && process.env.ALLOW_ADMIN_QUERY_KEY !== 'true') delete q.key
   Object.defineProperty(req, 'query', { value: q, configurable: true, writable: true })
   next()
+})
+
+// POST /admin/api/switch-to-super — 指定仲介房東切換回總管理員（憑現有 session，不需再輸入金鑰）
+// 此路由必須在 session-key 中介層之後，才能從 cookie 取得 req.query.key
+router.post('/admin/api/switch-to-super', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  const BROKER_ID = process.env.BROKER_LANDLORD_ID || 'cmqbys4qr0004keruq1niq5xz'
+  if (!auth || auth.role !== 'landlord' || auth.landlordId !== BROKER_ID) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const session = await createAdminSession(process.env.ADMIN_KEY)
+  if (!session) return res.status(500).json({ error: '無法建立管理員 session' })
+  setSessionCookie(res, session.token)
+  res.json({ ok: true, account: session.auth.label, role: session.auth.role })
 })
 
 async function requireSuper(req, res) {
