@@ -2470,6 +2470,14 @@ async function changePropertyStatus(id, status, selectEl) {
   }
   showToast('✅ 狀態已更新')
   updatePropertyRowInPlace(id)
+
+  // 改成「已出租」時，若該房源從 IG 匯入過，提示去典藏貼文
+  if (status === 'RENTED') {
+    var igPost = findIgPostByPropertyId(id)
+    if (igPost && igPost.permalink) {
+      showIgArchiveReminder((p && p.title) || igPost.title || '此房源', igPost.permalink)
+    }
+  }
 }
 
 async function changeAvailableFrom(id, date) {
@@ -4299,13 +4307,39 @@ function getImportedData() {
   } catch(_) { return {} }
 }
 function getImportedIds() { return new Set(Object.keys(getImportedData())) }
-function markImportedId(mediaId, propertyId, title) {
+function markImportedId(mediaId, propertyId, title, permalink) {
   try {
     var k = _igImportedKey()
     var data = getImportedData()
-    data[mediaId] = { propertyId: propertyId || '', title: title || '', importedAt: Date.now() }
+    data[mediaId] = { propertyId: propertyId || '', title: title || '', permalink: permalink || '', importedAt: Date.now() }
     localStorage.setItem(k, JSON.stringify(data))
   } catch(_) {}
+}
+
+function findIgPostByPropertyId(propertyId) {
+  var data = getImportedData()
+  for (var mid in data) {
+    if (data[mid].propertyId === propertyId) return Object.assign({ mediaId: mid }, data[mid])
+  }
+  return null
+}
+
+function showIgArchiveReminder(propertyTitle, permalink) {
+  var old = document.getElementById('igArchiveReminder'); if (old) old.remove()
+  var d = document.createElement('div')
+  d.id = 'igArchiveReminder'
+  d.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;background:#fff;border:1.5px solid #E5E0D5;border-radius:14px;box-shadow:0 4px 24px rgba(0,0,0,.13);padding:18px 20px;max-width:320px;font-size:13px;line-height:1.7;'
+  d.innerHTML =
+    '<div style="font-weight:700;font-size:14px;margin-bottom:6px;">📦 記得到 IG 典藏貼文</div>' +
+    '<div style="color:#555;margin-bottom:12px;">「' + esc(propertyTitle) + '」已標記出租。<br>對應的 IG 貼文建議封存，讓版面保持整潔。</div>' +
+    '<div style="font-size:11px;color:#aaa;margin-bottom:12px;">IG 右上角 ⋯ → 典藏 → 確認</div>' +
+    '<div style="display:flex;gap:8px;">' +
+      '<a href="' + esc(permalink) + '" target="_blank" rel="noopener" style="flex:1;padding:9px 0;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;border-radius:8px;text-align:center;text-decoration:none;font-weight:700;font-size:13px;">前往 IG 貼文</a>' +
+      '<button onclick="document.getElementById(\'igArchiveReminder\').remove()" style="flex:0 0 auto;padding:9px 14px;border:1.5px solid #E5E0D5;background:#fff;border-radius:8px;cursor:pointer;font-size:12px;color:#888;">稍後</button>' +
+    '</div>'
+  document.body.appendChild(d)
+  // 10 秒後自動消失
+  setTimeout(function(){ var el = document.getElementById('igArchiveReminder'); if (el) el.remove() }, 10000)
 }
 
 // ── 批次匯入 ──────────────────────────────────────────────────────
@@ -4383,7 +4417,7 @@ async function igBatchImport() {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
       })
       var rdata = await res.json()
-      if (res.ok) { markImportedId(mediaId, rdata.propertyId, rdata.title); done++ } else { skip++ }
+      if (res.ok) { markImportedId(mediaId, rdata.propertyId, rdata.title, (d && d.permalink) || ''); done++ } else { skip++ }
     } catch(_) { skip++ }
   }
   igBatchClear()
@@ -4845,7 +4879,8 @@ async function igImportSubmit() {
     })
     var data = await res.json()
     if (!res.ok) { showToast('❌ ' + (data.error || '建立失敗')); return false }
-    markImportedId(_igImportCurrentId, data.propertyId, data.title)
+    var _cache = _igImportCache[_igImportCurrentId] || {}
+    markImportedId(_igImportCurrentId, data.propertyId, data.title, _cache.permalink || '')
     igImportClose()
     showToast('✅ 已建立房源：' + data.title)
     var dataRes = await fetch('/admin/api/data?key=' + encodeURIComponent(KEY))
