@@ -176,6 +176,39 @@ function roomsToCarousel(rooms, altText, t = {}) {
     }
   })
 
+  // 最後一張：「看更多房型」連結到房東官網（僅限有 siteUrl 的房東 Bot）
+  if (t._siteUrl) {
+    bubbles.push({
+      type: 'bubble',
+      size: 'kilo',
+      styles: { body: { backgroundColor: '#F4F8F4' } },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: 'xl',
+        paddingTop: 'xxl',
+        contents: [
+          { type: 'text', text: '🏘️', size: '3xl', align: 'center' },
+          { type: 'text', text: t.btnMoreRooms || '看更多房型', weight: 'bold', size: 'xl', align: 'center', margin: 'lg', color: '#2F6B46' },
+          { type: 'text', text: '前往官網瀏覽所有最新房源', size: 'sm', color: '#888888', align: 'center', wrap: true, margin: 'sm' }
+        ]
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'button',
+            action: { type: 'uri', label: '🌐 前往官網', uri: t._siteUrl },
+            style: 'primary',
+            color: '#7A9E7E',
+            height: 'sm'
+          }
+        ]
+      }
+    })
+  }
+
   return {
     type: 'flex',
     altText,
