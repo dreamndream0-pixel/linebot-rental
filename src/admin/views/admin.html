@@ -468,10 +468,42 @@
   .prop-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
   @media(max-width:500px) { .prop-grid-2,.prop-grid-3 { grid-template-columns:1fr; } }
 
+  /* ── 帳號下拉選單包裝 ────────────────────────────── */
+  .top-actions-wrap { position: relative; }
+  .um-chip-caret { font-size: 10px; opacity: 0.5; margin-left: 4px; }
+  .user-chip.um-trigger { cursor: pointer; transition: background .15s; }
+  .user-chip.um-trigger:hover { background: #edf5ee; }
+  .um-flip-caret {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 33px;
+    background: rgba(0,0,0,0.13); cursor: pointer; z-index: 3;
+    border-left: 1px solid rgba(255,255,255,0.22);
+    border-radius: 0 10px 10px 0;
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.85); font-size: 13px; transition: background .15s;
+  }
+  .um-flip-caret:hover { background: rgba(0,0,0,0.22); }
+  .um-dropdown {
+    position: absolute; top: calc(100% + 8px); right: 0;
+    background: white; border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.06);
+    border: 1px solid var(--line); min-width: 128px;
+    z-index: 200; display: none; overflow: hidden;
+  }
+  .um-dropdown.open { display: block; animation: umDrop .15s ease-out; }
+  @keyframes umDrop { from { opacity:0; transform:translateY(-5px) scale(.97); } to { opacity:1; transform:none; } }
+  .um-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px; cursor: pointer; font-size: 13px;
+    color: var(--charcoal); transition: background .1s; white-space: nowrap;
+  }
+  .um-item:hover { background: #F6F8F5; }
+  .um-item.um-danger { color: var(--danger); }
+  .um-item.um-danger:hover { background: #FFF5F5; }
   /* ── 身份翻頁卡片 ─────────────────────────────────── */
   .role-flipcard {
     perspective: 680px;
     perspective-origin: 60% 50%;
+    position: relative;
     width: 190px; height: 50px;
     cursor: pointer; flex-shrink: 0; display: none;
   }
@@ -568,23 +600,29 @@
           <h1 id="pageTitle">房源管理</h1>
           <p id="pageSubtitle">管理所有房源與狀態</p>
         </div>
-        <div class="top-actions">
-          <div class="user-chip">
-            <span id="accountLabel" style="font-size:13px;font-weight:800;">管理員</span>
-          </div>
-          <div class="role-flipcard" id="roleFlipCard" onclick="flipRoleCard()" title="點擊切換身份視角">
-            <div class="role-flip-inner" id="roleFlipInner">
-              <div class="role-face role-face--super">
-                <span class="role-face-icon">🏛️</span>
-                <div><div class="role-face-name">總管理員</div><div class="role-face-hint">切換仲介視角 →</div></div>
+        <div class="top-actions-wrap">
+          <div class="top-actions">
+            <div class="user-chip um-trigger" id="userChip" onclick="toggleAcctMenu(event)">
+              <span id="accountLabel" style="font-size:13px;font-weight:800;">管理員</span>
+              <span class="um-chip-caret">▾</span>
+            </div>
+            <div class="role-flipcard" id="roleFlipCard" onclick="flipRoleCard()" title="點擊切換身份視角">
+              <div class="role-flip-inner" id="roleFlipInner">
+                <div class="role-face role-face--super">
+                  <span class="role-face-icon">🏛️</span>
+                  <div><div class="role-face-name">總管理員</div><div class="role-face-hint">切換仲介視角 →</div></div>
+                </div>
+                <div class="role-face role-face--broker">
+                  <span class="role-face-icon">🏘️</span>
+                  <div><div class="role-face-name">仲介 · 黃震宇</div><div class="role-face-hint">← 返回總管理員</div></div>
+                </div>
               </div>
-              <div class="role-face role-face--broker">
-                <span class="role-face-icon">🏘️</span>
-                <div><div class="role-face-name">仲介 · 黃震宇</div><div class="role-face-hint">← 返回總管理員</div></div>
-              </div>
+              <div class="um-flip-caret" onclick="toggleAcctMenu(event)">▾</div>
             </div>
           </div>
-          <button onclick="logout()" style="padding:9px 14px;font-size:13px;cursor:pointer;">登出</button>
+          <div class="um-dropdown" id="umDropdown">
+            <div class="um-item um-danger" onclick="logout()">🚪 登出</div>
+          </div>
         </div>
       </header>
 
@@ -826,18 +864,17 @@ function enterAdmin() {
     if (DATA.account) {
       document.getElementById('accountLabel').textContent = DATA.account
     }
-    // 身份翻頁卡片：總管理員才顯示
-    var flipCard = document.getElementById('roleFlipCard')
+    // 身份翻頁卡片 vs. 一般帳號 chip
+    var flipCard  = document.getElementById('roleFlipCard')
     var flipInner = document.getElementById('roleFlipInner')
-    if (flipCard) {
-      var showCard = (DATA.role === 'super' && !SUPER_KEY) || !!SUPER_KEY
-      flipCard.style.display = showCard ? 'block' : 'none'
-    }
+    var userChip  = document.getElementById('userChip')
+    var showFlip  = (DATA.role === 'super' && !SUPER_KEY) || !!SUPER_KEY
+    if (flipCard) flipCard.style.display = showFlip ? 'block' : 'none'
+    if (userChip) userChip.style.display = showFlip ? 'none'  : 'flex'
     if (flipInner) {
-      // 無動畫地設定正確面（enterAdmin 可能在 flip 動畫結束前被呼叫）
       flipInner.style.transition = 'none'
       flipInner.classList.toggle('is-flipped', !!SUPER_KEY)
-      flipInner.offsetHeight // force reflow
+      flipInner.offsetHeight
       flipInner.style.transition = ''
     }
     refreshOwnFeatures()
@@ -856,6 +893,16 @@ function enterAdmin() {
     renderStats()
     renderTab()
 }
+
+function toggleAcctMenu(e) {
+  e.stopPropagation()
+  var dd = document.getElementById('umDropdown')
+  if (dd) dd.classList.toggle('open')
+}
+document.addEventListener('click', function() {
+  var dd = document.getElementById('umDropdown')
+  if (dd) dd.classList.remove('open')
+})
 
 function flipRoleCard() {
   var card  = document.getElementById('roleFlipCard')
