@@ -1287,4 +1287,141 @@ router.post('/admin/api/ragic/sync-utility', async (req, res) => {
   }
 })
 
+// POST /admin/api/ragic/sync-rent
+// 環境變數: RAGIC_RENT_FORM_URL（如 https://ap11.ragic.com/urbanite/租金繳納明細/1）
+router.post('/admin/api/ragic/sync-rent', async (req, res) => {
+  const auth = await resolveRole(req)
+  if (!auth || auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+
+  const apiKey = process.env.RAGIC_API_KEY
+  const formUrl = process.env.RAGIC_RENT_FORM_URL
+  if (!apiKey || !formUrl) return res.status(400).json({ error: 'RAGIC_API_KEY 或 RAGIC_RENT_FORM_URL 未設定' })
+
+  // 民國年 "114/4/1" → Date
+  function rocToDate(s) {
+    if (!s || !s.trim()) return null
+    const p = s.trim().split('/')
+    if (p.length < 3) return null
+    const y = parseInt(p[0]) + 1911, m = parseInt(p[1]), d = parseInt(p[2])
+    if (isNaN(y) || isNaN(m) || isNaN(d)) return null
+    return new Date(`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`)
+  }
+
+  // "114/4/1~114/9/30" 或 "114/4/1-114/9/30" → { start, end }
+  function parsePeriod(desc) {
+    const m = (desc || '').replace(/\n/g, ' ').match(/(\d{2,3})\/(\d{1,2})\/(\d{1,2})\s*[~\-]\s*(\d{2,3})\/(\d{1,2})\/(\d{1,2})/)
+    if (!m) return null
+    const start = rocToDate(`${m[1]}/${m[2]}/${m[3]}`)
+    const end   = rocToDate(`${m[4]}/${m[5]}/${m[6]}`)
+    return (start && end) ? { start, end } : null
+  }
+
+  try {
+    const fetch = (...args) => import('node-fetch').then(m => m.default(...args))
+    const resp = await fetch(`${formUrl}?api_key=${apiKey}&limit=2000`, {
+      headers: { 'Content-Type': 'application/json' }
+    })
+    if (!resp.ok) return res.status(502).json({ error: `Ragic API 錯誤 ${resp.status}` })
+    const data = await resp.json()
+
+    const rows = Object.values(data).filter(r => typeof r === 'object' && r['合約編號'])
+
+    let created = 0, updated = 0, skipped = 0
+
+    for (const row of rows) {
+      const ragicId = row['合約編號']
+      const lease = await prisma.lease.findFirst({
+        where: { ragicId },
+        select: { id: true, managedPropertyId: true }
+      })
+      if (!lease) { skipped++; continue }
+
+      const desc      = row['說明'] || ''
+      const isParking = /車位/.test(desc)
+      const category  = isParking ? 'PARKING' : 'RENT'
+      const period    = parsePeriod(desc)
+      const dueDateRaw = (row['租金應繳日期'] || '').replace(/\//g, '-')
+      if (!dueDateRaw) { skipped++; continue }
+      const dueDate    = new Date(dueDateRaw)
+      const periodStart = period ? period.start : dueDate
+      const periodEnd   = period ? period.end   : dueDate
+      const amount      = parseInt(row['應繳租金金額']) || 0
+      const paidAmount  = parseInt(row['已繳金額']) || 0
+      const paidDateRaw = (row['繳款日期'] || '').replace(/\//g, '-') || null
+      const paidDate    = paidDateRaw ? new Date(paidDateRaw) : null
+      const payMethod   = row['繳款方式'] || null
+      const note        = [desc, row['備註']].filter(Boolean).join(' | ') || null
+      const isPaid      = row['已收款'] === 'Yes'
+
+      const existing = await prisma.rentPayment.findFirst({
+        where: { leaseId: lease.id, periodStart, amount }
+      })
+
+      if (existing) {
+        // 若已付款狀態有更新則同步
+        if (isPaid && paidAmount > 0 && existing.paidAmount === 0) {
+          // 建立對應財務記錄
+          await prisma.managementRecord.create({
+            data: {
+              managedPropertyId: lease.managedPropertyId,
+              leaseId: lease.id,
+              type: 'INCOME',
+              category,
+              amount,
+              description: `[ragic-rent:${ragicId}] ${desc}`,
+              recordDate: paidDate || dueDate,
+            }
+          })
+          await prisma.rentPayment.update({
+            where: { id: existing.id },
+            data: { paidAmount, paidDate, payMethod, note }
+          })
+          updated++
+        } else {
+          skipped++
+        }
+        continue
+      }
+
+      // 新記錄：已付才建財務流水
+      let recordId = null
+      if (isPaid && paidAmount > 0) {
+        const rec = await prisma.managementRecord.create({
+          data: {
+            managedPropertyId: lease.managedPropertyId,
+            leaseId: lease.id,
+            type: 'INCOME',
+            category,
+            amount,
+            description: `[ragic-rent:${ragicId}] ${desc}`,
+            recordDate: paidDate || dueDate,
+          }
+        })
+        recordId = rec.id
+      }
+
+      await prisma.rentPayment.create({
+        data: {
+          leaseId: lease.id,
+          recordId,
+          periodStart,
+          periodEnd,
+          dueDate,
+          amount,
+          paidAmount,
+          paidDate,
+          payMethod,
+          note,
+        }
+      })
+      created++
+    }
+
+    res.json({ ok: true, created, updated, skipped, syncAt: new Date().toISOString() })
+  } catch (e) {
+    console.error('Ragic 租金同步失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 module.exports = router
