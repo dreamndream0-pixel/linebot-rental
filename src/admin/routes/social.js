@@ -305,15 +305,16 @@ router.post('/admin/api/social/post', express.json(), async (req, res) => {
 })
 
 // ── IG 已發布貼文（總覽九宮格用，連動讀取）─────────────────────────
-async function fetchIgMedia(accessToken) {
-  const base = `${IG_API_BASE}/me/media?limit=30&access_token=${encodeURIComponent(accessToken)}`
+async function fetchIgMedia(accessToken, cursor) {
   const fullFields = 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{media_url,thumbnail_url}'
-  let data = await (await fetch(base + '&fields=' + encodeURIComponent(fullFields))).json()
-  // 部分欄位（讚數/留言數）在某些帳號會被擋，退回精簡欄位再抓一次，避免整批失敗
-  if (data.error) {
-    const slimFields = 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp'
-    data = await (await fetch(base + '&fields=' + encodeURIComponent(slimFields))).json()
+  const slimFields = 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp'
+  const buildUrl = (fields) => {
+    const qs = new URLSearchParams({ limit: '30', access_token: accessToken, fields })
+    if (cursor) qs.set('after', cursor)
+    return `${IG_API_BASE}/me/media?${qs}`
   }
+  let data = await (await fetch(buildUrl(fullFields))).json()
+  if (data.error) data = await (await fetch(buildUrl(slimFields))).json()
   return data
 }
 
@@ -324,9 +325,11 @@ router.get('/admin/api/social/ig/feed', async (req, res) => {
     const config = await getConfig(auth)
     const ig = config.instagram || {}
     if (!ig.accountId || !ig.accessToken) return res.json({ connected: false, media: [] })
-    const data = await fetchIgMedia(ig.accessToken)
+    const data = await fetchIgMedia(ig.accessToken, req.query.cursor || '')
     if (data.error) return res.status(400).json({ error: data.error.message })
-    res.json({ connected: true, media: data.data || [] })
+    const nextCursor = data.paging && data.paging.cursors && data.paging.next
+      ? data.paging.cursors.after : null
+    res.json({ connected: true, media: data.data || [], nextCursor })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

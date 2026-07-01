@@ -4144,7 +4144,8 @@ function drawSocialTab() {
     // 批次勾選（只在批次模式下顯示）
     '.ig-batch-check{position:absolute;top:4px;left:4px;z-index:6;width:16px;height:16px;accent-color:var(--sage);cursor:pointer;display:none;}',
     '.ig-batch-mode .ig-batch-check{display:block;}',
-    '.ig-batch-mode .ig-import-btn{display:none;}',  // 批次模式下隱藏單筆匯入按鈕
+    '.ig-batch-mode .ig-import-btn{display:none;}',
+    '.ig-batch-mode .ig-cell-link{pointer-events:none;}',  // 批次模式下停用格子連結，讓 checkbox 可點
     // 批次操作列
     '#igBatchBar{background:var(--sage);color:white;border-radius:10px;padding:9px 14px;display:none;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;font-weight:600;}',
     '#igBatchBar button{padding:5px 12px;border:1.5px solid rgba(255,255,255,.6);background:rgba(255,255,255,.15);color:white;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;}',
@@ -4281,6 +4282,7 @@ async function downloadOneImage(url, name) {
 // ── IG 版面規劃（總覽已發布 ＋ 規劃未發布）────────────────────────
 var igPlan = []          // 規劃中房源 id 陣列（index 0 ＝ 九宮格左上＝最新）
 var igFeed = []          // IG 已發布貼文
+var igFeedNextCursor = null  // IG 分頁 cursor
 var igDragFrom = -1
 var igShowRentedOnly = false  // 已發布區是否只顯示「已出租」對應的貼文
 var _igImportCache = {}  // mediaId → { imgUrls, caption, permalink }
@@ -4463,11 +4465,24 @@ async function renderIgPlanner() {
     igPlan = (planData.plan || []).filter(function(id){ return props.some(function(p){ return p.id === id }) })
     if (feedData.error) { box.innerHTML = '<p style="color:#c0392b;font-size:13px;">讀取 IG 貼文失敗：' + esc(feedData.error) + '</p>'; return }
     igFeed = feedData.media || []
+    igFeedNextCursor = feedData.nextCursor || null
   } catch (e) {
     box.innerHTML = '<p style="color:#c0392b;font-size:13px;">載入失敗：' + esc(e.message) + '</p>'
     return
   }
   drawIgPlanner()
+}
+
+async function loadMoreIgFeed() {
+  if (!igFeedNextCursor) return
+  try {
+    var r = await fetch('/admin/api/social/ig/feed?key=' + encodeURIComponent(KEY) + '&cursor=' + encodeURIComponent(igFeedNextCursor))
+    var data = await r.json()
+    if (data.error) { showToast('❌ 載入失敗：' + data.error); return }
+    igFeed = igFeed.concat(data.media || [])
+    igFeedNextCursor = data.nextCursor || null
+    drawIgPlanner()
+  } catch(e) { showToast('❌ 載入失敗：' + e.message) }
 }
 
 // 用背景圖渲染縮圖（避免破圖撐高，並可疊播放鍵）
@@ -4567,8 +4582,17 @@ function drawIgPlanner() {
     '</div>',
     igFeed.length ? '<div id="igBatchBar"><span>已選 <b id="igBatchCount">0</b> 篇</span><button onclick="btnLoad(this,igBatchImport)">⚡ 批次匯入</button><button onclick="igBatchSelectAll()">☑ 全選</button><button onclick="igBatchClear()">✕ 取消</button></div>' : '',
     igFeed.length ? '<div id="igFeedGrid" class="ig-grid">' + feedCells + '</div>' : '<p style="color:var(--gray-light);font-size:13px;">目前沒有抓到已發布貼文（帳號可能還沒發過文）。</p>',
+    igFeedNextCursor ? '<div style="text-align:center;margin-top:10px;"><button id="igLoadMoreBtn" onclick="btnLoad(this,loadMoreIgFeed)" style="padding:8px 24px;border:1.5px solid var(--sage);background:white;color:var(--sage);border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">⬇ 載入更多貼文</button></div>' : '',
     rentedCount ? '<p style="font-size:11px;color:var(--gray-light);margin-top:10px;line-height:1.7;">🔴 紅框「已出租」的貼文＝該房源已出租。點一下會打開那篇 IG 貼文，在 IG 右上「⋯ → 封存」即可把它從版面隱藏（封存後可隨時還原）。<b>IG 不開放由系統自動封存</b>，需在 IG 上點一下完成。</p>' : '',
   ].join('')
+
+  // 若目前是批次模式，重繪後要還原 class 和按鈕狀態
+  if (_igBatchMode) {
+    var grid = document.getElementById('igFeedGrid')
+    var btn  = document.getElementById('igBatchModeBtn')
+    if (grid) grid.classList.add('ig-batch-mode')
+    if (btn)  { btn.textContent = '✕ 退出批次'; btn.style.background = '#c0392b' }
+  }
 }
 
 function igDragStart(e, i) { igDragFrom = i; try { e.dataTransfer.effectAllowed = 'move' } catch (_) {} }
