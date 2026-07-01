@@ -1,7 +1,7 @@
 // src/admin/routes/social.js — 社群管理：房源一鍵發文（第一步：串接 Instagram）
 const express = require('express')
 const router = express.Router()
-const { resolveRole } = require('../helpers')
+const { resolveRole, revalidateSite } = require('../helpers')
 const prisma = require('../../db')
 
 // Instagram API with Instagram Login（token 以 IGAA 開頭，使用 graph.instagram.com）
@@ -548,6 +548,58 @@ router.post('/admin/api/social/fb/page', express.json(), async (req, res) => {
     await saveConfig(auth, config)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── IG 匯入：把 IG 貼文照片建立為新房源 ────────────────────────────
+router.post('/admin/api/social/ig/import-property', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+
+  const { title, price, type, city, district, size, deposit, description, imageUrls, status, ownerId } = req.body
+  if (!title || !price) return res.status(400).json({ error: 'title 和 price 為必填' })
+
+  const targetOwnerId = auth.role === 'landlord' ? auth.landlordId : (ownerId || null)
+  if (!targetOwnerId) return res.status(400).json({ error: '請指定房東 (ownerId)' })
+
+  // 嘗試把 IG 圖片搬到 Cloudinary，避免 IG URL 過期；失敗時直接用原始 URL
+  let hostedUrls = (imageUrls || []).slice(0, 10).filter(u => typeof u === 'string' && u.startsWith('https://'))
+  try {
+    const cloudinary = require('cloudinary').v2
+    hostedUrls = await Promise.all(
+      hostedUrls.map(url =>
+        cloudinary.uploader.upload(url, { folder: 'xiaowo-ig-import' })
+          .then(r => r.secure_url)
+          .catch(() => url)
+      )
+    )
+  } catch (_) {}
+
+  const adminUser = await prisma.user.upsert({
+    where: { email: 'admin@xiaowo.tw' },
+    update: {},
+    create: { email: 'admin@xiaowo.tw', name: '小蝸出租', handle: 'xiaowo', role: 'LANDLORD', verified: true },
+  })
+
+  const property = await prisma.property.create({
+    data: {
+      landlordId: adminUser.id,
+      ownerId: targetOwnerId,
+      title,
+      type: type || 'SUITE',
+      status: status || 'AVAILABLE',
+      city: city || '台中市',
+      district: district || '',
+      address: '',
+      size: parseFloat(size) || 0,
+      price: parseInt(price),
+      deposit: deposit || '兩個月',
+      description: description || '',
+      images: { create: hostedUrls.map((url, i) => ({ url, order: i, isCover: i === 0 })) },
+    },
+  })
+
+  await revalidateSite(['/listings', `/site/${targetOwnerId}`, `/property/${property.id}`])
+  res.json({ ok: true, propertyId: property.id, title: property.title })
 })
 
 module.exports = router

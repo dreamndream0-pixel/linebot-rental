@@ -4060,6 +4060,9 @@ function drawSocialTab() {
     '.ig-pub{opacity:.95;}',
     '.ig-rented{outline:2px solid #c0392b;outline-offset:-2px;}',
     '.ig-rented .ig-thumb{opacity:.6;}',
+    '.ig-cell-link{position:absolute;inset:0;}',
+    '.ig-import-btn{position:absolute;top:4px;right:4px;z-index:5;background:rgba(0,0,0,.45);color:#fff;border:none;border-radius:6px;font-size:10px;padding:2px 6px;cursor:pointer;opacity:.75;transition:background .15s,opacity .15s;}',
+    '.ig-pub:hover .ig-import-btn{opacity:1;background:rgba(44,107,69,.92);}',
     '</style>',
     '<div class="form-box">',
     '<h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">📐 IG 版面規劃</h3>',
@@ -4190,6 +4193,8 @@ var igPlan = []          // 規劃中房源 id 陣列（index 0 ＝ 九宮格左
 var igFeed = []          // IG 已發布貼文
 var igDragFrom = -1
 var igShowRentedOnly = false  // 已發布區是否只顯示「已出租」對應的貼文
+var _igImportCache = {}  // mediaId → { imgUrls, caption, permalink }
+var _igImportCurrentId = ''
 
 function igPropThumb(p) {
   return (p && p.images && p.images[0] && p.images[0].url) || ''
@@ -4274,15 +4279,26 @@ function drawIgPlanner() {
     return { m: m, rented: rented }
   })
   var shownFeed = igShowRentedOnly ? feedItems.filter(function(x){ return x.rented }) : feedItems
+  _igImportCache = {}
   var feedCells = shownFeed.map(function(x) {
     var m = x.m
     var t = igFeedThumb(m)
-    return '<a class="ig-cell ig-pub' + (x.rented ? ' ig-rented' : '') + '" href="' + esc(m.permalink || '#') + '" target="_blank" rel="noopener">' +
+    var imgUrls = []
+    if (m.media_type === 'CAROUSEL_ALBUM' && m.children && m.children.data) {
+      imgUrls = m.children.data.map(function(c){ return c.media_url || c.thumbnail_url || '' }).filter(Boolean)
+    } else if (m.media_url && m.media_type !== 'VIDEO') {
+      imgUrls = [m.media_url]
+    }
+    _igImportCache[m.id] = { imgUrls: imgUrls, caption: m.caption || '', permalink: m.permalink || '' }
+    return '<div class="ig-cell ig-pub' + (x.rented ? ' ig-rented' : '') + '">' +
+      '<a class="ig-cell-link" href="' + esc(m.permalink || '#') + '" target="_blank" rel="noopener">' +
       igThumbHTML(t.thumb, '—') +
       (t.video ? '<span class="ig-play"></span>' : '') +
+      '</a>' +
       (x.rented ? '<span class="ig-badge" style="background:#c0392b;">已出租 ⋯封存</span>' : '') +
       '<span class="ig-meta">❤ ' + (m.like_count || 0) + '　💬 ' + (m.comments_count || 0) + '</span>' +
-      '</a>'
+      (imgUrls.length ? '<button class="ig-import-btn" onclick="igImportProperty(\'' + m.id + '\')">📥 匯入</button>' : '') +
+      '</div>'
   }).join('')
 
   var addable = props.filter(function(p){ return p.status !== 'PENDING' && igPlan.indexOf(p.id) === -1 })
@@ -4328,6 +4344,154 @@ async function saveIgPlan() {
       body: JSON.stringify({ plan: igPlan }),
     })
   } catch (_) {}
+}
+
+// ── IG 匯入為房源 ────────────────────────────────────────────────
+function ensureIgImportModal() {
+  if (document.getElementById('igImportModal')) return
+  var f = 'width:100%;padding:10px 13px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;box-sizing:border-box;font-family:inherit;background:white;'
+  var el = document.createElement('div')
+  el.id = 'igImportModal'
+  el.style.cssText = 'display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.55);align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;'
+  el.onclick = function(e) { if (e.target === el) igImportClose() }
+  el.innerHTML = [
+    '<div style="background:white;border-radius:16px;width:100%;max-width:460px;padding:24px;margin:auto;">',
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">',
+        '<h3 style="font-size:17px;font-weight:700;margin:0;">📥 匯入 IG 貼文為房源</h3>',
+        '<button onclick="igImportClose()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#aaa;line-height:1;padding:0 2px;">×</button>',
+      '</div>',
+      '<div id="igImportPreview" style="display:flex;gap:4px;margin-bottom:16px;border-radius:8px;overflow:hidden;height:88px;background:var(--oat-mid);"></div>',
+      '<div style="display:grid;gap:11px;">',
+        '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">標題 <span style="color:#e74c3c">*</span></label>',
+          '<input id="igImportTitle" type="text" placeholder="例：台中北區精緻套房" style="' + f + '"></div>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">',
+          '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">租金／月 <span style="color:#e74c3c">*</span></label>',
+            '<input id="igImportPrice" type="number" placeholder="例：8000" style="' + f + '"></div>',
+          '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">坪數</label>',
+            '<input id="igImportSize" type="number" placeholder="例：8.5" step="0.1" style="' + f + '"></div>',
+        '</div>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">',
+          '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">類型</label>',
+            '<select id="igImportType" style="' + f + '">',
+              '<option value="SUITE">整層</option>',
+              '<option value="ROOM">套房</option>',
+              '<option value="STUDIO">雅房</option>',
+              '<option value="WHOLE_UNIT">獨立套房</option>',
+            '</select></div>',
+          '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">狀態</label>',
+            '<select id="igImportStatus" style="' + f + '">',
+              '<option value="AVAILABLE">出租中</option>',
+              '<option value="DRAFT">草稿</option>',
+            '</select></div>',
+        '</div>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">',
+          '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">縣市</label>',
+            '<input id="igImportCity" type="text" value="台中市" style="' + f + '"></div>',
+          '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">行政區</label>',
+            '<input id="igImportDistrict" type="text" placeholder="例：北區" style="' + f + '"></div>',
+        '</div>',
+        '<div id="igImportOwnerRow" style="display:none;"><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">房東</label>',
+          '<select id="igImportOwner" style="' + f + '"></select></div>',
+        '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">說明（IG 文案）</label>',
+          '<textarea id="igImportDesc" rows="4" style="' + f + 'resize:vertical;min-height:76px;"></textarea></div>',
+      '</div>',
+      '<div style="display:flex;gap:10px;margin-top:18px;">',
+        '<button onclick="igImportClose()" style="flex:1;padding:12px;border:1.5px solid var(--oat-mid);border-radius:10px;background:white;cursor:pointer;font-size:14px;">取消</button>',
+        '<button id="igImportSubmitBtn" onclick="btnLoad(this, igImportSubmit)" style="flex:2;padding:12px;border:none;border-radius:10px;background:var(--sage);color:white;cursor:pointer;font-size:14px;font-weight:700;">建立房源</button>',
+      '</div>',
+    '</div>',
+  ].join('')
+  document.body.appendChild(el)
+}
+
+function igImportProperty(mediaId) {
+  var d = _igImportCache[mediaId]
+  if (!d) { showToast('❌ 找不到貼文資料'); return }
+  _igImportCurrentId = mediaId
+  ensureIgImportModal()
+
+  var preview = document.getElementById('igImportPreview')
+  if (preview) {
+    if (d.imgUrls.length) {
+      preview.innerHTML = d.imgUrls.slice(0, 4).map(function(url) {
+        return '<div style="flex:1;min-width:0;background-size:cover;background-position:center;background-image:url(' + JSON.stringify(url) + ')"></div>'
+      }).join('')
+    } else {
+      preview.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:13px;">無圖片</div>'
+    }
+  }
+
+  var desc = document.getElementById('igImportDesc')
+  if (desc) desc.value = d.caption
+
+  document.getElementById('igImportTitle').value = ''
+  document.getElementById('igImportPrice').value = ''
+  document.getElementById('igImportSize').value = ''
+  document.getElementById('igImportDistrict').value = ''
+  document.getElementById('igImportCity').value = '台中市'
+  document.getElementById('igImportType').value = 'SUITE'
+  document.getElementById('igImportStatus').value = 'AVAILABLE'
+
+  var ownerRow = document.getElementById('igImportOwnerRow')
+  var ownerSel = document.getElementById('igImportOwner')
+  if (DATA && DATA.role === 'super' && ownerRow && ownerSel) {
+    ownerRow.style.display = ''
+    var landlords = DATA.landlords || []
+    ownerSel.innerHTML = '<option value="">請選擇房東…</option>' + landlords.map(function(l) {
+      return '<option value="' + esc(l.id) + '">' + esc(l.name || l.id) + '</option>'
+    }).join('')
+  }
+
+  var modal = document.getElementById('igImportModal')
+  modal.style.display = 'flex'
+  setTimeout(function() { document.getElementById('igImportTitle').focus() }, 50)
+}
+
+function igImportClose() {
+  var m = document.getElementById('igImportModal')
+  if (m) m.style.display = 'none'
+}
+
+async function igImportSubmit() {
+  var title = (document.getElementById('igImportTitle').value || '').trim()
+  var price = (document.getElementById('igImportPrice').value || '').trim()
+  if (!title) { showToast('❌ 請填入標題'); document.getElementById('igImportTitle').focus(); return false }
+  if (!price) { showToast('❌ 請填入租金'); document.getElementById('igImportPrice').focus(); return false }
+
+  var d = _igImportCache[_igImportCurrentId] || {}
+  var body = {
+    title: title,
+    price: parseInt(price),
+    type: document.getElementById('igImportType').value,
+    status: document.getElementById('igImportStatus').value,
+    city: (document.getElementById('igImportCity').value || '台中市').trim(),
+    district: (document.getElementById('igImportDistrict').value || '').trim(),
+    size: parseFloat(document.getElementById('igImportSize').value) || 0,
+    description: (document.getElementById('igImportDesc').value || '').trim(),
+    imageUrls: d.imgUrls || [],
+  }
+
+  if (DATA && DATA.role === 'super') {
+    var ownerId = document.getElementById('igImportOwner').value
+    if (!ownerId) { showToast('❌ 請選擇房東'); return false }
+    body.ownerId = ownerId
+  }
+
+  try {
+    var res = await fetch('/admin/api/social/ig/import-property?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    var data = await res.json()
+    if (!res.ok) { showToast('❌ ' + (data.error || '建立失敗')); return false }
+    igImportClose()
+    showToast('✅ 已建立房源：' + data.title)
+    var dataRes = await fetch('/admin/api/data?key=' + encodeURIComponent(KEY))
+    if (dataRes.ok) { DATA = await dataRes.json(); enterAdmin() }
+  } catch (e) {
+    showToast('❌ 連線失敗：' + e.message)
+    return false
+  }
 }
 
 async function igPublishPlan() {
