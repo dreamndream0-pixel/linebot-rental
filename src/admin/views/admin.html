@@ -4104,6 +4104,25 @@ function drawSocialTab() {
     '.ig-cell-link{position:absolute;inset:0;}',
     '.ig-import-btn{position:absolute;top:4px;right:4px;z-index:5;background:rgba(0,0,0,.45);color:#fff;border:none;border-radius:6px;font-size:10px;padding:2px 6px;cursor:pointer;opacity:.75;transition:background .15s,opacity .15s;}',
     '.ig-pub:hover .ig-import-btn{opacity:1;background:rgba(44,107,69,.92);}',
+    // 已匯入 hover 按鈕
+    '.ig-imported-btn{position:absolute;top:4px;right:4px;z-index:5;background:var(--sage);color:#fff;border:none;border-radius:6px;font-size:10px;padding:2px 7px;cursor:pointer;opacity:.9;transition:background .15s,opacity .15s;white-space:nowrap;}',
+    '.ig-imported-btn:hover{background:#c0392b;opacity:1;}',
+    '.ig-imported-btn .lbl-default{display:block;}',
+    '.ig-imported-btn .lbl-hover{display:none;}',
+    '.ig-imported-btn:hover .lbl-default{display:none;}',
+    '.ig-imported-btn:hover .lbl-hover{display:block;}',
+    // 批次勾選
+    '.ig-batch-check{position:absolute;top:4px;left:4px;z-index:6;width:16px;height:16px;accent-color:var(--sage);cursor:pointer;opacity:0;transition:opacity .15s;}',
+    '.ig-pub:hover .ig-batch-check{opacity:1;}',
+    '.ig-batch-check:checked{opacity:1;}',
+    // 批次操作列
+    '#igBatchBar{background:var(--sage);color:white;border-radius:10px;padding:9px 14px;display:none;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;font-weight:600;}',
+    '#igBatchBar button{padding:5px 12px;border:1.5px solid rgba(255,255,255,.6);background:rgba(255,255,255,.15);color:white;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;}',
+    '#igBatchBar button:hover{background:rgba(255,255,255,.3);}',
+    // 建立房源按鈕 loading 轉圈
+    '@keyframes igBtnSpin{to{transform:translate(-50%,-50%) rotate(360deg)}}',
+    'button.loading{pointer-events:none;opacity:.7;color:transparent!important;position:relative;}',
+    'button.loading::after{content:"";position:absolute;width:14px;height:14px;top:50%;left:50%;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.4);border-top-color:white;border-radius:50%;animation:igBtnSpin .6s linear infinite;}',
     '</style>',
     '<div class="form-box">',
     '<h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">📐 IG 版面規劃</h3>',
@@ -4238,15 +4257,134 @@ var _igImportCache = {}  // mediaId → { imgUrls, caption, permalink }
 var _igImportCurrentId = ''
 
 function _igImportedKey() { return 'ig_imported_' + (DATA && DATA.landlordId ? DATA.landlordId : 'super') }
-function getImportedIds() {
-  try { return new Set(JSON.parse(localStorage.getItem(_igImportedKey()) || '[]')) } catch(_) { return new Set() }
+function getImportedData() {
+  try {
+    var raw = JSON.parse(localStorage.getItem(_igImportedKey()) || '{}')
+    if (Array.isArray(raw)) { // 舊格式 migration
+      var obj = {}; raw.forEach(function(id){ obj[id] = { propertyId:'', title:'', importedAt:0 } }); return obj
+    }
+    return raw
+  } catch(_) { return {} }
 }
-function markImportedId(mediaId) {
+function getImportedIds() { return new Set(Object.keys(getImportedData())) }
+function markImportedId(mediaId, propertyId, title) {
   try {
     var k = _igImportedKey()
-    var arr = JSON.parse(localStorage.getItem(k) || '[]')
-    if (!arr.includes(mediaId)) { arr.push(mediaId); localStorage.setItem(k, JSON.stringify(arr)) }
+    var data = getImportedData()
+    data[mediaId] = { propertyId: propertyId || '', title: title || '', importedAt: Date.now() }
+    localStorage.setItem(k, JSON.stringify(data))
   } catch(_) {}
+}
+
+// ── 批次匯入 ──────────────────────────────────────────────────────
+var _igBatchSelected = new Set()
+function igBatchToggle(mediaId, checked) {
+  if (checked) _igBatchSelected.add(mediaId); else _igBatchSelected.delete(mediaId)
+  var bar = document.getElementById('igBatchBar')
+  if (!bar) return
+  bar.style.display = _igBatchSelected.size ? 'flex' : 'none'
+  var cnt = document.getElementById('igBatchCount'); if (cnt) cnt.textContent = _igBatchSelected.size
+}
+function igBatchSelectAll() {
+  document.querySelectorAll('.ig-batch-check').forEach(function(cb){ cb.checked = true; _igBatchSelected.add(cb.dataset.id) })
+  var bar = document.getElementById('igBatchBar'); if (bar) bar.style.display = 'flex'
+  var cnt = document.getElementById('igBatchCount'); if (cnt) cnt.textContent = _igBatchSelected.size
+}
+function igBatchClear() {
+  _igBatchSelected.clear()
+  document.querySelectorAll('.ig-batch-check').forEach(function(cb){ cb.checked = false })
+  var bar = document.getElementById('igBatchBar'); if (bar) bar.style.display = 'none'
+}
+async function igBatchImport() {
+  var ids = Array.from(_igBatchSelected)
+  if (!ids.length) { showToast('請先勾選貼文'); return false }
+  var ownerId = null
+  if (DATA && DATA.role === 'super') {
+    var opts = (DATA.landlords || []).map(function(l){ return l.id + ' – ' + (l.name || l.id) }).join('\n')
+    var inp = prompt('批次匯入需選擇房東，輸入房東 ID：\n' + opts)
+    if (!inp) return false
+    ownerId = inp.trim()
+  }
+  var bar = document.getElementById('igBatchBar')
+  var done = 0, skip = 0
+  for (var i = 0; i < ids.length; i++) {
+    var mediaId = ids[i]
+    var d = _igImportCache[mediaId]
+    if (!d) { skip++; continue }
+    if (bar) { var cnt = document.getElementById('igBatchCount'); if (cnt) cnt.textContent = (i+1) + '/' + ids.length + '…' }
+    try {
+      var parsed = {}
+      if (d.caption) {
+        var pr = await fetch('/admin/api/social/ig/parse-caption?key=' + encodeURIComponent(KEY), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ caption: d.caption })
+        })
+        if (pr.ok) parsed = (await pr.json()).parsed || {}
+      }
+      if (!parsed.price) { skip++; continue }  // 無租金無法自動建立
+      var body = {
+        title: parsed.title || (d.caption || '').split('\n')[0].slice(0, 30) || '待補標題',
+        price: parseInt(parsed.price),
+        type: parsed.type || 'ROOM',
+        status: 'AVAILABLE',
+        city: parsed.city || '台中市',
+        district: parsed.district || '',
+        address: parsed.address || '',
+        size: parseFloat(parsed.size) || 0,
+        description: d.caption || '',
+        imageUrls: d.imgUrls || [],
+        amenities: parsed.amenities || [],
+        tags: parsed.tags || [],
+      }
+      if (ownerId) body.ownerId = ownerId
+      var res = await fetch('/admin/api/social/ig/import-property?key=' + encodeURIComponent(KEY), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      })
+      var rdata = await res.json()
+      if (res.ok) { markImportedId(mediaId, rdata.propertyId, rdata.title); done++ } else { skip++ }
+    } catch(_) { skip++ }
+  }
+  igBatchClear()
+  showToast('✅ 批次匯入完成：' + done + ' 筆成功' + (skip ? '，' + skip + ' 筆略過（無法解析租金）' : ''))
+  var dataRes = await fetch('/admin/api/data?key=' + encodeURIComponent(KEY))
+  if (dataRes.ok) { DATA = await dataRes.json(); enterAdmin() }
+}
+
+// ── 再次匯入對話框 ───────────────────────────────────────────────
+function igReimportConfirm(mediaId) {
+  var info = getImportedData()[mediaId] || {}
+  var title = info.title ? '「' + info.title + '」' : '此貼文'
+  var dateStr = info.importedAt ? new Date(info.importedAt).toLocaleDateString('zh-TW') : '之前'
+  if (document.getElementById('igReimportDialog')) return
+  var el = document.createElement('div')
+  el.id = 'igReimportDialog'
+  el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;'
+  el.innerHTML = [
+    '<div style="background:white;border-radius:16px;padding:24px;max-width:340px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);">',
+    '<div style="font-size:15px;font-weight:800;margin-bottom:8px;">⚠️ 已匯入過</div>',
+    '<div style="font-size:13px;color:var(--gray-mid);margin-bottom:20px;line-height:1.7;">' + esc(title) + ' 已於 ' + dateStr + ' 匯入。<br>請選擇操作：</div>',
+    '<div style="display:flex;flex-direction:column;gap:8px;">',
+    '<button onclick="igReimportClose();igImportProperty(\'' + mediaId + '\')" style="padding:11px 16px;background:var(--sage);color:white;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:700;text-align:left;">➕ 建立新房源（保留舊的）</button>',
+    (info.propertyId ? '<button onclick="igReimportDeleteAndRecreate(\'' + mediaId + '\',\'' + info.propertyId + '\')" style="padding:11px 16px;background:#e74c3c;color:white;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:700;text-align:left;">🗑 刪除舊房源，重新匯入</button>' : ''),
+    '<button onclick="igReimportClose()" style="padding:11px 16px;background:var(--oat);color:var(--charcoal);border:none;border-radius:10px;cursor:pointer;font-size:13px;">取消</button>',
+    '</div></div>',
+  ].join('')
+  document.body.appendChild(el)
+  el.addEventListener('click', function(e){ if (e.target === el) igReimportClose() })
+}
+function igReimportClose() { var el = document.getElementById('igReimportDialog'); if (el) el.remove() }
+async function igReimportDeleteAndRecreate(mediaId, propertyId) {
+  igReimportClose()
+  if (!confirm('確定要刪除舊房源嗎？此操作無法復原。')) return
+  try {
+    var res = await fetch('/admin/api/property/' + propertyId + '/delete?key=' + encodeURIComponent(KEY), { method: 'POST' })
+    if (!res.ok) { showToast('❌ 刪除舊房源失敗'); return }
+    var d = getImportedData(); delete d[mediaId]
+    localStorage.setItem(_igImportedKey(), JSON.stringify(d))
+    showToast('✅ 已刪除舊房源')
+    drawIgPlanner()
+    setTimeout(function(){ igImportProperty(mediaId) }, 200)
+  } catch(e) { showToast('❌ 刪除失敗：' + e.message) }
 }
 var IG_AMENITY_OPTS = ['冷氣','冷暖氣','冰箱','洗衣機','熱水器','網路','第四台','電視','瓦斯爐','微波爐','烘衣機','床組','書桌','衣櫃','獨立衛浴']
 var IG_TAG_OPTS = ['近捷運','近公車','近學校','含水費','含電費','含管理費','含車位','機車位','汽車位','可養寵物','不養寵物','女性限定','男性限定','頂樓加蓋']
@@ -4335,6 +4473,7 @@ function drawIgPlanner() {
   })
   var shownFeed = igShowRentedOnly ? feedItems.filter(function(x){ return x.rented }) : feedItems
   _igImportCache = {}
+  _igBatchSelected.clear()
   var _importedIds = getImportedIds()
   var feedCells = shownFeed.map(function(x) {
     var m = x.m
@@ -4353,10 +4492,17 @@ function drawIgPlanner() {
       (t.video ? '<span class="ig-play"></span>' : '') +
       '</a>' +
       (x.rented ? '<span class="ig-badge" style="background:#c0392b;">已出租 ⋯封存</span>' : '') +
-      (alreadyImported ? '<span class="ig-badge" style="background:var(--sage);bottom:28px;">✅ 已匯入</span>' : '') +
       '<span class="ig-meta">❤ ' + (m.like_count || 0) + '　💬 ' + (m.comments_count || 0) + '</span>' +
-      (imgUrls.length && !alreadyImported ? '<button class="ig-import-btn" onclick="igImportProperty(\'' + m.id + '\')">📥 匯入</button>' : '') +
-      (imgUrls.length && alreadyImported ? '<button class="ig-import-btn" style="background:var(--oat-mid);color:var(--gray-mid);cursor:default;" onclick="igImportProperty(\'' + m.id + '\')">↩ 再次匯入</button>' : '') +
+      (imgUrls.length && !alreadyImported
+        ? '<input type="checkbox" class="ig-batch-check" data-id="' + m.id + '" onchange="igBatchToggle(\'' + m.id + '\',this.checked)">' +
+          '<button class="ig-import-btn" onclick="igImportProperty(\'' + m.id + '\')">📥 匯入</button>'
+        : '') +
+      (alreadyImported
+        ? '<button class="ig-imported-btn" onclick="igReimportConfirm(\'' + m.id + '\')">' +
+          '<span class="lbl-default">✅ 已匯入</span>' +
+          '<span class="lbl-hover">↩ 再次匯入</span>' +
+          '</button>'
+        : '') +
       '</div>'
   }).join('')
 
@@ -4375,6 +4521,7 @@ function drawIgPlanner() {
       '<span style="font-size:12px;color:var(--gray-mid);">IG 已發布（連動・唯讀）' + (rentedCount ? '　🔴 ' + rentedCount + ' 篇對應已出租房源' : '') + '</span>',
       (rentedCount ? '<label style="font-size:12px;color:var(--charcoal);display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" ' + (igShowRentedOnly ? 'checked' : '') + ' onchange="igShowRentedOnly=this.checked;drawIgPlanner()" style="accent-color:var(--sage);width:16px;height:16px;"> 只看已出租的貼文</label>' : ''),
     '</div>',
+    igFeed.length ? '<div id="igBatchBar"><span>已選 <b id="igBatchCount">0</b> 篇</span><button onclick="btnLoad(this,igBatchImport)">⚡ 批次匯入</button><button onclick="igBatchSelectAll()">☑ 全選</button><button onclick="igBatchClear()">✕ 取消</button></div>' : '',
     igFeed.length ? '<div class="ig-grid">' + feedCells + '</div>' : '<p style="color:var(--gray-light);font-size:13px;">目前沒有抓到已發布貼文（帳號可能還沒發過文）。</p>',
     rentedCount ? '<p style="font-size:11px;color:var(--gray-light);margin-top:10px;line-height:1.7;">🔴 紅框「已出租」的貼文＝該房源已出租。點一下會打開那篇 IG 貼文，在 IG 右上「⋯ → 封存」即可把它從版面隱藏（封存後可隨時還原）。<b>IG 不開放由系統自動封存</b>，需在 IG 上點一下完成。</p>' : '',
   ].join('')
@@ -4630,7 +4777,7 @@ async function igImportSubmit() {
     })
     var data = await res.json()
     if (!res.ok) { showToast('❌ ' + (data.error || '建立失敗')); return false }
-    markImportedId(_igImportCurrentId)
+    markImportedId(_igImportCurrentId, data.propertyId, data.title)
     igImportClose()
     showToast('✅ 已建立房源：' + data.title)
     var dataRes = await fetch('/admin/api/data?key=' + encodeURIComponent(KEY))
