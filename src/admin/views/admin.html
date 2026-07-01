@@ -519,6 +519,8 @@
           <div class="user-chip">
             <span id="accountLabel" style="font-size:13px;font-weight:800;">管理員</span>
           </div>
+          <button id="brokerSwitchBtn" onclick="switchToBroker()" style="display:none;padding:9px 14px;font-size:13px;cursor:pointer;background:#6B7F9A;color:#fff;border:none;border-radius:8px;">🔄 仲介視角</button>
+          <button id="superSwitchBtn" onclick="switchToSuper()" style="display:none;padding:9px 14px;font-size:13px;cursor:pointer;background:#8B6A42;color:#fff;border:none;border-radius:8px;">↩ 返回總管理員</button>
           <button onclick="logout()" style="padding:9px 14px;font-size:13px;cursor:pointer;">登出</button>
         </div>
       </header>
@@ -653,6 +655,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 var DATA = null
 var KEY = ''
+var SUPER_KEY = ''  // 切換至仲介視角時暫存總管理員金鑰
 
 // 後台金鑰改走 HTTP header：自動把 /admin/api/ 請求網址上的 ?key= 拿掉，改放 X-Admin-Key
 // header，金鑰就不會出現在網址與伺服器日誌。包一層 fetch，呼叫端不必逐一修改。
@@ -760,6 +763,11 @@ function enterAdmin() {
     if (DATA.account) {
       document.getElementById('accountLabel').textContent = DATA.account
     }
+    // 切換按鈕：總管理員顯示「仲介視角」，仲介模式顯示「返回總管理員」
+    var brokerBtn = document.getElementById('brokerSwitchBtn')
+    var superBtn  = document.getElementById('superSwitchBtn')
+    if (brokerBtn) brokerBtn.style.display = (DATA.role === 'super' && !SUPER_KEY) ? 'inline-block' : 'none'
+    if (superBtn)  superBtn.style.display  = SUPER_KEY ? 'inline-block' : 'none'
     refreshOwnFeatures()
     if (DATA.siteUrl) {
       var brandLink = document.getElementById('brandHomeLink')
@@ -775,6 +783,25 @@ function enterAdmin() {
     renderTabBar()
     renderStats()
     renderTab()
+}
+
+async function switchToBroker() {
+  var res = await fetch('/admin/api/broker-key?key=' + encodeURIComponent(KEY))
+  var data = await res.json()
+  if (!res.ok) { showToast('❌ ' + (data.error || '無法取得仲介金鑰')); return }
+  SUPER_KEY = KEY
+  KEY = data.key
+  sessionStorage.setItem('adminKey', KEY)
+  showToast('🔄 切換至仲介視角：' + data.name)
+  await login(KEY)
+}
+
+async function switchToSuper() {
+  KEY = SUPER_KEY
+  SUPER_KEY = ''
+  sessionStorage.setItem('adminKey', KEY)
+  showToast('↩ 返回總管理員模式')
+  await login(KEY)
 }
 
 async function logout() {

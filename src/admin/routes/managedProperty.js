@@ -1096,6 +1096,19 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
 })
 
 // ── Ragic 同步 ────────────────────────────────────────────────────
+// GET /admin/api/broker-key — 總管理員專用：取得仲介房東金鑰（用於介面切換）
+const BROKER_LANDLORD_ID = process.env.BROKER_LANDLORD_ID || 'cmqbys4qr0004keruq1niq5xz'
+router.get('/admin/api/broker-key', async (req, res) => {
+  const auth = await resolveRole(req)
+  if (!auth || auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  const landlord = await prisma.landlord.findUnique({
+    where: { id: BROKER_LANDLORD_ID },
+    select: { adminKey: true, name: true }
+  })
+  if (!landlord || !landlord.adminKey) return res.status(404).json({ error: '仲介金鑰未設定' })
+  res.json({ key: landlord.adminKey, name: landlord.name })
+})
+
 // POST /admin/api/ragic/sync?key=...
 // 需在後台設定 RAGIC_API_KEY 環境變數，以及 RAGIC_FORM_URL（如 https://ap11.ragic.com/urbanite/表單名稱/1）
 const RAGIC_PAYMENT_CYCLE = { '月繳':'MONTHLY','雙月繳':'BIMONTHLY','季繳':'QUARTERLY','半年繳':'SEMIANNUAL','年繳':'YEARLY' }
