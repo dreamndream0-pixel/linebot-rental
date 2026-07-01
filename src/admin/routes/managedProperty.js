@@ -1099,14 +1099,15 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
 // GET /admin/api/broker-key — 總管理員專用：取得仲介房東金鑰（用於介面切換）
 const BROKER_LANDLORD_ID = process.env.BROKER_LANDLORD_ID || 'cmqbys4qr0004keruq1niq5xz'
 router.get('/admin/api/broker-key', async (req, res) => {
-  const auth = await resolveRole(req)
+  const auth = await resolveRole(req.query.key)
   if (!auth || auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  const brokerKey = process.env.BROKER_ADMIN_KEY
+  if (!brokerKey) return res.status(404).json({ error: '仲介金鑰未設定，請設定 BROKER_ADMIN_KEY 環境變數' })
   const landlord = await prisma.landlord.findUnique({
     where: { id: BROKER_LANDLORD_ID },
-    select: { adminKey: true, name: true }
+    select: { name: true }
   })
-  if (!landlord || !landlord.adminKey) return res.status(404).json({ error: '仲介金鑰未設定' })
-  res.json({ key: landlord.adminKey, name: landlord.name })
+  res.json({ key: brokerKey, name: landlord?.name || '仲介房東' })
 })
 
 // POST /admin/api/ragic/sync?key=...
@@ -1118,7 +1119,7 @@ const RAGIC_BUILDING_TITLES = {
 }
 
 router.post('/admin/api/ragic/sync', async (req, res) => {
-  const auth = await resolveRole(req)
+  const auth = await resolveRole(req.query.key)
   if (!auth || auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
 
   const apiKey = process.env.RAGIC_API_KEY
@@ -1205,7 +1206,7 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
 // POST /admin/api/ragic/sync-utility?key=...
 // 環境變數: RAGIC_UTILITY_FORM_URL（如 https://ap11.ragic.com/urbanite/電費明細/1）
 router.post('/admin/api/ragic/sync-utility', async (req, res) => {
-  const auth = await resolveRole(req)
+  const auth = await resolveRole(req.query.key)
   if (!auth || auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
 
   const apiKey = process.env.RAGIC_API_KEY
@@ -1303,7 +1304,7 @@ router.post('/admin/api/ragic/sync-utility', async (req, res) => {
 // POST /admin/api/ragic/sync-rent
 // 環境變數: RAGIC_RENT_FORM_URL（如 https://ap11.ragic.com/urbanite/租金繳納明細/1）
 router.post('/admin/api/ragic/sync-rent', async (req, res) => {
-  const auth = await resolveRole(req)
+  const auth = await resolveRole(req.query.key)
   if (!auth || auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
 
   const apiKey = process.env.RAGIC_API_KEY
