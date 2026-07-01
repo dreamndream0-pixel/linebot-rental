@@ -4236,6 +4236,18 @@ var igDragFrom = -1
 var igShowRentedOnly = false  // 已發布區是否只顯示「已出租」對應的貼文
 var _igImportCache = {}  // mediaId → { imgUrls, caption, permalink }
 var _igImportCurrentId = ''
+
+function _igImportedKey() { return 'ig_imported_' + (DATA && DATA.landlordId ? DATA.landlordId : 'super') }
+function getImportedIds() {
+  try { return new Set(JSON.parse(localStorage.getItem(_igImportedKey()) || '[]')) } catch(_) { return new Set() }
+}
+function markImportedId(mediaId) {
+  try {
+    var k = _igImportedKey()
+    var arr = JSON.parse(localStorage.getItem(k) || '[]')
+    if (!arr.includes(mediaId)) { arr.push(mediaId); localStorage.setItem(k, JSON.stringify(arr)) }
+  } catch(_) {}
+}
 var IG_AMENITY_OPTS = ['冷氣','冷暖氣','冰箱','洗衣機','熱水器','網路','第四台','電視','瓦斯爐','微波爐','烘衣機','床組','書桌','衣櫃','獨立衛浴']
 var IG_TAG_OPTS = ['近捷運','近公車','近學校','含水費','含電費','含管理費','含車位','機車位','汽車位','可養寵物','不養寵物','女性限定','男性限定','頂樓加蓋']
 
@@ -4323,6 +4335,7 @@ function drawIgPlanner() {
   })
   var shownFeed = igShowRentedOnly ? feedItems.filter(function(x){ return x.rented }) : feedItems
   _igImportCache = {}
+  var _importedIds = getImportedIds()
   var feedCells = shownFeed.map(function(x) {
     var m = x.m
     var t = igFeedThumb(m)
@@ -4333,14 +4346,17 @@ function drawIgPlanner() {
       imgUrls = [m.media_url]
     }
     _igImportCache[m.id] = { imgUrls: imgUrls, caption: m.caption || '', permalink: m.permalink || '' }
+    var alreadyImported = _importedIds.has(m.id)
     return '<div class="ig-cell ig-pub' + (x.rented ? ' ig-rented' : '') + '">' +
       '<a class="ig-cell-link" href="' + esc(m.permalink || '#') + '" target="_blank" rel="noopener">' +
       igThumbHTML(t.thumb, '—') +
       (t.video ? '<span class="ig-play"></span>' : '') +
       '</a>' +
       (x.rented ? '<span class="ig-badge" style="background:#c0392b;">已出租 ⋯封存</span>' : '') +
+      (alreadyImported ? '<span class="ig-badge" style="background:var(--sage);bottom:28px;">✅ 已匯入</span>' : '') +
       '<span class="ig-meta">❤ ' + (m.like_count || 0) + '　💬 ' + (m.comments_count || 0) + '</span>' +
-      (imgUrls.length ? '<button class="ig-import-btn" onclick="igImportProperty(\'' + m.id + '\')">📥 匯入</button>' : '') +
+      (imgUrls.length && !alreadyImported ? '<button class="ig-import-btn" onclick="igImportProperty(\'' + m.id + '\')">📥 匯入</button>' : '') +
+      (imgUrls.length && alreadyImported ? '<button class="ig-import-btn" style="background:var(--oat-mid);color:var(--gray-mid);cursor:default;" onclick="igImportProperty(\'' + m.id + '\')">↩ 再次匯入</button>' : '') +
       '</div>'
   }).join('')
 
@@ -4614,6 +4630,7 @@ async function igImportSubmit() {
     })
     var data = await res.json()
     if (!res.ok) { showToast('❌ ' + (data.error || '建立失敗')); return false }
+    markImportedId(_igImportCurrentId)
     igImportClose()
     showToast('✅ 已建立房源：' + data.title)
     var dataRes = await fetch('/admin/api/data?key=' + encodeURIComponent(KEY))
