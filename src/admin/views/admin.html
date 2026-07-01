@@ -4612,10 +4612,10 @@ function ensureIgImportModal() {
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">',
           '<div><label style="' + lbl + '">類型</label>',
             '<select id="igImportType" style="' + f + '">',
-              '<option value="ROOM">套房</option>',
-              '<option value="SUITE">整層</option>',
-              '<option value="STUDIO">雅房</option>',
-              '<option value="WHOLE_UNIT">獨立套房</option>',
+              '<option value="SUITE">套房</option>',
+              '<option value="ROOM">雅房</option>',
+              '<option value="WHOLE_FLOOR">整層住家</option>',
+              '<option value="SHARED_SUITE">分租套房</option>',
             '</select></div>',
           '<div><label style="' + lbl + '">狀態</label>',
             '<select id="igImportStatus" style="' + f + '">',
@@ -4695,7 +4695,7 @@ async function igImportProperty(mediaId) {
   document.getElementById('igImportDistrict').value = ''
   document.getElementById('igImportAddress').value = ''
   document.getElementById('igImportCity').value = '台中市'
-  document.getElementById('igImportType').value = 'ROOM'
+  document.getElementById('igImportType').value = 'SUITE'
   document.getElementById('igImportStatus').value = 'AVAILABLE'
   document.getElementById('igImportDesc').value = d.caption
   igRenderChips('igImportAmenities', IG_AMENITY_OPTS, [])
