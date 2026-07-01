@@ -677,7 +677,7 @@ router.post('/admin/api/social/ig/parse-caption', express.json(), async (req, re
           messages: [
             {
               role: 'user',
-              content: `從以下 Instagram 租屋貼文萃取房源資訊，以合法 JSON 格式回傳，不加任何說明或 markdown。
+              content: `從以下 Instagram 租屋貼文萃取房源資訊，以合法 JSON 格式回傳，不加任何說明或 markdown 程式碼區塊。
 
 文案：
 """
@@ -708,24 +708,25 @@ ${caption.slice(0, 3000)}
   可養寵物（可寵/寵物友善）、不養寵物、女性限定、男性限定、頂樓加蓋、
   可租補（可申請租屋補貼/青年租屋補貼/租補）
 
-只回傳 JSON，第一個字必須是 {。`,
+直接回傳 JSON 物件，不要任何說明或包裝。`,
             },
-            { role: 'assistant', content: '{' },
           ],
         }),
       })
       if (resp.ok) {
         const data = await resp.json()
-        const raw = ('{' + (data.content?.[0]?.text || '')).trim().replace(/^```(?:json)?\n?|\n?```$/g, '')
+        // 移除可能的 markdown 包裝，找出最外層的 JSON 物件
+        let raw = (data.content?.[0]?.text || '').trim()
+        raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
+        // 找第一個 { 到最後一個 } 的範圍
+        const start = raw.indexOf('{')
+        const end = raw.lastIndexOf('}')
+        if (start !== -1 && end !== -1 && end > start) {
+          raw = raw.slice(start, end + 1)
+        }
         try {
           return res.json({ parsed: JSON.parse(raw), source: 'ai' })
-        } catch (_) {
-          // JSON 不完整時嘗試找最後一個完整物件
-          const m = raw.match(/^\{[\s\S]*\}/)
-          if (m) {
-            try { return res.json({ parsed: JSON.parse(m[0]), source: 'ai' }) } catch (_) {}
-          }
-        }
+        } catch (_) {}
       }
     } catch (_) {}
   }
