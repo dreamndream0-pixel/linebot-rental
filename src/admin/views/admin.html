@@ -878,28 +878,38 @@ function flipRoleCard() {
 }
 
 async function switchToBroker() {
-  var res = await fetch('/admin/api/broker-key?key=' + encodeURIComponent(KEY))
+  var res = await fetch('/admin/api/broker-key')
   var data = await res.json()
   if (!res.ok) {
     showToast('❌ ' + (data.error || '無法取得仲介金鑰'))
-    // 切換失敗，翻回正面
     var inner = document.getElementById('roleFlipInner')
     if (inner) { inner.style.transition='none'; inner.classList.remove('is-flipped'); inner.offsetHeight; inner.style.transition='' }
     return
   }
-  SUPER_KEY = KEY
-  KEY = data.key
-  sessionStorage.setItem('adminKey', KEY)
+  // 用 '__BROKER__' sentinel 標記「目前在仲介模式」；不存真實金鑰（login() 會清空 KEY）
+  SUPER_KEY = '__BROKER__'
   showToast('🔄 切換至仲介視角：' + data.name)
-  await login(KEY)
+  await login(data.key)
 }
 
 async function switchToSuper() {
-  KEY = SUPER_KEY
+  // 呼叫後端 switch-to-super：以現有仲介 session 換回總管理員 session，不需再輸入金鑰
+  var res = await fetch('/admin/api/switch-to-super', { method: 'POST' })
+  if (!res.ok) {
+    var d = await res.json().catch(function(){ return {} })
+    showToast('❌ ' + (d.error || '無法返回總管理員'))
+    var inner = document.getElementById('roleFlipInner')
+    if (inner) { inner.style.transition='none'; inner.classList.add('is-flipped'); inner.offsetHeight; inner.style.transition='' }
+    return
+  }
   SUPER_KEY = ''
-  sessionStorage.setItem('adminKey', KEY)
+  KEY = ''
+  sessionStorage.removeItem('adminKey')
+  var dataRes = await fetch('/admin/api/data')
+  if (!dataRes.ok) { showToast('❌ 資料載入失敗'); return }
+  DATA = await dataRes.json()
   showToast('↩ 返回總管理員模式')
-  await login(KEY)
+  enterAdmin()
 }
 
 async function logout() {
