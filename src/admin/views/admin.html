@@ -467,6 +467,59 @@
   .prop-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .prop-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
   @media(max-width:500px) { .prop-grid-2,.prop-grid-3 { grid-template-columns:1fr; } }
+
+  /* ── 身份翻頁卡片 ─────────────────────────────────── */
+  .role-flipcard {
+    perspective: 680px;
+    perspective-origin: 60% 50%;
+    width: 190px; height: 50px;
+    cursor: pointer; flex-shrink: 0; display: none;
+  }
+  .role-flip-inner {
+    position: relative; width: 100%; height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.58s cubic-bezier(0.42, 0, 0.18, 1);
+    border-radius: 10px;
+  }
+  .role-flip-inner.is-flipped { transform: rotateY(-180deg); }
+  .role-face {
+    position: absolute; inset: 0; border-radius: 10px;
+    backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    display: flex; align-items: center; gap: 9px; padding: 0 13px;
+    overflow: hidden; user-select: none;
+    border: 1.5px solid rgba(255,255,255,0.18);
+  }
+  .role-face--super {
+    background: linear-gradient(125deg, #2C6B45 0%, #4A9060 100%);
+    color: white; box-shadow: 0 3px 14px rgba(47,107,70,.30);
+  }
+  .role-face--broker {
+    background: linear-gradient(125deg, #7A5B3A 0%, #A07840 100%);
+    color: white; box-shadow: 0 3px 14px rgba(122,91,58,.30);
+    transform: rotateY(180deg);
+  }
+  .role-face-icon { font-size: 21px; line-height: 1; flex-shrink: 0; }
+  .role-face-name { font-size: 13px; font-weight: 800; white-space: nowrap; letter-spacing: 0.2px; }
+  .role-face-hint { font-size: 10px; opacity: 0.72; margin-top: 1px; white-space: nowrap; }
+  /* sheen sweep on flip */
+  .role-face::after {
+    content: ''; position: absolute; top: 0; left: -80%; width: 55%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
+    transform: skewX(-18deg); pointer-events: none;
+  }
+  .role-flipcard.do-sheen .role-face--super::after,
+  .role-flipcard.do-sheen .role-face--broker::after {
+    animation: rfSheen 0.52s ease-out forwards;
+  }
+  @keyframes rfSheen { 0% { left: -80%; } 100% { left: 160%; } }
+  .role-flipcard.switching { pointer-events: none; }
+  @media (max-width: 600px) {
+    .role-flipcard { width: 148px; height: 44px; }
+    .role-face { padding: 0 10px; gap: 7px; }
+    .role-face-icon { font-size: 17px; }
+    .role-face-name { font-size: 11.5px; }
+    .role-face-hint { font-size: 9.5px; }
+  }
 </style>
 </head>
 <body>
@@ -519,8 +572,18 @@
           <div class="user-chip">
             <span id="accountLabel" style="font-size:13px;font-weight:800;">管理員</span>
           </div>
-          <button id="brokerSwitchBtn" onclick="switchToBroker()" style="display:none;padding:9px 14px;font-size:13px;cursor:pointer;background:#6B7F9A;color:#fff;border:none;border-radius:8px;">🔄 仲介視角</button>
-          <button id="superSwitchBtn" onclick="switchToSuper()" style="display:none;padding:9px 14px;font-size:13px;cursor:pointer;background:#8B6A42;color:#fff;border:none;border-radius:8px;">↩ 返回總管理員</button>
+          <div class="role-flipcard" id="roleFlipCard" onclick="flipRoleCard()" title="點擊切換身份視角">
+            <div class="role-flip-inner" id="roleFlipInner">
+              <div class="role-face role-face--super">
+                <span class="role-face-icon">🏛️</span>
+                <div><div class="role-face-name">總管理員</div><div class="role-face-hint">切換仲介視角 →</div></div>
+              </div>
+              <div class="role-face role-face--broker">
+                <span class="role-face-icon">🏘️</span>
+                <div><div class="role-face-name">仲介 · 黃震宇</div><div class="role-face-hint">← 返回總管理員</div></div>
+              </div>
+            </div>
+          </div>
           <button onclick="logout()" style="padding:9px 14px;font-size:13px;cursor:pointer;">登出</button>
         </div>
       </header>
@@ -763,11 +826,20 @@ function enterAdmin() {
     if (DATA.account) {
       document.getElementById('accountLabel').textContent = DATA.account
     }
-    // 切換按鈕：總管理員顯示「仲介視角」，仲介模式顯示「返回總管理員」
-    var brokerBtn = document.getElementById('brokerSwitchBtn')
-    var superBtn  = document.getElementById('superSwitchBtn')
-    if (brokerBtn) brokerBtn.style.display = (DATA.role === 'super' && !SUPER_KEY) ? 'inline-block' : 'none'
-    if (superBtn)  superBtn.style.display  = SUPER_KEY ? 'inline-block' : 'none'
+    // 身份翻頁卡片：總管理員才顯示
+    var flipCard = document.getElementById('roleFlipCard')
+    var flipInner = document.getElementById('roleFlipInner')
+    if (flipCard) {
+      var showCard = (DATA.role === 'super' && !SUPER_KEY) || !!SUPER_KEY
+      flipCard.style.display = showCard ? 'block' : 'none'
+    }
+    if (flipInner) {
+      // 無動畫地設定正確面（enterAdmin 可能在 flip 動畫結束前被呼叫）
+      flipInner.style.transition = 'none'
+      flipInner.classList.toggle('is-flipped', !!SUPER_KEY)
+      flipInner.offsetHeight // force reflow
+      flipInner.style.transition = ''
+    }
     refreshOwnFeatures()
     if (DATA.siteUrl) {
       var brandLink = document.getElementById('brandHomeLink')
@@ -785,10 +857,36 @@ function enterAdmin() {
     renderTab()
 }
 
+function flipRoleCard() {
+  var card  = document.getElementById('roleFlipCard')
+  var inner = document.getElementById('roleFlipInner')
+  if (!card || !inner || card.classList.contains('switching')) return
+  var goingToBroker = !inner.classList.contains('is-flipped')
+  card.classList.add('switching', 'do-sheen')
+  inner.classList.toggle('is-flipped')
+  // 執行實際切換（在動畫過半時發出請求，視覺上不感延遲）
+  setTimeout(async function() {
+    if (goingToBroker) {
+      await switchToBroker()
+    } else {
+      await switchToSuper()
+    }
+    card.classList.remove('switching')
+  }, 290)
+  // sheen 動畫結束後移除 class，以便下次可再觸發
+  setTimeout(function() { card.classList.remove('do-sheen') }, 560)
+}
+
 async function switchToBroker() {
   var res = await fetch('/admin/api/broker-key?key=' + encodeURIComponent(KEY))
   var data = await res.json()
-  if (!res.ok) { showToast('❌ ' + (data.error || '無法取得仲介金鑰')); return }
+  if (!res.ok) {
+    showToast('❌ ' + (data.error || '無法取得仲介金鑰'))
+    // 切換失敗，翻回正面
+    var inner = document.getElementById('roleFlipInner')
+    if (inner) { inner.style.transition='none'; inner.classList.remove('is-flipped'); inner.offsetHeight; inner.style.transition='' }
+    return
+  }
   SUPER_KEY = KEY
   KEY = data.key
   sessionStorage.setItem('adminKey', KEY)
