@@ -285,31 +285,31 @@ router.get('/admin/api/property/:id', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  const property = await prisma.property.findUnique({
-    where: { id: req.params.id },
-    include: {
-      images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] },
-      tags: true,
-      amenities: true,
-      owner: { select: { name: true } },
-    },
-  })
+  const [property, extraRows] = await Promise.all([
+    prisma.property.findUnique({
+      where: { id: req.params.id },
+      include: {
+        images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] },
+        tags: true,
+        amenities: true,
+        owner: { select: { name: true } },
+      },
+    }),
+    prisma.$queryRawUnsafe(
+      `SELECT "communityId", "availableFrom" FROM properties WHERE id = $1`,
+      req.params.id
+    ).catch(() => []),
+  ])
+
   if (!property || property.deletedAt) return res.status(404).json({ error: '找不到房源' })
   if (auth.role === 'landlord' && property.ownerId !== auth.landlordId) {
     return res.status(403).json({ error: 'forbidden' })
   }
 
-  // communityId / availableFrom 由 raw SQL 管理（不在 Prisma schema）
-  try {
-    const rows = await prisma.$queryRawUnsafe(
-      `SELECT "communityId", "availableFrom" FROM properties WHERE id = $1`,
-      req.params.id
-    )
-    if (rows[0]) {
-      property.communityId = rows[0].communityId || null
-      property.availableFrom = rows[0].availableFrom || null
-    }
-  } catch (e) { /* 欄位尚未建立時忽略 */ }
+  if (extraRows[0]) {
+    property.communityId  = extraRows[0].communityId  || null
+    property.availableFrom = extraRows[0].availableFrom || null
+  }
 
   res.json(property)
 })

@@ -67,11 +67,18 @@ async function createAdminSession(key) {
   return { auth, token: makeSessionToken(auth), maxAgeMs: SESSION_MAX_AGE_MS }
 }
 
-// ── 權限解析 ─────────────────────────────────────────────────────
+// ── 權限解析（含 60 秒記憶體快取，避免每個 API 請求都打 DB）────────
+const _roleCache = new Map() // key → { auth, exp }
+const ROLE_CACHE_TTL = 60_000
+
 async function resolveRole(key) {
   if (!key || !ADMIN_KEY) return null
   if (key.startsWith('SESSION:')) return verifySessionToken(key.slice('SESSION:'.length))
   if (key === ADMIN_KEY) return { role: 'super', landlordId: null, label: '總管理員' }
+
+  const now = Date.now()
+  const cached = _roleCache.get(key)
+  if (cached && cached.exp > now) return cached.auth
 
   try {
     const keyHash = hashAdminKey(key)
@@ -88,7 +95,6 @@ async function resolveRole(key) {
         console.error('adminKey 舊欄位查詢失敗:', e.message)
       }
       if (landlord) {
-        // 舊版明文金鑰登入成功後立即遷移成 hash，並清空明文欄位。
         await prisma.landlord.update({
           where: { id: landlord.id },
           data: { adminKeyHash: keyHash, adminKey: null },
@@ -96,7 +102,9 @@ async function resolveRole(key) {
       }
     }
     if (landlord && landlord.isActive) {
-      return { role: 'landlord', landlordId: landlord.id, label: landlord.name, source: landlord.source }
+      const auth = { role: 'landlord', landlordId: landlord.id, label: landlord.name, source: landlord.source }
+      _roleCache.set(key, { auth, exp: now + ROLE_CACHE_TTL })
+      return auth
     }
   } catch (e) {
     console.error('resolveRole 查詢房東失敗:', e.message)
