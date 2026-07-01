@@ -565,11 +565,11 @@ function parseIgCaption(text) {
   // 縣市
   const cm = text.match(/(台中|台北|新北|桃園|台南|高雄|新竹|苗栗|彰化|南投|嘉義|屏東)/)
   if (cm) r.city = cm[1] + (cm[0].endsWith('市')||cm[0].endsWith('縣') ? '' : '市')
-  // 類型
-  if (/雅房/.test(text)) r.type = 'STUDIO'
-  else if (/整層|整棟|公寓|透天/.test(text)) r.type = 'SUITE'
-  else if (/獨立套房/.test(text)) r.type = 'WHOLE_UNIT'
-  else if (/套房/.test(text)) r.type = 'ROOM'
+  // 類型（SUITE=套房, ROOM=雅房, WHOLE_FLOOR=整層住家, SHARED_SUITE=分租套房）
+  if (/分租套房/.test(text)) r.type = 'SHARED_SUITE'
+  else if (/雅房/.test(text)) r.type = 'ROOM'
+  else if (/整層|整棟|公寓|透天/.test(text)) r.type = 'WHOLE_FLOOR'
+  else if (/套房/.test(text)) r.type = 'SUITE'
   // 押金
   const dm = text.match(/押[金]?\s*(一|兩|三|四|五|[\d]+)\s*個月/)
   if (dm) r.deposit = dm[1] + '個月'
@@ -615,7 +615,7 @@ ${caption.slice(0, 2000)}
 - title: string 房源標題（10-20字，簡潔精確，無法判斷時填 null）
 - price: number 月租金（純數字）
 - size: number 坪數（純數字）
-- type: "SUITE"|"ROOM"|"STUDIO"|"WHOLE_UNIT"（SUITE=整層/公寓, ROOM=套房, STUDIO=雅房, WHOLE_UNIT=獨立套房）
+- type: "SUITE"|"ROOM"|"WHOLE_FLOOR"|"SHARED_SUITE"（SUITE=套房, ROOM=雅房, WHOLE_FLOOR=整層住家/整層/公寓/透天, SHARED_SUITE=分租套房）
 - city: string 縣市（例"台中市"，沒提就填"台中市"）
 - district: string 行政區（例"北區"）
 - address: string 路名或地址（沒有填 null）
