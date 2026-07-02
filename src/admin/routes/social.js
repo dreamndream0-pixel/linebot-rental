@@ -739,7 +739,8 @@ router.post('/admin/api/social/ig/import-property', express.json(), async (req, 
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
-  const { title, price, type, city, district, address, size, deposit, description, imageUrls, status, ownerId, amenities, tags } = req.body
+  const { title, price, type, city, district, address, size, deposit, description, imageUrls, status, ownerId, amenities, tags,
+    mgmtFee, cleaningFee, electricType, electricRate, electricFlat, communityId } = req.body
   if (!title || !price) return res.status(400).json({ error: 'title 和 price 為必填' })
 
   const targetOwnerId = auth.role === 'landlord' ? auth.landlordId : (ownerId || null)
@@ -778,9 +779,23 @@ router.post('/admin/api/social/ig/import-property', express.json(), async (req, 
       price: parseInt(price),
       deposit: deposit || '兩個月',
       description: description || '',
+      // 與新增房源相同的費用/電費欄位
+      mgmtFee: parseInt(mgmtFee) || 0,
+      cleaningFee: parseInt(cleaningFee) || 0,
+      electricType: electricType || null,
+      electricRate: electricRate != null ? parseFloat(electricRate) : null,
+      electricFlat: electricFlat != null ? parseInt(electricFlat) : null,
       images: { create: hostedUrls.map((url, i) => ({ url, order: i, isCover: i === 0 })) },
     },
   })
+
+  // communityId 不在 Prisma schema，用 raw SQL 單獨更新
+  if (communityId !== undefined) {
+    await prisma.$queryRawUnsafe(
+      `UPDATE properties SET "communityId"=$1 WHERE id=$2`,
+      communityId || null, property.id
+    ).catch(() => {})
+  }
 
   // 寫入設備與標籤
   if (Array.isArray(amenities) && amenities.length) {

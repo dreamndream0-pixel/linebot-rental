@@ -4462,8 +4462,6 @@ async function igReimportDeleteAndRecreate(mediaId, propertyId) {
     setTimeout(function(){ igImportProperty(mediaId) }, 200)
   } catch(e) { showToast('❌ 刪除失敗：' + e.message) }
 }
-var IG_AMENITY_OPTS = ['冷氣','冷暖氣','冰箱','洗衣機','熱水器','網路','第四台','電視','瓦斯爐','微波爐','烘衣機','床組','書桌','衣櫃','獨立衛浴']
-var IG_TAG_OPTS = ['近捷運','近公車','近學校','含水費','含電費','含管理費','含車位','機車位','汽車位','可養寵物','不養寵物','女性限定','男性限定','頂樓加蓋']
 
 function igPropThumb(p) {
   return (p && p.images && p.images[0] && p.images[0].url) || ''
@@ -4655,148 +4653,88 @@ async function saveIgPlan() {
 }
 
 // ── IG 匯入為房源 ────────────────────────────────────────────────
+// IG 匯入改用與「新增房源」完全相同的表單（propertyFormHtml），避免欄位落差
 function ensureIgImportModal() {
   if (document.getElementById('igImportModal')) return
-  var f = 'width:100%;padding:10px 13px;border:1.5px solid var(--oat-mid);border-radius:10px;font-size:14px;box-sizing:border-box;font-family:inherit;background:white;'
-  var lbl = 'font-size:12px;font-weight:600;display:block;margin-bottom:5px;color:var(--charcoal);'
   var el = document.createElement('div')
   el.id = 'igImportModal'
-  el.style.cssText = 'display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.55);align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;'
+  el.className = 'modal-overlay'
+  el.style.display = 'none'
   el.onclick = function(e) { if (e.target === el) igImportClose() }
   el.innerHTML = [
-    '<div style="background:white;border-radius:16px;width:100%;max-width:500px;padding:24px;margin:auto;position:relative;">',
+    '<div class="modal-box" style="position:relative;">',
       // 解析 loading 遮罩
-      '<div id="igImportLoading" style="display:none;position:absolute;inset:0;border-radius:16px;background:rgba(255,255,255,.9);z-index:10;align-items:center;justify-content:center;flex-direction:column;gap:10px;">',
+      '<div id="igImportLoading" style="display:none;position:absolute;inset:0;border-radius:16px;background:rgba(255,255,255,.92);z-index:20;align-items:center;justify-content:center;flex-direction:column;gap:10px;">',
         '<div style="font-size:28px;">🔍</div>',
         '<div style="font-size:13px;color:#666;font-weight:600;">AI 解析文案中…</div>',
-        '<div style="font-size:11px;color:#aaa;">自動填入欄位與標籤</div>',
+        '<div style="font-size:11px;color:#aaa;">自動填入欄位、設備與標籤</div>',
       '</div>',
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">',
+      '<div class="modal-header">',
         '<div>',
-          '<h3 style="font-size:17px;font-weight:700;margin:0 0 2px;">📥 匯入 IG 貼文為房源</h3>',
+          '<h3 style="margin:0 0 2px;">📥 匯入 IG 貼文為房源</h3>',
           '<div id="igImportSourceBadge" style="font-size:11px;color:#aaa;display:none;"></div>',
         '</div>',
-        '<button onclick="igImportClose()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#aaa;line-height:1;padding:0 2px;">×</button>',
+        '<button class="modal-close" onclick="igImportClose()">×</button>',
       '</div>',
-      '<div id="igImportPreview" style="display:flex;gap:4px;margin-bottom:16px;border-radius:8px;overflow:hidden;height:88px;background:var(--oat-mid);"></div>',
-      '<div style="display:grid;gap:12px;">',
-        // 標題
-        '<div><label style="' + lbl + '">標題 <span style="color:#e74c3c">*</span></label>',
-          '<input id="igImportTitle" type="text" placeholder="例：台中北區精緻套房" style="' + f + '"></div>',
-        // 租金 + 坪數
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">',
-          '<div><label style="' + lbl + '">租金／月 <span style="color:#e74c3c">*</span></label>',
-            '<input id="igImportPrice" type="number" placeholder="例：8000" style="' + f + '"></div>',
-          '<div><label style="' + lbl + '">坪數</label>',
-            '<input id="igImportSize" type="number" placeholder="例：8.5" step="0.1" style="' + f + '"></div>',
-        '</div>',
-        // 類型 + 狀態
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">',
-          '<div><label style="' + lbl + '">類型</label>',
-            '<select id="igImportType" style="' + f + '">',
-              '<option value="SUITE">套房</option>',
-              '<option value="ROOM">雅房</option>',
-              '<option value="WHOLE_FLOOR">整層住家</option>',
-              '<option value="SHARED_SUITE">分租套房</option>',
-            '</select></div>',
-          '<div><label style="' + lbl + '">狀態</label>',
-            '<select id="igImportStatus" style="' + f + '">',
-              '<option value="AVAILABLE">出租中</option>',
-              '<option value="DRAFT">草稿</option>',
-            '</select></div>',
-        '</div>',
-        // 縣市 + 行政區
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">',
-          '<div><label style="' + lbl + '">縣市</label>',
-            '<input id="igImportCity" type="text" value="台中市" style="' + f + '"></div>',
-          '<div><label style="' + lbl + '">行政區</label>',
-            '<input id="igImportDistrict" type="text" placeholder="例：北區" style="' + f + '"></div>',
-        '</div>',
-        // 地址
-        '<div><label style="' + lbl + '">地址／路名</label>',
-          '<input id="igImportAddress" type="text" placeholder="例：文化路一段（可留空）" style="' + f + '"></div>',
-        // 設備晶片
-        '<div>',
-          '<label style="' + lbl + '">設備</label>',
-          '<div id="igImportAmenities" style="display:flex;flex-wrap:wrap;gap:6px;"></div>',
-        '</div>',
-        // 標籤晶片
-        '<div>',
-          '<label style="' + lbl + '">標籤</label>',
-          '<div id="igImportTags" style="display:flex;flex-wrap:wrap;gap:6px;"></div>',
-        '</div>',
-        // 房東（僅 super）
-        '<div id="igImportOwnerRow" style="display:none;"><label style="' + lbl + '">房東</label>',
-          '<select id="igImportOwner" style="' + f + '"></select></div>',
-        // 說明
-        '<div><label style="' + lbl + '">說明（IG 文案）</label>',
-          '<textarea id="igImportDesc" rows="3" style="' + f + 'resize:vertical;min-height:68px;"></textarea></div>',
-      '</div>',
-      '<div style="display:flex;gap:10px;margin-top:18px;">',
-        '<button onclick="igImportClose()" style="flex:1;padding:12px;border:1.5px solid var(--oat-mid);border-radius:10px;background:white;cursor:pointer;font-size:14px;">取消</button>',
-        '<button id="igImportSubmitBtn" onclick="btnLoad(this, igImportSubmit)" style="flex:2;padding:12px;border:none;border-radius:10px;background:var(--sage);color:white;cursor:pointer;font-size:14px;font-weight:700;">建立房源</button>',
+      '<div id="igImportFormBody"></div>',
+      '<div style="display:flex;gap:8px;margin-top:16px;position:sticky;bottom:0;background:white;padding-top:12px;">',
+        '<button class="btn" style="flex:1;background:var(--deep-sage);" onclick="btnLoad(this, igImportSubmit)">建立房源</button>',
+        '<button class="action-btn" style="flex:0 0 auto;" onclick="igImportClose()">取消</button>',
       '</div>',
     '</div>',
   ].join('')
   document.body.appendChild(el)
 }
 
-function igRenderChips(containerId, opts, selected) {
-  var el = document.getElementById(containerId)
-  if (!el) return
-  var sel = new Set(selected || [])
-  el.innerHTML = opts.map(function(o) {
-    return '<button type="button" class="ig-chip' + (sel.has(o) ? ' on' : '') + '" data-v="' + o + '" onclick="this.classList.toggle(\'on\')">' + o + '</button>'
-  }).join('')
+// 用一個房源物件把 propertyFormHtml 塞進 IG 匯入 modal
+function igRenderImportForm(p) {
+  var body = document.getElementById('igImportFormBody')
+  if (body) body.innerHTML = propertyFormHtml(p, true)
 }
 
-function igGetChips(containerId) {
-  return Array.from(document.querySelectorAll('#' + containerId + ' .ig-chip.on')).map(function(b){ return b.dataset.v })
+// 把 IG 貼文 + AI 解析結果組成一個 property 物件（給 propertyFormHtml 用）
+function igBuildPropertyObj(d, parsed) {
+  parsed = parsed || {}
+  return {
+    title: parsed.title || '',
+    type: parsed.type || 'SUITE',
+    price: parsed.price || '',
+    size: parsed.size || '',
+    deposit: parsed.deposit || '兩個月',
+    city: parsed.city || '台中市',
+    district: parsed.district || '',
+    address: parsed.address || '',
+    description: (d && d.caption) || '',
+    mgmtFee: 0,
+    cleaningFee: 0,
+    electricType: '',
+    communityId: null,
+    amenities: (parsed.amenities || []).map(function(n){ return { name: n } }),
+    tags: (parsed.tags || []).map(function(n){ return { name: n } }),
+    images: ((d && d.imgUrls) || []).map(function(u, i){ return { url: u, order: i, isCover: i === 0 } }),
+  }
 }
 
 async function igImportProperty(mediaId) {
   var d = _igImportCache[mediaId]
   if (!d) { showToast('❌ 找不到貼文資料'); return }
   _igImportCurrentId = mediaId
+
+  // 與新增房源相同：需要社區清單，且 owner picker 只在 editingPropertyId 為空時顯示
+  if (!_communities || !_communities.length) {
+    try { var rc = await fetch('/admin/api/community?key=' + encodeURIComponent(KEY)); if (rc.ok) _communities = await rc.json() } catch(e) {}
+  }
+  editingPropertyId = null
+
   ensureIgImportModal()
 
-  // 圖片預覽
-  var preview = document.getElementById('igImportPreview')
-  if (preview) {
-    preview.innerHTML = d.imgUrls.length
-      ? d.imgUrls.slice(0, 4).map(function(url) {
-          return '<div style="flex:1;min-width:0;background-size:cover;background-position:center;background-image:url(' + JSON.stringify(url) + ')"></div>'
-        }).join('')
-      : '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:13px;">無圖片</div>'
-  }
-
-  // 清空欄位 + 顯示空晶片
-  document.getElementById('igImportTitle').value = ''
-  document.getElementById('igImportPrice').value = ''
-  document.getElementById('igImportSize').value = ''
-  document.getElementById('igImportDistrict').value = ''
-  document.getElementById('igImportAddress').value = ''
-  document.getElementById('igImportCity').value = '台中市'
-  document.getElementById('igImportType').value = 'SUITE'
-  document.getElementById('igImportStatus').value = 'AVAILABLE'
-  document.getElementById('igImportDesc').value = d.caption
-  igRenderChips('igImportAmenities', IG_AMENITY_OPTS, [])
-  igRenderChips('igImportTags', IG_TAG_OPTS, [])
+  // 先渲染一次（未解析前，只帶圖片與文案）
+  igRenderImportForm(igBuildPropertyObj(d, null))
+  setTimeout(renderImgPreview, 30)
 
   var badge = document.getElementById('igImportSourceBadge')
   if (badge) { badge.style.display = 'none'; badge.textContent = '' }
 
-  // 房東選單（super admin）
-  var ownerRow = document.getElementById('igImportOwnerRow')
-  var ownerSel = document.getElementById('igImportOwner')
-  if (DATA && DATA.role === 'super' && ownerRow && ownerSel) {
-    ownerRow.style.display = ''
-    ownerSel.innerHTML = '<option value="">請選擇房東…</option>' + (DATA.landlords || []).map(function(l) {
-      return '<option value="' + esc(l.id) + '">' + esc(l.name || l.id) + '</option>'
-    }).join('')
-  }
-
-  // 顯示 modal
   var modal = document.getElementById('igImportModal')
   modal.style.display = 'flex'
 
@@ -4811,18 +4749,9 @@ async function igImportProperty(mediaId) {
       })
       if (res.ok) {
         var data = await res.json()
-        var p = data.parsed || {}
-        if (p.title)    document.getElementById('igImportTitle').value    = p.title
-        if (p.price)    document.getElementById('igImportPrice').value    = p.price
-        if (p.size)     document.getElementById('igImportSize').value     = p.size
-        if (p.city)     document.getElementById('igImportCity').value     = p.city
-        if (p.district) document.getElementById('igImportDistrict').value = p.district
-        if (p.address)  document.getElementById('igImportAddress').value  = p.address
-        if (p.type)     document.getElementById('igImportType').value     = p.type
-        igRenderChips('igImportAmenities', IG_AMENITY_OPTS, p.amenities || [])
-        // 標籤：系統選項 + AI 自訂標籤合併
-        var extraTags = (p.tags || []).filter(function(t){ return IG_TAG_OPTS.indexOf(t) === -1 })
-        igRenderChips('igImportTags', IG_TAG_OPTS.concat(extraTags), p.tags || [])
+        // AI 解析後，用完整資料重繪同一份表單（含設備/標籤/押金…）
+        igRenderImportForm(igBuildPropertyObj(d, data.parsed || {}))
+        setTimeout(renderImgPreview, 30)
         if (badge && data.source) {
           badge.textContent = data.source === 'ai' ? '✨ AI 自動解析完成' : '🔍 關鍵字解析完成'
           badge.style.display = 'block'
@@ -4834,7 +4763,7 @@ async function igImportProperty(mediaId) {
   }
 
   setTimeout(function() {
-    var t = document.getElementById('igImportTitle')
+    var t = document.getElementById('f_title')
     if (t && !t.value) t.focus()
   }, 50)
 }
@@ -4842,34 +4771,54 @@ async function igImportProperty(mediaId) {
 function igImportClose() {
   var m = document.getElementById('igImportModal')
   if (m) m.style.display = 'none'
+  // 清空表單，避免其 f_* 欄位 ID 與「新增房源」表單重複造成 getElementById 抓錯
+  var body = document.getElementById('igImportFormBody')
+  if (body) body.innerHTML = ''
+  // IG 匯入不應留下「新增房源」的草稿（共用表單的 savePropDraft 會寫入）
+  try { localStorage.removeItem(PROP_DRAFT_KEY) } catch(e) {}
 }
 
 async function igImportSubmit() {
-  var title = (document.getElementById('igImportTitle').value || '').trim()
-  var price = (document.getElementById('igImportPrice').value || '').trim()
-  if (!title) { showToast('❌ 請填入標題'); document.getElementById('igImportTitle').focus(); return false }
-  if (!price) { showToast('❌ 請填入租金'); document.getElementById('igImportPrice').focus(); return false }
+  // 讀取與「新增房源」完全相同的 f_* 欄位
+  var titleEl = document.getElementById('f_title')
+  var priceEl = document.getElementById('f_price')
+  var title = ((titleEl && titleEl.value) || '').trim()
+  var price = ((priceEl && priceEl.value) || '').trim()
+  if (!title) { showToast('❌ 請填入標題'); if (titleEl) titleEl.focus(); return false }
+  if (!price) { showToast('❌ 請填入租金'); if (priceEl) priceEl.focus(); return false }
 
-  var d = _igImportCache[_igImportCurrentId] || {}
+  var elecTypeEl = document.getElementById('f_elec_type')
+  var mgmtEl = document.getElementById('f_mgmt')
+  var cleanEl = document.getElementById('f_cleaning')
+  var tags = Array.from(document.querySelectorAll('input[name="f_tags"]:checked')).map(function(cb){ return cb.value })
+  var amenities = Array.from(document.querySelectorAll('input[name="f_amenities"]:checked')).map(function(cb){ return cb.value })
+  var imageUrls = (document.getElementById('f_images') || {}).value
+    ? document.getElementById('f_images').value.split(',').map(function(s){ return s.trim() }).filter(Boolean)
+    : []
+
   var body = {
     title: title,
     price: parseInt(price),
-    type: document.getElementById('igImportType').value,
-    status: document.getElementById('igImportStatus').value,
-    city: (document.getElementById('igImportCity').value || '台中市').trim(),
-    district: (document.getElementById('igImportDistrict').value || '').trim(),
-    address: (document.getElementById('igImportAddress').value || '').trim(),
-    size: parseFloat(document.getElementById('igImportSize').value) || 0,
-    description: (document.getElementById('igImportDesc').value || '').trim(),
-    imageUrls: d.imgUrls || [],
-    amenities: igGetChips('igImportAmenities'),
-    tags: igGetChips('igImportTags'),
+    type: document.getElementById('f_type').value,
+    city: (document.getElementById('f_city').value || '台中市').trim(),
+    district: (document.getElementById('f_district').value || '').trim(),
+    address: (document.getElementById('f_address').value || '').trim(),
+    size: parseFloat(document.getElementById('f_size').value) || 0,
+    deposit: (document.getElementById('f_deposit').value || '').trim(),
+    description: (document.getElementById('f_desc').value || '').trim(),
+    imageUrls: imageUrls,
+    mgmtFee: mgmtEl ? (parseInt(mgmtEl.value) || 0) : 0,
+    cleaningFee: cleanEl ? (parseInt(cleanEl.value) || 0) : 0,
+    electricType: elecTypeEl ? (elecTypeEl.value || null) : null,
+    communityId: (document.getElementById('f_community') || {}).value || null,
+    amenities: amenities,
+    tags: tags,
   }
 
-  if (DATA && DATA.role === 'super') {
-    var ownerId = document.getElementById('igImportOwner').value
-    if (!ownerId) { showToast('❌ 請選擇房東'); return false }
-    body.ownerId = ownerId
+  var ownerSel = document.getElementById('f_owner')
+  if (ownerSel) {
+    if (!ownerSel.value) { showToast('❌ 請選擇房東'); return false }
+    body.ownerId = ownerSel.value
   }
 
   try {
