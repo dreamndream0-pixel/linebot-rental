@@ -3488,15 +3488,16 @@ function renderLineTenantCard(t) {
   var avatar = t.avatarUrl
     ? '<div class="tenant-avatar">' + uiLineIcon('user') + '<img class="tenant-avatar-img" src="' + esc(t.avatarUrl) + '" onerror="this.style.display=\'none\'"></div>'
     : '<div class="tenant-avatar">' + uiLineIcon('user') + '</div>'
-  var originalName = t.name || '\u672a\u547d\u540d\u7528\u6236'
-  var noteText = t.customName || '\u672a\u8a2d\u5b9a\u5099\u8a3b'
+  var lineName = t.name || '\u672a\u547d\u540d\u7528\u6236'
+  var displayName = t.customName || lineName
+  var subName = t.customName ? '(' + lineName + ')' : ''
   return '<div class="card tenant-card" id="tenantCard_' + safeId + '" onclick="toggleTenantCard(event, ' + jsArg(safeId) + ')">' +
     avatar +
     '<div class="tenant-main">' +
       '<div class="tenant-name-row">' +
-        '<h3 class="tenant-name">' + esc(originalName) + '</h3>' +
-        '<span class="tenant-note" id="tenantNote_' + safeId + '">' + esc(noteText) + '</span>' +
-        '<button class="tenant-edit-icon" title="\u7de8\u8f2f\u5099\u8a3b" onclick="event.stopPropagation();openTenantNoteModal(' + jsArg(t.id) + ',' + jsArg(t.customName || '') + ')">' + uiLineIcon('edit') + '</button>' +
+        '<h3 class="tenant-name">' + esc(displayName) + '</h3>' +
+        (subName ? '<span class="tenant-note" id="tenantNote_' + safeId + '">' + esc(subName) + '</span>' : '<span id="tenantNote_' + safeId + '"></span>') +
+        '<button class="tenant-edit-icon" title="\u7de8\u8f2f\u5099\u8a3b\u540d\u7a31" onclick="event.stopPropagation();openTenantNoteModal(' + jsArg(t.id) + ',' + jsArg(t.customName || '') + ')">' + uiLineIcon('edit') + '</button>' +
         '<span class="tenant-mobile-caret">\u25be</span>' +
       '</div>' +
     '</div>' +
