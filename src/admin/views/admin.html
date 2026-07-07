@@ -3497,7 +3497,7 @@ function renderLineTenantCard(t) {
       '<div class="tenant-name-row">' +
         '<h3 class="tenant-name">' + esc(displayName) + '</h3>' +
         (subName ? '<span class="tenant-note" id="tenantNote_' + safeId + '">' + esc(subName) + '</span>' : '<span id="tenantNote_' + safeId + '"></span>') +
-        '<button class="tenant-edit-icon" title="\u7de8\u8f2f\u5099\u8a3b\u540d\u7a31" onclick="event.stopPropagation();openTenantNoteModal(' + jsArg(t.id) + ',' + jsArg(t.customName || '') + ')">' + uiLineIcon('edit') + '</button>' +
+        '<button class="tenant-edit-icon" title="\u7de8\u8f2f\u5099\u8a3b\u540d\u7a31" data-tid="' + esc(t.id) + '" data-note="' + esc(t.customName || '') + '" onclick="event.stopPropagation();openTenantNoteModalFromEl(this)">' + uiLineIcon('edit') + '</button>' +
         '<span class="tenant-mobile-caret">\u25be</span>' +
       '</div>' +
     '</div>' +
@@ -3506,15 +3506,19 @@ function renderLineTenantCard(t) {
     '</div>'
 }
 
+function openTenantNoteModalFromEl(el) {
+  openTenantNoteModal(el.dataset.tid, el.dataset.note || '')
+}
+
 function openTenantNoteModal(tenantId, currentNote) {
   var modalId = 'tenantNoteModal'
   var body = '<div style="display:flex;flex-direction:column;gap:12px;">' +
     '<label style="font-size:13px;font-weight:700;color:var(--muted);">\u5099\u8a3b\u540d\u7a31</label>' +
-    '<input id="tenantNoteInput" value="' + esc(currentNote) + '" placeholder="\u8f38\u5165\u5099\u8a3b\u540d\u7a31" style="padding:10px 12px;border:1.5px solid #E5E0D5;border-radius:10px;font-size:14px;font-family:inherit;outline:none;" onfocus="this.style.borderColor=\'var(--sage)\'" onblur="this.style.borderColor=\'#E5E0D5\'" onkeydown="if(event.key===\'Enter\')saveTenantName(' + jsArg(tenantId) + ')">' +
+    '<input id="tenantNoteInput" data-tid="' + esc(tenantId) + '" value="' + esc(currentNote) + '" placeholder="\u8f38\u5165\u5099\u8a3b\u540d\u7a31" style="padding:10px 12px;border:1.5px solid #E5E0D5;border-radius:10px;font-size:14px;font-family:inherit;outline:none;" onfocus="this.style.borderColor=\'var(--sage)\'" onblur="this.style.borderColor=\'#E5E0D5\'" onkeydown="if(event.key===\'Enter\')saveTenantNameFromModal()">' +
     '</div>'
   var foot =
     '<button class="action-btn" onclick="closeAdminModal(\'' + modalId + '\')">\u53d6\u6d88</button>' +
-    '<button class="action-btn admin-primary" onclick="saveTenantName(' + jsArg(tenantId) + ')">\u5132\u5b58</button>'
+    '<button class="action-btn admin-primary" onclick="saveTenantNameFromModal()">\u5132\u5b58</button>'
   openAdminModal(modalId, '\u7de8\u8f2f\u5099\u8a3b', '', body, foot)
   setTimeout(function(){ var el = document.getElementById('tenantNoteInput'); if(el){el.focus();el.select()} }, 30)
 }
@@ -3548,9 +3552,11 @@ async function editName(tenantId) {
   startTenantNameEdit(tenantId)
 }
 
-async function saveTenantName(tenantId) {
+async function saveTenantNameFromModal() {
   var input = document.getElementById('tenantNoteInput')
   if (!input) return
+  var tenantId = input.dataset.tid
+  if (!tenantId) return
   var newName = input.value.trim()
   var res = await fetch('/admin/api/tenant/' + tenantId + '/name?key=' + encodeURIComponent(KEY), {
     method: 'POST',
