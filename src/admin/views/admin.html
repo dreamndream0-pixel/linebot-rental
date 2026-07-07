@@ -2703,6 +2703,8 @@ async function setupBot(id, name, webhookUrl) {
   var l = (DATA.landlords || []).find(function(x){ return x.id === id }) || {}
   var modalId = 'landlordBotModal'
   var formId = 'landlordBotForm'
+  var feats = {}; try { feats = l.features ? JSON.parse(l.features) : {} } catch(_) {}
+  var autoReplyOn = feats.autoReply !== false
   var body =
     '<div class="modal-form-grid">' +
     '<div class="modal-field"><label>Channel Secret</label><input id="' + formId + '_secret" placeholder="' + (l.botConfigured ? '已設定；需要更換時再貼上' : '貼上 LINE Channel Secret') + '"></div>' +
@@ -2712,29 +2714,35 @@ async function setupBot(id, name, webhookUrl) {
     '<div class="modal-field full"><label>Webhook URL</label><input value="' + esc(webhookUrl) + '" readonly onclick="this.select();copyText(this.value)"></div>' +
     '</div>' +
     '<div class="modal-toggle-row" style="margin-top:14px;">' +
-    '<div><strong>Bot 狀態</strong><div style="font-size:12px;color:var(--muted);margin-top:3px;">關閉後房東 Bot 會暫停回覆服務</div></div>' +
+    '<div><strong>Bot 狀態</strong><div style="font-size:12px;color:var(--muted);margin-top:3px;">關閉後仍會記錄用戶資料，但不發送任何訊息</div></div>' +
     '<label style="display:flex;align-items:center;gap:8px;font-weight:800;cursor:pointer;"><input id="' + formId + '_enabled" type="checkbox"' + (l.botEnabled !== false ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:var(--sage);"> 啟用</label>' +
+    '</div>' +
+    '<div class="modal-toggle-row" style="margin-top:10px;">' +
+    '<div><strong>自動回覆</strong><div style="font-size:12px;color:var(--muted);margin-top:3px;">關閉後 Bot 靜默收訊，仍記錄用戶資料但不回覆</div></div>' +
+    '<label style="display:flex;align-items:center;gap:8px;font-weight:800;cursor:pointer;"><input id="' + formId + '_autoreply" type="checkbox"' + (autoReplyOn ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:var(--sage);"> 啟用</label>' +
     '</div>' +
     '<div class="modal-note">Bot 文字內容已整合在這個入口。需要調整歡迎語、按鈕文字或停用訊息，請點下方「編輯 Bot 文字」。</div>'
   var foot =
     '<button class="action-btn" onclick="closeAdminModal(\'' + modalId + '\');openBotTextEditor(\'' + id + '\')">編輯 Bot 文字</button>' +
     '<button class="action-btn" onclick="closeAdminModal(\'' + modalId + '\')">取消</button>' +
-    '<button class="action-btn admin-primary" onclick="saveBotSettingsModal(\'' + id + '\', \'' + formId + '\', \'' + webhookUrl + '\', ' + (l.botEnabled !== false) + ', ' + (!!l.botConfigured) + ')">儲存</button>'
+    '<button class="action-btn admin-primary" onclick="saveBotSettingsModal(\'' + id + '\', \'' + formId + '\', \'' + webhookUrl + '\', ' + (l.botEnabled !== false) + ', ' + (!!l.botConfigured) + ', ' + autoReplyOn + ')">儲存</button>'
   openAdminModal(modalId, 'Bot 設定', esc(l.name || name || ''), body, foot)
   setTimeout(function(){ var el = document.getElementById(formId + '_secret'); if (el) el.focus() }, 30)
 }
 
-async function saveBotSettingsModal(id, formId, webhookUrl, wasEnabled, botConfigured) {
+async function saveBotSettingsModal(id, formId, webhookUrl, wasEnabled, botConfigured, wasAutoReply) {
   var secretEl = document.getElementById(formId + '_secret')
   var tokenEl = document.getElementById(formId + '_token')
   var nameEl = document.getElementById(formId + '_name')
   var notifyEl = document.getElementById(formId + '_notify')
   var enabledEl = document.getElementById(formId + '_enabled')
+  var autoReplyEl = document.getElementById(formId + '_autoreply')
   var secret = secretEl ? secretEl.value.trim() : ''
   var token = tokenEl ? tokenEl.value.trim() : ''
   var botName = nameEl ? nameEl.value.trim() : ''
   var notifyId = notifyEl ? notifyEl.value.trim() : ''
   var enabled = enabledEl ? enabledEl.checked : true
+  var autoReply = autoReplyEl ? autoReplyEl.checked : true
 
   if ((secret || token) && (!secret || !token)) { showToast('❌ Secret 和 Token 需要一起填寫'); return }
   if (!botConfigured && (!secret || !token)) { showToast('❌ Channel Secret 和 Access Token 為必填'); return }
@@ -2751,6 +2759,14 @@ async function saveBotSettingsModal(id, formId, webhookUrl, wasEnabled, botConfi
       body: JSON.stringify({ enabled: enabled })
     })
     if (!toggleRes.ok) { showToast('❌ Bot 狀態更新失敗'); return }
+  }
+
+  if (autoReply !== wasAutoReply) {
+    var arRes = await fetch('/admin/api/landlord/' + id + '/bot-autoreply?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ autoReply: autoReply })
+    })
+    if (!arRes.ok) { showToast('❌ 自動回覆設定更新失敗'); return }
   }
 
   // 顯示要填到 LINE 後台的 Webhook URL

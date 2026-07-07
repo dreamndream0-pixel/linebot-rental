@@ -34,6 +34,14 @@ function isLandlordBotEnabled(landlord) {
   return true
 }
 
+function isAutoReplyEnabled(landlord) {
+  try {
+    const features = landlord.features ? JSON.parse(landlord.features) : {}
+    if (features.autoReply === false) return false
+  } catch (_) {}
+  return true
+}
+
 // 驗證 LINE 簽章
 function validateSignature(body, channelSecret, signature) {
   const hash = crypto.createHmac('sha256', channelSecret).update(body).digest('base64')
@@ -70,27 +78,24 @@ function registerLandlordWebhooks(app) {
 
       res.json({ status: 'ok' })
 
-      if (!isLandlordBotEnabled(landlord)) {
-        console.log(`ℹ️ 房東 ${landlord.name} Bot 已關閉，略過 LINE 自動回覆`)
-        return
-      }
-
-      // 建立該房東專屬的 client
+      // 建立該房東專屬的 client（無論自動回覆是否開啟，都需要 client 取得用戶資料）
       const client = new Client({
         channelAccessToken: landlord.lineChannelToken,
         channelSecret: landlord.lineChannelSecret,
       })
 
+      const botActive = isLandlordBotEnabled(landlord)
+      const autoReply = botActive && isAutoReplyEnabled(landlord)
+      if (!botActive) console.log(`ℹ️ 房東 ${landlord.name} Bot 已關閉，僅記錄用戶資料`)
+      else if (!autoReply) console.log(`ℹ️ 房東 ${landlord.name} 自動回覆已關閉，僅記錄用戶資料`)
+
       const body = JSON.parse(bodyStr)
       const events = body.events || []
       events.forEach(async (event) => {
         try {
-          if (event.type === 'message' && event.message.type === 'text') {
-            await handleMessage(event, client, landlord.id)
-          } else if (event.type === 'postback') {
-            await handlePostback(event, client, landlord.id)
-          } else if (event.type === 'follow') {
-            const userId = event.source.userId
+          // 無論 Bot 狀態或自動回覆是否開啟，永遠記錄 LINE 用戶資料
+          const userId = event.source?.userId
+          if (userId) {
             let profileData = {}
             try {
               const profile = await client.getProfile(userId)
@@ -99,22 +104,26 @@ function registerLandlordWebhooks(app) {
                 avatarUrl: profile.pictureUrl || null,
                 statusMessage: profile.statusMessage || null,
               }
-            } catch (e) {
-              console.log('無法取得新好友資料:', e.message)
-            }
+            } catch (_) {}
             await upsertLineTenant({
               lineUserId: userId,
               landlordId: landlord.id,
               data: { isActive: true, ...profileData }
             })
+          }
+
+          if (!autoReply) return
+
+          if (event.type === 'message' && event.message.type === 'text') {
+            await handleMessage(event, client, landlord.id)
+          } else if (event.type === 'postback') {
+            await handlePostback(event, client, landlord.id)
+          } else if (event.type === 'follow') {
             const { getBotText } = require('./botText')
             const t = await getBotText(landlord.id)
             const welcomeText = (t.welcome || '👋 歡迎加入！\n\n輸入「選單」開始使用服務。')
               .replace('歡迎加入！', `歡迎加入${landlord.name}！`)
-            await client.replyMessage(event.replyToken, {
-              type: 'text',
-              text: welcomeText
-            })
+            await client.replyMessage(event.replyToken, { type: 'text', text: welcomeText })
           }
         } catch (err) {
           console.error(`[${landlord.name}] 事件處理錯誤:`, err.message)

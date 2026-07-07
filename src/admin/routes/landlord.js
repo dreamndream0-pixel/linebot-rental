@@ -232,6 +232,23 @@ router.post('/admin/api/landlord/:id/bot-toggle', express.json(), async (req, re
   res.json({ ok: true, enabled: !!req.body.enabled })
 })
 
+router.post('/admin/api/landlord/:id/bot-autoreply', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  if (auth.role === 'landlord' && auth.landlordId !== req.params.id) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  try {
+    const row = await prisma.landlord.findUnique({ where: { id: req.params.id }, select: { features: true } })
+    let feats = {}
+    try { feats = row?.features ? JSON.parse(row.features) : {} } catch (_) {}
+    feats.autoReply = !!req.body.autoReply
+    await prisma.landlord.update({ where: { id: req.params.id }, data: { features: JSON.stringify(feats) } })
+    try { require('../../landlordWebhook').clearConfigCache(req.params.id) } catch (e) {}
+    res.json({ ok: true, autoReply: feats.autoReply })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 router.post('/admin/api/landlord/:id/bottext', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
