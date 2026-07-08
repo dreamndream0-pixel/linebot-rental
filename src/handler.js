@@ -626,13 +626,22 @@ async function handleMessage(event, client, landlordId = null) {
   }
 
   // 若來自某房東的 Bot，將用戶歸屬到該房東
-  // 一併記錄最後一句留言（未取得名稱的用戶可用留言辨識）
-  const upsertData = { ...profileData }
+  await upsertLineTenant({ lineUserId: userId, landlordId, data: profileData })
+
+  // 記錄最後一句留言（未取得名稱的用戶可用留言辨識）。
+  // 用 raw SQL 直接寫入欄位，避開 Prisma DateTime 與 TIMESTAMPTZ 的型別對應問題；
+  // 獨立 try/catch，即使失敗也不影響用戶抓取與 Bot 回覆。
   if (text) {
-    upsertData.lastMessage = text.slice(0, 300)
-    upsertData.lastMessageAt = new Date()
+    const scopedSource = landlordId || 'main'
+    try {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "Tenant" SET "lastMessage"=$1, "lastMessageAt"=NOW() WHERE "lineUserId"=$2 AND source=$3`,
+        text.slice(0, 300), userId, scopedSource
+      )
+    } catch (e) {
+      console.error('寫入最後留言失敗:', e.message)
+    }
   }
-  await upsertLineTenant({ lineUserId: userId, landlordId, data: upsertData })
 
   let reply
 
