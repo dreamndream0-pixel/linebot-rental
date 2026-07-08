@@ -119,6 +119,8 @@ model Tenant {
   customName    String?                      // 房東自訂備註名稱
   avatarUrl     String?
   statusMessage String?
+  lastMessage   String?                      // 最後一句 LINE 留言（辨識未命名用戶用）
+  lastMessageAt DateTime?
   phone         String?
   propertyId    String?
   moveInDate    DateTime?

@@ -99,6 +99,13 @@ prisma.$connect()
       console.error('⚠️ 後台金鑰安全欄位確認失敗:', e.message)
     }
     try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "lastMessage" TEXT`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "lastMessageAt" TIMESTAMPTZ`)
+      console.log('✅ 租客最後留言欄位已確認')
+    } catch (e) {
+      console.error('⚠️ 租客最後留言欄位確認失敗:', e.message)
+    }
+    try {
       await prisma.$executeRawUnsafe(`ALTER TABLE management_records ADD COLUMN IF NOT EXISTS "leaseId" TEXT`)
       await prisma.$executeRawUnsafe(`ALTER TABLE management_records ADD COLUMN IF NOT EXISTS "payoutId" TEXT`)
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "management_records_leaseId_idx" ON management_records ("leaseId")`)

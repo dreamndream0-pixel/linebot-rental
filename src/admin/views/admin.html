@@ -1250,6 +1250,33 @@ function renderTenants() {
   return linePart + webPart
 }
 
+// 重新向 LINE 抓取單一租客的名稱／頭像
+async function refreshTenantProfile(id) {
+  try {
+    var res = await fetch('/admin/api/tenant/' + id + '/refresh-profile?key=' + encodeURIComponent(KEY), { method: 'POST' })
+    var data = await res.json().catch(function(){ return {} })
+    if (!res.ok) { showToast('❌ ' + (data.error || '抓取失敗')); return false }
+    var t = (DATA.tenants || []).find(function(x){ return x.id === id })
+    if (t && data.tenant) { t.name = data.tenant.name; t.avatarUrl = data.tenant.avatarUrl; t.statusMessage = data.tenant.statusMessage }
+    showToast('✅ 已更新：' + (data.tenant && data.tenant.name ? data.tenant.name : '（LINE 未提供名稱）'))
+    if (currentTab === 'tenants') renderTab()
+    return true
+  } catch (e) { showToast('❌ 連線失敗：' + e.message); return false }
+}
+
+// 批次回填所有未命名租客
+async function refreshUnnamedTenants() {
+  try {
+    var res = await fetch('/admin/api/tenants/refresh-unnamed?key=' + encodeURIComponent(KEY), { method: 'POST' })
+    var data = await res.json().catch(function(){ return {} })
+    if (!res.ok) { showToast('❌ ' + (data.error || '回填失敗')); return false }
+    showToast('✅ 已更新 ' + data.updated + ' 位（' + data.failed + ' 位抓不到，多為已封鎖或未加好友）')
+    var dataRes = await fetch('/admin/api/data?key=' + encodeURIComponent(KEY))
+    if (dataRes.ok) { DATA = await dataRes.json(); enterAdmin() }
+    return true
+  } catch (e) { showToast('❌ 連線失敗：' + e.message); return false }
+}
+
 async function loadWebUsers() {
   document.getElementById('webUsersList').innerHTML = '<div class="empty">載入中...</div>'
   try {
@@ -3480,7 +3507,14 @@ function renderTenants() {
 
 function renderLineTenantList() {
   if (!DATA.tenants.length) return '<div class="empty">目前沒有 LINEBOT 用戶資料</div>'
-  return '<div class="user-panel">' + DATA.tenants.map(renderLineTenantCard).join('') + '</div>'
+  var unnamedCount = DATA.tenants.filter(function(t){ return !t.name }).length
+  var toolbar = unnamedCount
+    ? '<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:10px;">' +
+        '<span style="font-size:12px;color:#c0392b;">有 ' + unnamedCount + ' 位未命名用戶</span>' +
+        '<button class="action-btn" onclick="btnLoad(this, refreshUnnamedTenants)" style="font-size:12px;">🔄 一鍵重抓名稱/頭像</button>' +
+      '</div>'
+    : ''
+  return toolbar + '<div class="user-panel">' + DATA.tenants.map(renderLineTenantCard).join('') + '</div>'
 }
 
 function renderLineTenantCard(t) {
@@ -3491,6 +3525,14 @@ function renderLineTenantCard(t) {
   var lineName = t.name || '\u672a\u547d\u540d\u7528\u6236'
   var displayName = t.customName || lineName
   var subName = t.customName ? '(' + lineName + ')' : ''
+  // \u672a\u53d6\u5f97\u540d\u7a31\u6642\uff1a\u540d\u5b57\u65c1\u986f\u793a\u91cd\u6293\u6309\u9215
+  var refreshBtn = !t.name
+    ? '<button class="action-btn" title="\u91cd\u65b0\u5411 LINE \u6293\u53d6\u540d\u7a31\u8207\u982d\u50cf" onclick="event.stopPropagation();btnLoad(this, function(){ return refreshTenantProfile(' + jsArg(t.id) + ') })" style="font-size:11px;padding:2px 8px;">\ud83d\udd04 \u91cd\u6293</button>'
+    : ''
+  // \u6700\u5f8c\u4e00\u53e5\u7559\u8a00\uff1a\u8fa8\u8b58\u672a\u547d\u540d\u7528\u6236\u7528\uff0c\u986f\u793a\u5728\u540d\u5b57\u4e0b\u65b9
+  var lastMsg = t.lastMessage
+    ? '<div class="tenant-lastmsg" style="font-size:12px;color:#888;margin-top:3px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">\ud83d\udde8\ufe0f ' + esc(t.lastMessage) + (t.lastMessageAt ? ' <span style="color:#bbb;">\u00b7 ' + fmtDate(t.lastMessageAt) + '</span>' : '') + '</div>'
+    : ''
   return '<div class="card tenant-card" id="tenantCard_' + safeId + '" onclick="toggleTenantCard(event, ' + jsArg(safeId) + ')">' +
     avatar +
     '<div class="tenant-main">' +
@@ -3498,8 +3540,10 @@ function renderLineTenantCard(t) {
         '<h3 class="tenant-name">' + esc(displayName) + '</h3>' +
         (subName ? '<span class="tenant-note" id="tenantNote_' + safeId + '">' + esc(subName) + '</span>' : '<span id="tenantNote_' + safeId + '"></span>') +
         '<button class="tenant-edit-icon" title="\u7de8\u8f2f\u5099\u8a3b\u540d\u7a31" data-tid="' + esc(t.id) + '" data-note="' + esc(t.customName || '') + '" onclick="event.stopPropagation();openTenantNoteModalFromEl(this)">' + uiLineIcon('edit') + '</button>' +
+        refreshBtn +
         '<span class="tenant-mobile-caret">\u25be</span>' +
       '</div>' +
+      lastMsg +
     '</div>' +
     '<div class="tenant-field"><div class="label">\u52a0\u5165\u6642\u9593</div><div class="value">' + fmtDate(t.createdAt) + '</div></div>' +
     '<div class="tenant-field"><div class="label">UID</div><div class="value"><span class="uid" onclick="event.stopPropagation();copyText(' + jsArg(t.lineUserId) + ')" title="\u9ede\u64ca\u8907\u88fd">' + esc(t.lineUserId || '-') + '</span></div></div>' +

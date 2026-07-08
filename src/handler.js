@@ -626,7 +626,13 @@ async function handleMessage(event, client, landlordId = null) {
   }
 
   // 若來自某房東的 Bot，將用戶歸屬到該房東
-  await upsertLineTenant({ lineUserId: userId, landlordId, data: profileData })
+  // 一併記錄最後一句留言（未取得名稱的用戶可用留言辨識）
+  const upsertData = { ...profileData }
+  if (text) {
+    upsertData.lastMessage = text.slice(0, 300)
+    upsertData.lastMessageAt = new Date()
+  }
+  await upsertLineTenant({ lineUserId: userId, landlordId, data: upsertData })
 
   let reply
 
