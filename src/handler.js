@@ -589,30 +589,14 @@ async function handlePostback(event, client, landlordId = null) {
   }
 }
 
-async function handleMessage(event, client, landlordId = null) {
-  const userId = event.source.userId
-  if (isRateLimited(userId)) return
-  const text = event.message?.text?.trim() || ''
-  const state = userState.get(userId) || {}
+// 記錄 LINE 用戶（名稱／頭像）＋最後一句留言。
+// 與 Bot 是否開啟無關——即使房東把 Bot 關閉，收到的訊息也要記錄下來供辨識。
+async function recordIncomingMessage(event, client, landlordId = null) {
+  const userId = event.source && event.source.userId
+  if (!userId) return null
+  const text = (event.message && event.message.type === 'text' && event.message.text)
+    ? event.message.text.trim() : ''
 
-  // 載入該房東的 Bot 文字設定 + 開關狀態
-  const { getBotText } = require('./botText')
-  const t = await getBotText(landlordId)
-
-  // 注入房東官網 URL（供「更多房源」按鈕使用）
-  if (landlordId) {
-    t._siteUrl = `${SITE_URL}/site/${landlordId}`
-  }
-
-  // Bot 已被房東關閉 → 回固定訊息，不處理功能
-  if (landlordId && t._enabled === false) {
-    try {
-      await client.replyMessage(event.replyToken, { type: 'text', text: t.botDisabledMsg })
-    } catch (e) { console.error('關閉訊息回覆失敗:', e.message) }
-    return
-  }
-
-  // ── 確保 LINE 用戶存在 DB（抓取名稱、頭像、狀態消息） ──
   let profileData = {}
   try {
     const profile = await client.getProfile(userId)
@@ -625,12 +609,8 @@ async function handleMessage(event, client, landlordId = null) {
     console.log('無法取得用戶名稱:', e.message)
   }
 
-  // 若來自某房東的 Bot，將用戶歸屬到該房東（回傳的 tenant 供下方更新留言用）
-  const tenantRow = await upsertLineTenant({ lineUserId: userId, landlordId, data: profileData })
-
-  // 記錄最後一句留言（未取得名稱的用戶可用留言辨識）。
-  // 直接用剛 upsert 回傳的 tenant.id 更新，避免 source 比對不到；
-  // 用 raw SQL 避開 Prisma DateTime/TIMESTAMPTZ 型別對應；獨立 try/catch，不影響 Bot 回覆。
+  const tenantRow = await upsertLineTenant({ lineUserId: userId, landlordId, data: { isActive: true, ...profileData } })
+  // 用剛 upsert 回傳的 tenant.id 更新，避免 source 比對不到；raw SQL 避開 Prisma 型別對應；獨立 try/catch。
   if (text && tenantRow && tenantRow.id) {
     try {
       await prisma.$executeRawUnsafe(
@@ -640,6 +620,34 @@ async function handleMessage(event, client, landlordId = null) {
     } catch (e) {
       console.error('寫入最後留言失敗:', e.message)
     }
+  }
+  return tenantRow
+}
+
+async function handleMessage(event, client, landlordId = null) {
+  const userId = event.source.userId
+  if (isRateLimited(userId)) return
+  const text = event.message?.text?.trim() || ''
+  const state = userState.get(userId) || {}
+
+  // 確保用戶存在 DB＋記錄最後一句留言（放最前面，Bot 關閉也要記錄）
+  await recordIncomingMessage(event, client, landlordId)
+
+  // 載入該房東的 Bot 文字設定 + 開關狀態
+  const { getBotText } = require('./botText')
+  const t = await getBotText(landlordId)
+
+  // 注入房東官網 URL（供「更多房源」按鈕使用）
+  if (landlordId) {
+    t._siteUrl = `${SITE_URL}/site/${landlordId}`
+  }
+
+  // Bot 已被房東關閉 → 回固定訊息，不處理功能（留言已於上方記錄）
+  if (landlordId && t._enabled === false) {
+    try {
+      await client.replyMessage(event.replyToken, { type: 'text', text: t.botDisabledMsg })
+    } catch (e) { console.error('關閉訊息回覆失敗:', e.message) }
+    return
   }
 
   let reply
@@ -761,4 +769,4 @@ async function handleRepairFlow(userId, text, state, client, landlordId = null, 
   return null
 }
 
-module.exports = { handleMessage, handlePostback, parseSearchQuery }
+module.exports = { handleMessage, handlePostback, parseSearchQuery, recordIncomingMessage }

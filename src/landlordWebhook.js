@@ -7,7 +7,7 @@ const { Client } = require('@line/bot-sdk')
 const express = require('express')
 const prisma = require('./db')
 const { upsertLineTenant } = require('./tenantStore')
-const { handleMessage, handlePostback } = require('./handler')
+const { handleMessage, handlePostback, recordIncomingMessage } = require('./handler')
 
 // 快取房東設定，減少 DB 查詢（每 60 秒過期）
 const configCache = new Map()
@@ -93,24 +93,8 @@ function registerLandlordWebhooks(app) {
       const events = body.events || []
       events.forEach(async (event) => {
         try {
-          // 無論 Bot 狀態或自動回覆是否開啟，永遠記錄 LINE 用戶資料
-          const userId = event.source?.userId
-          if (userId) {
-            let profileData = {}
-            try {
-              const profile = await client.getProfile(userId)
-              profileData = {
-                name: profile.displayName,
-                avatarUrl: profile.pictureUrl || null,
-                statusMessage: profile.statusMessage || null,
-              }
-            } catch (_) {}
-            await upsertLineTenant({
-              lineUserId: userId,
-              landlordId: landlord.id,
-              data: { isActive: true, ...profileData }
-            })
-          }
+          // 無論 Bot 狀態或自動回覆是否開啟，永遠記錄 LINE 用戶資料＋最後一句留言
+          await recordIncomingMessage(event, client, landlord.id)
 
           if (!autoReply) return
 
