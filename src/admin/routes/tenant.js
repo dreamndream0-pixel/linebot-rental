@@ -98,30 +98,4 @@ router.post('/admin/api/tenants/refresh-unnamed', express.json(), async (req, re
   res.json({ ok: true, total: targets.length, updated, failed })
 })
 
-// 診斷：留言欄位是否存在、有幾筆留言、最新一筆（暫時性，供除錯）
-router.get('/admin/api/tenant-debug', async (req, res) => {
-  const auth = await resolveRole(req.query.key)
-  if (!auth) return res.status(401).json({ error: 'unauthorized' })
-  try {
-    const cols = await prisma.$queryRawUnsafe(
-      `SELECT column_name, data_type FROM information_schema.columns
-       WHERE table_name = 'Tenant' AND column_name IN ('lastMessage','lastMessageAt')`
-    )
-    let stats
-    if (auth.role === 'landlord') {
-      stats = await prisma.$queryRawUnsafe(
-        `SELECT COUNT(*)::int AS total, COUNT("lastMessage")::int AS with_msg, MAX("lastMessageAt")::text AS newest
-         FROM "Tenant" WHERE "landlordId" = $1`, auth.landlordId
-      )
-    } else {
-      stats = await prisma.$queryRawUnsafe(
-        `SELECT COUNT(*)::int AS total, COUNT("lastMessage")::int AS with_msg, MAX("lastMessageAt")::text AS newest FROM "Tenant"`
-      )
-    }
-    res.json({ columnsExist: cols.length, columns: cols, stats: stats[0] })
-  } catch (e) {
-    res.status(500).json({ error: e.message })
-  }
-})
-
 module.exports = router
