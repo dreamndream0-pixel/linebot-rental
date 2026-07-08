@@ -3508,13 +3508,26 @@ function renderTenants() {
 function renderLineTenantList() {
   if (!DATA.tenants.length) return '<div class="empty">目前沒有 LINEBOT 用戶資料</div>'
   var unnamedCount = DATA.tenants.filter(function(t){ return !t.name }).length
-  var toolbar = unnamedCount
-    ? '<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:10px;">' +
-        '<span style="font-size:12px;color:#c0392b;">有 ' + unnamedCount + ' 位未命名用戶</span>' +
-        '<button class="action-btn" onclick="btnLoad(this, refreshUnnamedTenants)" style="font-size:12px;">🔄 一鍵重抓名稱/頭像</button>' +
-      '</div>'
-    : ''
+  var toolbar = '<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:10px;">' +
+      (unnamedCount ? '<span style="font-size:12px;color:#c0392b;">有 ' + unnamedCount + ' 位未命名用戶</span>' +
+        '<button class="action-btn" onclick="btnLoad(this, refreshUnnamedTenants)" style="font-size:12px;">🔄 一鍵重抓名稱/頭像</button>' : '') +
+      '<button class="action-btn" onclick="btnLoad(this, diagnoseLastMessage)" style="font-size:12px;">🔧 診斷留言</button>' +
+    '</div>'
   return toolbar + '<div class="user-panel">' + DATA.tenants.map(renderLineTenantCard).join('') + '</div>'
+}
+
+async function diagnoseLastMessage() {
+  try {
+    var res = await fetch('/admin/api/tenant-debug?key=' + encodeURIComponent(KEY))
+    var d = await res.json()
+    if (!res.ok) { alert('診斷失敗：' + (d.error || res.status)); return }
+    var msg = '留言欄位：' + (d.columnsExist >= 2 ? '已建立 ✓' : '❌ 未建立（' + d.columnsExist + '/2）') + '\n' +
+      '欄位型別：' + (d.columns || []).map(function(c){ return c.column_name + '=' + c.data_type }).join(', ') + '\n' +
+      '總用戶：' + d.stats.total + '\n' +
+      '已有留言：' + d.stats.with_msg + ' 筆\n' +
+      '最新留言時間：' + (d.stats.newest || '（尚無）')
+    alert(msg)
+  } catch (e) { alert('診斷連線失敗：' + e.message) }
 }
 
 function renderLineTenantCard(t) {
