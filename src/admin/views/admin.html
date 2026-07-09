@@ -147,6 +147,7 @@
   .page-title h1 { font-size:28px;line-height:1.2;margin:0 0 8px;font-weight:900;letter-spacing:0; }
   .page-title p { font-size:14px;color:var(--muted);margin:0;opacity:1; }
   .top-actions { display:flex;align-items:center;gap:14px; }
+  .mobile-logout-btn { display:none; }
   .icon-button {
     width:38px;height:38px;border-radius:12px;border:1px solid var(--line);background:white;
     display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 18px rgba(20,40,28,.05);
@@ -323,6 +324,7 @@
   .property-row { padding:14px 18px;border-bottom:1px solid var(--line); }
   .property-row:last-child { border-bottom:none; }
   .property-mobile-toggle { display:none;border:none;background:transparent;color:var(--muted);font-weight:900;cursor:pointer;padding:4px; }
+  .property-mobile-edit { display:none; }
   .property-row.open .property-mobile-toggle { transform:rotate(180deg); }
   .property-main { display:flex;align-items:center;gap:14px;min-width:0;color:inherit;text-decoration:none; }
   .property-main:hover h3 { color:var(--deep-sage);text-decoration:underline; }
@@ -390,10 +392,15 @@
     .main-panel { padding:18px 12px 32px;max-width:100%;overflow:hidden; }
     header { gap:12px;margin-bottom:18px; }
     .page-title h1 { font-size:24px; }
-    .top-actions { position:absolute;top:18px;right:12px;width:130px;justify-content:flex-end;align-content:flex-start;gap:6px;flex-wrap:wrap;z-index:5; }
+    .top-actions { position:absolute;top:18px;right:12px;width:auto;max-width:210px;justify-content:flex-end;align-content:flex-start;gap:6px;flex-wrap:wrap;z-index:5; }
     .top-actions a, .top-actions button { padding:7px 10px !important;font-size:12px !important;line-height:1.2; }
-    .user-chip { padding:5px 9px 5px 5px;gap:6px; }
+    .user-chip { padding:5px 9px 5px 5px;gap:6px;max-width:132px; }
+    .uc-avatar { display:none; }
+    .uc-info { min-width:0; }
+    .uc-name, .uc-role { display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     #accountLabel { font-size:12px !important; }
+    .role-flipcard { display:none; }
+    .mobile-logout-btn { display:inline-flex !important;align-items:center;justify-content:center;background:white !important;border:1px solid var(--line) !important;border-radius:999px !important;color:#26362D !important;font-weight:800;box-shadow:0 2px 8px rgba(20,40,28,.08); }
     .admin-toolbar { align-items:stretch;gap:10px; }
     .admin-toolbar-left, .admin-toolbar-right { width:100%;display:grid;grid-template-columns:1fr;gap:8px; }
     .admin-toolbar .action-btn, .admin-toolbar .admin-primary { width:100%;justify-content:center; }
@@ -404,7 +411,7 @@
     .property-global-filter { display:flex !important;flex-wrap:nowrap !important;overflow-x:auto;gap:8px;margin:0 -4px 12px !important;padding:0 4px 4px; }
     .property-global-filter select { min-width:132px;flex:0 0 auto; }
     .property-global-filter span { flex:0 0 auto;align-self:center; }
-    .property-row { display:grid;grid-template-columns:24px 38px minmax(112px,1fr) minmax(88px,auto) 28px;grid-template-areas:"check star status price toggle" "main main main main main";gap:10px;align-items:center;background:white;border:1px solid var(--line);border-radius:14px;margin-bottom:12px;padding:12px;box-shadow:0 8px 22px rgba(20,40,28,.05); }
+    .property-row { display:grid;grid-template-columns:24px 38px minmax(104px,1fr) minmax(78px,auto) 32px 28px;grid-template-areas:"check star status price edit toggle" "main main main main main main";gap:10px;align-items:center;background:white;border:1px solid var(--line);border-radius:14px;margin-bottom:12px;padding:12px;box-shadow:0 8px 22px rgba(20,40,28,.05); }
     .property-row:last-child { border-bottom:1px solid var(--line); }
     .property-row > div, .property-row > a { min-width:0; }
     .property-row > [data-label] { display:none;grid-template-columns:78px minmax(0,1fr);gap:10px;align-items:center;padding:8px 0;border-top:1px solid #F0EEE8; }
@@ -416,10 +423,12 @@
     .property-row > .property-status-cell { grid-area:status; }
     .property-row > .property-main { grid-area:main;display:grid;grid-template-columns:58px minmax(0,1fr);gap:10px;width:100%;padding-top:4px; }
     .property-row > .property-price-cell { grid-area:price;justify-content:flex-end;text-align:right;white-space:nowrap;font-size:12px;line-height:1.35; }
+    .property-row > .property-mobile-edit { grid-area:edit; }
     .property-row > .property-mobile-toggle { grid-area:toggle; }
     .property-row > .prop-core::before { display:none; }
     .property-row.open > [data-extra="1"] { display:grid;grid-column:1/-1; }
     .property-mobile-toggle { display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;background:#F7F8F6; }
+    .property-mobile-edit { display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;border:1px solid var(--line);background:white;color:var(--deep-sage);font-weight:900;cursor:pointer; }
     .property-main h3 { white-space:normal;line-height:1.35;font-size:14px; }
     .property-main .property-meta { display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .prop-thumb { width:58px;height:48px; }
@@ -636,6 +645,7 @@
               </div>
               <div class="um-flip-caret" onclick="toggleAcctMenu(event)">▾</div>
             </div>
+            <button class="mobile-logout-btn" type="button" onclick="logout()">登出</button>
           </div>
           <div class="um-dropdown" id="umDropdown">
             <div style="display:flex;align-items:center;gap:9px;padding:12px 16px 10px;border-bottom:1px solid var(--line);">
@@ -1394,6 +1404,7 @@ function renderPropCard(p, showCheckbox) {
       '<div style="min-width:0;"><h3>' + esc(p.title) + '</h3><div class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div></div>' +
     '</a>' +
     '<div class="prop-core property-meta property-price-cell" data-label="\u79df\u91d1">NT$ ' + Number(p.price || 0).toLocaleString() + ' / \u6708</div>' +
+    '<button class="property-mobile-edit" type="button" title="\u7de8\u8f2f" onclick="event.stopPropagation();startEditProperty(\'' + p.id + '\')">\u270e</button>' +
     '<button class="property-mobile-toggle" type="button" aria-expanded="false" onclick="event.stopPropagation();togglePropertyRow(null, ' + jsArg(p.id) + ')">&#9662;</button>' +
     '<div data-label="\u5730\u9ede" data-extra="1" class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div>' +
     '<div data-label="\u985e\u578b" data-extra="1" class="property-meta">' + (TYPE_LABEL[p.type] || p.type || '-') + '</div>' +
