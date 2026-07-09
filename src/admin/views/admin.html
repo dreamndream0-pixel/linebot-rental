@@ -153,6 +153,7 @@
     display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 18px rgba(20,40,28,.05);
   }
   .user-chip { display:flex;align-items:center;gap:9px;background:white;border:1px solid var(--line);border-radius:999px;padding:5px 14px 5px 5px;box-shadow:0 2px 8px rgba(20,40,28,.08); }
+  .mobile-account { display:none; }
   .uc-avatar { width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#2C6B45,#4A9060);color:white;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;letter-spacing:0; }
   .uc-info { display:flex;flex-direction:column;gap:0;line-height:1.2; }
   .uc-name { font-size:13px;font-weight:700;color:var(--charcoal); }
@@ -387,6 +388,15 @@
     .sidebar { padding:14px 12px;position:relative;border-right:none;border-bottom:1px solid var(--line); }
     .brand { padding:4px 150px 14px 12px;min-height:72px; }
     .brand-logo { width:132px;margin-bottom:0; }
+    .mobile-account { position:absolute;top:16px;right:12px;display:flex;align-items:center;gap:6px;z-index:60; }
+    .mobile-account-chip { display:flex;align-items:center;gap:7px;max-width:142px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:white;box-shadow:0 2px 8px rgba(20,40,28,.08);color:#26362D;cursor:pointer; }
+    .mobile-account-avatar { width:28px;height:28px;border-radius:50%;background:#DCEFE2;color:var(--deep-sage);font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center;flex:0 0 auto; }
+    .mobile-account-text { min-width:0;line-height:1.15; }
+    .mobile-account-name { display:block;font-size:12px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .mobile-account-role { display:block;font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .mobile-account-menu { position:absolute;top:calc(100% + 8px);right:0;min-width:148px;background:white;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.13);overflow:hidden;display:none; }
+    .mobile-account-menu.open { display:block; }
+    .mobile-account-menu button { width:100%;border:none;background:white;padding:11px 14px;text-align:left;font-size:13px;font-weight:800;color:#A33E3E; }
     .tabs { display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin:0 -4px;scroll-snap-type:x proximity; }
     .tab { flex:0 0 auto;padding:10px 12px;font-size:13px;scroll-snap-align:start; }
     .main-panel { padding:18px 12px 32px;max-width:100%;overflow-x:hidden;overflow-y:visible; }
@@ -602,6 +612,19 @@
         <a id="brandHomeLink" href="#" target="_blank" style="display:inline-flex;align-items:center;text-decoration:none;">
           <img class="brand-logo" src="/admin/assets/xiaowo-logo.png" alt="小蝸出租">
         </a>
+        <div class="mobile-account" id="mobileAccount">
+          <div class="mobile-account-chip" onclick="toggleMobileAccountMenu(event)">
+            <div class="mobile-account-avatar" id="mobileAccountAvatar">管</div>
+            <div class="mobile-account-text">
+              <span class="mobile-account-name" id="mobileAccountName">管理員</span>
+              <span class="mobile-account-role" id="mobileAccountRole">帳號</span>
+            </div>
+            <span style="font-size:10px;color:#6B7280;">▾</span>
+          </div>
+          <div class="mobile-account-menu" id="mobileAccountMenu">
+            <button type="button" onclick="logout()">登出</button>
+          </div>
+        </div>
       </div>
 
       <div class="tabs" id="tabBar"></div>
@@ -907,11 +930,17 @@ function enterAdmin() {
       var umAvatar = document.getElementById('umAvatar')
       var umDropName = document.getElementById('umDropName')
       var umDropRole = document.getElementById('umDropRole')
+      var mobileAccountAvatar = document.getElementById('mobileAccountAvatar')
+      var mobileAccountName = document.getElementById('mobileAccountName')
+      var mobileAccountRole = document.getElementById('mobileAccountRole')
       if (ucAvatar) ucAvatar.textContent = initial
       if (ucRoleLabel) ucRoleLabel.textContent = roleLabel
       if (umAvatar) umAvatar.textContent = initial
       if (umDropName) umDropName.textContent = DATA.account
       if (umDropRole) umDropRole.textContent = roleLabel
+      if (mobileAccountAvatar) mobileAccountAvatar.textContent = initial
+      if (mobileAccountName) mobileAccountName.textContent = DATA.account
+      if (mobileAccountRole) mobileAccountRole.textContent = roleLabel
     }
     // 身份翻頁卡片 vs. 一般帳號 chip
     var flipCard  = document.getElementById('roleFlipCard')
@@ -948,9 +977,18 @@ function toggleAcctMenu(e) {
   var dd = document.getElementById('umDropdown')
   if (dd) dd.classList.toggle('open')
 }
+
+function toggleMobileAccountMenu(e) {
+  e.stopPropagation()
+  var dd = document.getElementById('mobileAccountMenu')
+  if (dd) dd.classList.toggle('open')
+}
+
 document.addEventListener('click', function() {
   var dd = document.getElementById('umDropdown')
   if (dd) dd.classList.remove('open')
+  var mobileDd = document.getElementById('mobileAccountMenu')
+  if (mobileDd) mobileDd.classList.remove('open')
 })
 
 function flipRoleCard() {
