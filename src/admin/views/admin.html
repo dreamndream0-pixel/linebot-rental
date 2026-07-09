@@ -404,18 +404,25 @@
     .property-global-filter { display:flex !important;flex-wrap:nowrap !important;overflow-x:auto;gap:8px;margin:0 -4px 12px !important;padding:0 4px 4px; }
     .property-global-filter select { min-width:132px;flex:0 0 auto; }
     .property-global-filter span { flex:0 0 auto;align-self:center; }
-    .property-row { display:grid;grid-template-columns:24px 34px minmax(92px,.8fr) minmax(0,1.2fr) minmax(86px,.75fr) 20px;background:white;border:1px solid var(--line);border-radius:14px;margin-bottom:12px;padding:12px;box-shadow:0 8px 22px rgba(20,40,28,.05); }
+    .property-row { display:grid;grid-template-columns:24px 38px minmax(112px,1fr) minmax(88px,auto) 28px;grid-template-areas:"check star status price toggle" "main main main main main";gap:10px;align-items:center;background:white;border:1px solid var(--line);border-radius:14px;margin-bottom:12px;padding:12px;box-shadow:0 8px 22px rgba(20,40,28,.05); }
     .property-row:last-child { border-bottom:1px solid var(--line); }
     .property-row > div, .property-row > a { min-width:0; }
     .property-row > [data-label] { display:none;grid-template-columns:78px minmax(0,1fr);gap:10px;align-items:center;padding:8px 0;border-top:1px solid #F0EEE8; }
     .property-row > [data-label]::before { content:attr(data-label);font-size:11px;font-weight:800;color:var(--muted); }
     .property-row > .prop-core,
     .property-row > .property-mobile-toggle { display:flex;border-top:none;padding:0;align-items:center; }
+    .property-row > .prop-core:nth-child(1) { grid-area:check; }
+    .property-row > .prop-core:nth-child(2) { grid-area:star; }
+    .property-row > .property-status-cell { grid-area:status; }
+    .property-row > .property-main { grid-area:main;display:grid;grid-template-columns:58px minmax(0,1fr);gap:10px;width:100%;padding-top:4px; }
+    .property-row > .property-price-cell { grid-area:price;justify-content:flex-end;text-align:right;white-space:nowrap;font-size:12px;line-height:1.35; }
+    .property-row > .property-mobile-toggle { grid-area:toggle; }
     .property-row > .prop-core::before { display:none; }
     .property-row.open > [data-extra="1"] { display:grid;grid-column:1/-1; }
-    .property-mobile-toggle { display:inline-flex;align-items:center;justify-content:center; }
+    .property-mobile-toggle { display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;background:#F7F8F6; }
     .property-main h3 { white-space:normal;line-height:1.35;font-size:14px; }
-    .prop-thumb { width:48px;height:42px; }
+    .property-main .property-meta { display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .prop-thumb { width:58px;height:48px; }
     .property-status-select, .property-release-input { max-width:none; }
     .property-actions { justify-content:stretch; }
     .property-actions .action-btn { width:100%; }
@@ -1386,8 +1393,8 @@ function renderPropCard(p, showCheckbox) {
     '<a data-label="\u623f\u6e90" class="prop-core property-main" href="' + propUrl(p) + '" target="_blank" onclick="event.stopPropagation()" style="gap:14px;min-width:0;">' + thumb +
       '<div style="min-width:0;"><h3>' + esc(p.title) + '</h3><div class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div></div>' +
     '</a>' +
-    '<div class="prop-core property-meta" data-label="\u79df\u91d1">NT$ ' + Number(p.price || 0).toLocaleString() + ' / \u6708</div>' +
-    '<button class="property-mobile-toggle" type="button" onclick="event.stopPropagation();togglePropertyRow(null, ' + jsArg(p.id) + ')">&#9662;</button>' +
+    '<div class="prop-core property-meta property-price-cell" data-label="\u79df\u91d1">NT$ ' + Number(p.price || 0).toLocaleString() + ' / \u6708</div>' +
+    '<button class="property-mobile-toggle" type="button" aria-expanded="false" onclick="event.stopPropagation();togglePropertyRow(null, ' + jsArg(p.id) + ')">&#9662;</button>' +
     '<div data-label="\u5730\u9ede" data-extra="1" class="property-meta">' + esc(p.city || '') + esc(p.district || '') + '</div>' +
     '<div data-label="\u985e\u578b" data-extra="1" class="property-meta">' + (TYPE_LABEL[p.type] || p.type || '-') + '</div>' +
     '<div data-label="\u576a\u6578" data-extra="1" class="property-meta">' + (p.size ? p.size + ' \u576a' : '-') + '</div>' +
@@ -1405,7 +1412,10 @@ function renderPropCard(p, showCheckbox) {
 function togglePropertyRow(event, id) {
   if (event && event.target && event.target.closest('button,input,select,a,.uid')) return
   var row = document.getElementById('propertyRow_' + id)
-  if (row) row.classList.toggle('open')
+  if (!row) return
+  var isOpen = row.classList.toggle('open')
+  var btn = row.querySelector('.property-mobile-toggle')
+  if (btn) btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
 }
 
 
