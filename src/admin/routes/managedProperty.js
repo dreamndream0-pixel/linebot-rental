@@ -798,11 +798,15 @@ router.get('/admin/api/managed-leases', async (req, res) => {
 
     const lineTenantCache = {}
     for (const l of leases) {
-      if (!l.lineUserId || l.lineTenantId) continue
-      const lineTenant = await findLeaseLineTenant(l.lineUserId, l.managedProperty.landlordId, lineTenantCache)
-      if (!lineTenant) continue
-      await prisma.lease.update({ where: { id: l.id }, data: { lineTenantId: lineTenant.id } })
-      l.lineTenantId = lineTenant.id
+      try {
+        if (!l.lineUserId || l.lineTenantId || !l.managedProperty) continue
+        const lineTenant = await findLeaseLineTenant(l.lineUserId, l.managedProperty.landlordId, lineTenantCache)
+        if (!lineTenant) continue
+        await prisma.lease.update({ where: { id: l.id }, data: { lineTenantId: lineTenant.id } })
+        l.lineTenantId = lineTenant.id
+      } catch (linkErr) {
+        console.warn('代管清單 LINE 自動連結失敗:', l.id, linkErr.message)
+      }
     }
 
     const now = new Date()
@@ -842,9 +846,9 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         lineBound: !!l.lineUserId,
         rentPayDay: l.rentPayDay,
         nextRentDate,
-        managedTitle: l.managedProperty.title,
-        managedId: l.managedProperty.id,
-        ownerName: l.managedProperty.ownerName,
+        managedTitle: l.managedProperty ? l.managedProperty.title : '未連結物業',
+        managedId: l.managedProperty ? l.managedProperty.id : '',
+        ownerName: l.managedProperty ? l.managedProperty.ownerName : '（未填房東）',
       }
     })
 
