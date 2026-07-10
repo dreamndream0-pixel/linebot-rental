@@ -1138,12 +1138,18 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
   const formUrl = process.env.RAGIC_FORM_URL
   if (!apiKey || !formUrl) return res.status(400).json({ error: 'RAGIC_API_KEY 或 RAGIC_FORM_URL 未設定' })
 
+  // 串流回應（NDJSON）：邊處理邊回報進度
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-cache')
+  const send = (obj) => { try { res.write(JSON.stringify(obj) + '\n') } catch (_) {} }
+
   try {
     const reqUrl = `${formUrl}${formUrl.includes('?') ? '&' : '?'}api=&limit=1000`
     const resp = await fetch(reqUrl, { headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + apiKey } })
     const rawText = await resp.text()
     if (!resp.ok) {
-      return res.json({ ok: true, created: 0, updated: 0, total: 0, rawCount: 0, httpStatus: resp.status, rawText: rawText.slice(0, 600), syncAt: new Date().toISOString() })
+      send({ type: 'done', ok: true, created: 0, updated: 0, total: 0, rawCount: 0, httpStatus: resp.status, rawText: rawText.slice(0, 600) })
+      return res.end()
     }
     let data = null
     try { data = JSON.parse(rawText) } catch (_) {}
@@ -1152,16 +1158,16 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
 
     // 抓不到承租中資料時，回傳原始診斷（原始回應／欄位名／狀態值），方便定位問題
     if (rows.length === 0) {
-      return res.json({
-        ok: true, created: 0, updated: 0, total: 0,
+      send({
+        type: 'done', ok: true, created: 0, updated: 0, total: 0,
         rawCount: allObjs.length,
         topLevel: data && !Array.isArray(data) ? Object.keys(data).slice(0, 20) : (Array.isArray(data) ? '陣列(' + data.length + ')' : String(data)),
         rawText: allObjs.length === 0 ? rawText.slice(0, 600) : undefined,
         sampleFields: allObjs[0] ? Object.keys(allObjs[0]) : [],
         statusValues: [...new Set(allObjs.map(r => r['承租狀態']).filter(v => v !== undefined && v !== ''))].slice(0, 15),
         availableTitles: (await prisma.managedProperty.findMany({ select: { title: true } })).map(m => m.title),
-        syncAt: new Date().toISOString(),
       })
+      return res.end()
     }
 
     // 取得現有各棟 ID
@@ -1171,7 +1177,10 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
     let created = 0, updated = 0
     let skipNoId = 0, skipNoBuilding = 0, skipNoProperty = 0
     const unmatched = new Set()
-    for (const row of rows) {
+    send({ type: 'start', total: rows.length })
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      send({ type: 'progress', current: i + 1, total: rows.length })
       const ragicId = row['合約編號']; if (!ragicId) { skipNoId++; continue }
       const buildingKey = `${row['社區名稱']}|${row['房屋號']}`
       const title = RAGIC_BUILDING_TITLES[buildingKey]
@@ -1227,16 +1236,17 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
       }
     }
 
-    res.json({
-      ok: true, created, updated, total: rows.length,
+    send({
+      type: 'done', ok: true, created, updated, total: rows.length,
       skipNoId, skipNoBuilding, skipNoProperty,
       unmatched: [...unmatched].slice(0, 30),
       availableTitles: mpList.map(m => m.title),
-      syncAt: new Date().toISOString(),
     })
+    res.end()
   } catch (e) {
     console.error('Ragic 同步失敗:', e.message)
-    res.status(500).json({ error: e.message })
+    send({ type: 'done', ok: false, error: e.message })
+    res.end()
   }
 })
 
@@ -1251,12 +1261,17 @@ router.post('/admin/api/ragic/sync-utility', async (req, res) => {
   const formUrl = process.env.RAGIC_UTILITY_FORM_URL
   if (!apiKey || !formUrl) return res.status(400).json({ error: 'RAGIC_API_KEY 或 RAGIC_UTILITY_FORM_URL 未設定' })
 
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-cache')
+  const send = (obj) => { try { res.write(JSON.stringify(obj) + '\n') } catch (_) {} }
+
   try {
     const resp = await fetch(`${formUrl}${formUrl.includes('?') ? '&' : '?'}api=&limit=2000`, {
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + apiKey }
     })
-    if (!resp.ok) return res.status(502).json({ error: `Ragic API 錯誤 ${resp.status}` })
-    const data = await resp.json()
+    const rawText = await resp.text()
+    if (!resp.ok) { send({ type: 'done', ok: false, error: `Ragic API 錯誤 ${resp.status}`, rawText: rawText.slice(0, 400) }); return res.end() }
+    const data = JSON.parse(rawText)
 
     // Ragic 回傳格式: { "1": {欄位}, "2": {欄位}, ... }
     const rows = Object.values(data).filter(r => typeof r === 'object' && r['合約編號'])
@@ -1278,7 +1293,11 @@ router.post('/admin/api/ragic/sync-utility', async (req, res) => {
 
     let readingCreated = 0, readingSkipped = 0, meterUpdated = 0
 
-    for (const [ragicId, leaseRows] of Object.entries(byLease)) {
+    const leaseGroups = Object.entries(byLease)
+    send({ type: 'start', total: leaseGroups.length })
+    let _gi = 0
+    for (const [ragicId, leaseRows] of leaseGroups) {
+      send({ type: 'progress', current: ++_gi, total: leaseGroups.length })
       const leaseRes = await prisma.lease.findFirst({ where: { ragicId } })
       if (!leaseRes) continue
       const leaseId = leaseRes.id
@@ -1331,10 +1350,12 @@ router.post('/admin/api/ragic/sync-utility', async (req, res) => {
       }
     }
 
-    res.json({ ok: true, readingCreated, readingSkipped, meterUpdated, syncAt: new Date().toISOString() })
+    send({ type: 'done', ok: true, readingCreated, readingSkipped, meterUpdated })
+    res.end()
   } catch (e) {
     console.error('Ragic 電費同步失敗:', e.message)
-    res.status(500).json({ error: e.message })
+    send({ type: 'done', ok: false, error: e.message })
+    res.end()
   }
 })
 
@@ -1367,18 +1388,26 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
     return (start && end) ? { start, end } : null
   }
 
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-cache')
+  const send = (obj) => { try { res.write(JSON.stringify(obj) + '\n') } catch (_) {} }
+
   try {
     const resp = await fetch(`${formUrl}${formUrl.includes('?') ? '&' : '?'}api=&limit=2000`, {
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + apiKey }
     })
-    if (!resp.ok) return res.status(502).json({ error: `Ragic API 錯誤 ${resp.status}` })
-    const data = await resp.json()
+    const rawText = await resp.text()
+    if (!resp.ok) { send({ type: 'done', ok: false, error: `Ragic API 錯誤 ${resp.status}`, rawText: rawText.slice(0, 400) }); return res.end() }
+    const data = JSON.parse(rawText)
 
     const rows = Object.values(data).filter(r => typeof r === 'object' && r['合約編號'])
 
     let created = 0, updated = 0, skipped = 0
 
-    for (const row of rows) {
+    send({ type: 'start', total: rows.length })
+    for (let _i = 0; _i < rows.length; _i++) {
+      const row = rows[_i]
+      send({ type: 'progress', current: _i + 1, total: rows.length })
       const ragicId = row['合約編號']
       const lease = await prisma.lease.findFirst({
         where: { ragicId },
@@ -1467,10 +1496,12 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
       created++
     }
 
-    res.json({ ok: true, created, updated, skipped, syncAt: new Date().toISOString() })
+    send({ type: 'done', ok: true, created, updated, skipped })
+    res.end()
   } catch (e) {
     console.error('Ragic 租金同步失敗:', e.message)
-    res.status(500).json({ error: e.message })
+    send({ type: 'done', ok: false, error: e.message })
+    res.end()
   }
 })
 

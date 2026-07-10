@@ -5365,7 +5365,57 @@ async function renderManagedTab() {
         '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#7A5A3A;" onclick="btnLoad(this, syncRagicRent)">💰 租金同步</button>'
       ) : '') +
     '</div>' +
+    '<div id="ragicProgress" style="display:none;margin-bottom:16px;background:#FAF8F4;border:1px solid #E5E0D5;border-radius:12px;padding:14px 16px;">' +
+      '<div id="ragicProgressLabel" style="font-size:13px;color:var(--charcoal);font-weight:700;margin-bottom:8px;">準備中…</div>' +
+      '<div style="height:14px;background:var(--oat-mid);border-radius:8px;overflow:hidden;">' +
+        '<div id="ragicProgressFill" style="height:100%;width:0%;background:linear-gradient(90deg,#8B6A42,#4A7A6A);border-radius:8px;transition:width .25s ease;"></div>' +
+      '</div>' +
+    '</div>' +
     '<div id="managedReportBox"></div>'
+}
+
+// ── Ragic 同步進度條 ─────────────────────────────────────────────
+function ragicProgressShow(label) {
+  var box = document.getElementById('ragicProgress'); if (!box) return
+  box.style.display = 'block'
+  var l = document.getElementById('ragicProgressLabel'); if (l) l.textContent = label || '準備中…'
+  var f = document.getElementById('ragicProgressFill'); if (f) f.style.width = '0%'
+}
+function ragicProgressSet(current, total) {
+  var pct = total ? Math.round(current / total * 100) : 0
+  var f = document.getElementById('ragicProgressFill'); if (f) f.style.width = pct + '%'
+  var l = document.getElementById('ragicProgressLabel')
+  if (l) l.textContent = '同步中… ' + current + ' / ' + total + '　(' + pct + '%)'
+}
+function ragicProgressHide() {
+  var box = document.getElementById('ragicProgress'); if (box) box.style.display = 'none'
+}
+
+// 讀取 NDJSON 串流，逐行解析進度，回傳最後的 done 物件
+async function readSyncStream(res, onProgress) {
+  if (!res.body || !res.body.getReader) { // 舊瀏覽器 fallback：一次讀完
+    var txt = await res.text(); var last = null
+    txt.split('\n').forEach(function(ln){ ln = ln.trim(); if (!ln) return; try { var m = JSON.parse(ln); if (m.type === 'done') last = m } catch(_){} })
+    return last
+  }
+  var reader = res.body.getReader()
+  var decoder = new TextDecoder()
+  var buf = '', final = null
+  while (true) {
+    var r = await reader.read()
+    if (r.done) break
+    buf += decoder.decode(r.value, { stream: true })
+    var parts = buf.split('\n'); buf = parts.pop()
+    for (var i = 0; i < parts.length; i++) {
+      var ln = parts[i].trim(); if (!ln) continue
+      var msg; try { msg = JSON.parse(ln) } catch (_) { continue }
+      if (msg.type === 'start') { if (onProgress) onProgress(0, msg.total) }
+      else if (msg.type === 'progress') { if (onProgress) onProgress(msg.current, msg.total) }
+      else if (msg.type === 'done') final = msg
+    }
+  }
+  if (buf.trim()) { try { var m2 = JSON.parse(buf.trim()); if (m2.type === 'done') final = m2 } catch(_){} }
+  return final
 }
 
 // 常見銀行（屋主匯款選單用）
@@ -5760,9 +5810,16 @@ function showCommissionList() {
 
 // ── Ragic 同步 ─────────────────────────────────────────────────
 async function syncRagic() {
-  var res = await fetch('/admin/api/ragic/sync?key=' + encodeURIComponent(KEY), { method: 'POST' })
-  var data = await res.json()
-  if (!res.ok) { showToast('❌ 合約同步失敗：' + (data.error || res.status)); return }
+  ragicProgressShow('連線 Ragic…')
+  var res, data
+  try {
+    res = await fetch('/admin/api/ragic/sync?key=' + encodeURIComponent(KEY), { method: 'POST' })
+    if (!res.ok) { ragicProgressHide(); var e = await res.json().catch(function(){ return {} }); showToast('❌ 合約同步失敗：' + (e.error || res.status)); return }
+    data = await readSyncStream(res, ragicProgressSet)
+  } catch (err) { ragicProgressHide(); showToast('❌ 連線失敗：' + err.message); return }
+  ragicProgressHide()
+  if (!data) { showToast('❌ 同步未完成，請重試'); return }
+  if (data.ok === false) { showToast('❌ 合約同步失敗：' + (data.error || '')); return }
   showToast('✅ 合約同步完成！新增 ' + data.created + ' 筆 / 更新 ' + data.updated + ' 筆（共 ' + data.total + ' 筆）')
   // 都沒同步進去時，跳出診斷讓房東知道卡在哪
   if ((data.created + data.updated) === 0) {
@@ -5797,16 +5854,30 @@ async function syncRagic() {
 }
 
 async function syncRagicUtility() {
-  var res = await fetch('/admin/api/ragic/sync-utility?key=' + encodeURIComponent(KEY), { method: 'POST' })
-  var data = await res.json()
-  if (!res.ok) { showToast('❌ 電費同步失敗：' + (data.error || res.status)); return }
+  ragicProgressShow('連線 Ragic（電費）…')
+  var data
+  try {
+    var res = await fetch('/admin/api/ragic/sync-utility?key=' + encodeURIComponent(KEY), { method: 'POST' })
+    if (!res.ok) { ragicProgressHide(); var e = await res.json().catch(function(){ return {} }); showToast('❌ 電費同步失敗：' + (e.error || res.status)); return }
+    data = await readSyncStream(res, ragicProgressSet)
+  } catch (err) { ragicProgressHide(); showToast('❌ 連線失敗：' + err.message); return }
+  ragicProgressHide()
+  if (!data) { showToast('❌ 同步未完成，請重試'); return }
+  if (data.ok === false) { showToast('❌ 電費同步失敗：' + (data.error || '')); return }
   showToast('✅ 電費同步完成！新增 ' + data.readingCreated + ' 筆抄表 / 更新 ' + data.meterUpdated + ' 筆初始度數')
 }
 
 async function syncRagicRent() {
-  var res = await fetch('/admin/api/ragic/sync-rent?key=' + encodeURIComponent(KEY), { method: 'POST' })
-  var data = await res.json()
-  if (!res.ok) { showToast('❌ 租金同步失敗：' + (data.error || res.status)); return }
+  ragicProgressShow('連線 Ragic（租金）…')
+  var data
+  try {
+    var res = await fetch('/admin/api/ragic/sync-rent?key=' + encodeURIComponent(KEY), { method: 'POST' })
+    if (!res.ok) { ragicProgressHide(); var e = await res.json().catch(function(){ return {} }); showToast('❌ 租金同步失敗：' + (e.error || res.status)); return }
+    data = await readSyncStream(res, ragicProgressSet)
+  } catch (err) { ragicProgressHide(); showToast('❌ 連線失敗：' + err.message); return }
+  ragicProgressHide()
+  if (!data) { showToast('❌ 同步未完成，請重試'); return }
+  if (data.ok === false) { showToast('❌ 租金同步失敗：' + (data.error || '')); return }
   showToast('✅ 租金同步完成！新增 ' + data.created + ' 筆 / 更新已付款 ' + data.updated + ' 筆')
 }
 
