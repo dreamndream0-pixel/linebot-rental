@@ -5820,7 +5820,7 @@ async function syncRagic() {
   ragicProgressHide()
   if (!data) { showToast('❌ 同步未完成，請重試'); return }
   if (data.ok === false) { showToast('❌ 合約同步失敗：' + (data.error || '')); return }
-  showToast('✅ 合約同步完成！新增 ' + data.created + ' 筆 / 更新 ' + data.updated + ' 筆（共 ' + data.total + ' 筆）')
+  showToast('✅ 合約同步完成！新增 ' + data.created + ' 筆 / 更新 ' + data.updated + ' 筆（共 ' + data.total + ' 筆）・LINE ID ' + (data.rawLine || 0) + ' 筆 / 已連結 ' + (data.linkedLine || 0) + ' 筆')
   // 都沒同步進去時，跳出診斷讓房東知道卡在哪
   if ((data.created + data.updated) === 0) {
     var lines = []
@@ -6046,6 +6046,7 @@ async function openLeaseForm(leaseId) {
   var tenantOptions = '<option value="">（不綁定 LINE）</option>' + (MANAGED_OPTS.tenants || []).map(function(t) {
     return '<option value="' + t.id + '" data-line="' + esc(t.lineUserId || '') + '"' + (l.lineTenantId === t.id ? ' selected' : '') + '>' + esc(t.label) + '</option>'
   }).join('')
+  var currentLineUserId = l.lineUserId || ''
 
   var html = '<div id="leaseModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:340;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
     '<div style="background:#fff;border-radius:16px;padding:24px;max-width:480px;width:100%;margin:auto;">' +
@@ -6105,7 +6106,9 @@ async function openLeaseForm(leaseId) {
     '<div style="background:#F0F7F1;border-radius:12px;padding:14px;margin-bottom:12px;">' +
       '<div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#4A6741;">📲 LINE 繳費提醒</div>' +
       '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">綁定租客 LINE（已加 Bot 的租客）</label>' +
-      '<select id="l_lineTenantId" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;">' + tenantOptions + '</select>' +
+      '<select id="l_lineTenantId" onchange="syncLeaseLineUserIdFromTenant()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:8px;">' + tenantOptions + '</select>' +
+      '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">LINE userID（Ragic 同步或手動填入）</label>' +
+      '<input id="l_lineUserId" value="' + esc(currentLineUserId) + '" placeholder="例：Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" style="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;font-size:12px;">' +
       '<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">' +
         '<label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="l_rentRemindOn"' + (l.rentRemindOn !== false ? ' checked' : '') + '> 租金提醒</label>' +
         '<div style="flex:1;">' + mInput('繳租日(號)', 'l_rentPayDay', l.rentPayDay || 5, 'number') + '</div>' +
@@ -6152,6 +6155,15 @@ async function openLeaseForm(leaseId) {
   document.body.insertAdjacentHTML('beforeend', html)
   toggleUtilMode()
   toggleDiscountField()
+}
+
+function syncLeaseLineUserIdFromTenant() {
+  var tenantSel = document.getElementById('l_lineTenantId')
+  var lineInput = document.getElementById('l_lineUserId')
+  if (!tenantSel || !lineInput) return
+  var opt = tenantSel.options[tenantSel.selectedIndex]
+  var line = opt ? (opt.getAttribute('data-line') || '') : ''
+  if (line) lineInput.value = line
 }
 
 async function editLeaseFromList(leaseId) {
@@ -6219,7 +6231,7 @@ async function saveLease(leaseId) {
   // 從選的租客取得 lineUserId
   var tenantSel = document.getElementById('l_lineTenantId')
   var lineTenantId = tenantSel ? tenantSel.value : ''
-  var lineUserId = ''
+  var lineUserId = val('l_lineUserId')
   if (lineTenantId && MANAGED_OPTS.tenants) {
     var t = MANAGED_OPTS.tenants.find(function(x){ return x.id === lineTenantId })
     if (t) lineUserId = t.lineUserId || ''
@@ -6411,7 +6423,7 @@ function renderLeaseList() {
       ? '<a href="' + (DATA.siteUrl || '') + '/property/' + l.propertyId + '" target="_blank" style="color:#4A6741;font-size:12px;">🔗 房源頁</a>'
       : '<span style="font-size:12px;color:#ccc;">未連結</span>'
     var lineBadge = l.lineBound
-      ? '<span style="color:#06C755;font-size:12px;">● LINE</span>'
+      ? '<span onclick="copyText(' + jsArg(l.lineUserId || '') + ')" title="點擊複製 LINE userID" style="color:#06C755;font-size:12px;cursor:pointer;">● LINE</span>'
       : '<span style="color:#ccc;font-size:12px;">○ 未綁</span>'
     return '<tr>' +
       '<td style="padding:8px;font-size:13px;"><span style="display:inline-flex;align-items:center;gap:5px;">' + esc(l.tenantName) + '<button title="編輯房客合約" class="spin-btn" onclick="btnLoad(this, function(){ return editLeaseFromList(\'' + l.id + '\') })" style="border:none;background:none;color:#4A6741;cursor:pointer;font-size:13px;padding:0;">✎</button></span></td>' +

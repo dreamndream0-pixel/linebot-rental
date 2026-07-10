@@ -4,6 +4,7 @@ const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
 const { getClientForLease, rentReminderFlex, utilReminderFlex } = require('../../leaseReminder')
+const { findLineTenant } = require('../../tenantStore')
 
 // 權限過濾：super 看全部，房東只看自己的
 function ownFilter(auth) {
@@ -825,6 +826,8 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         daysToEnd,
         status: computedStatus,
         propertyId: l.propertyId,
+        lineUserId: l.lineUserId,
+        lineTenantId: l.lineTenantId,
         lineBound: !!l.lineUserId,
         rentPayDay: l.rentPayDay,
         nextRentDate,
@@ -1130,6 +1133,57 @@ const RAGIC_BUILDING_TITLES = {
   '紅寶石|11':'紅寶石 11棟','紅寶石|21':'紅寶石 21棟','紅寶石|28':'紅寶石 28棟',
   '致富讚|22':'致富讚 22棟','青雲巷|25-21':'青雲巷 25-21棟'
 }
+const RAGIC_LINE_USER_ID_FIELDS = [
+  'LINE User ID', 'Line User ID', 'lineUserId', 'line userID', 'LINE_USER_ID',
+  'LINE UID', 'LINE ID', 'LINE用戶ID', 'LINE 用戶 ID', 'LINE使用者ID', 'LINE 使用者 ID',
+  'LINE租客ID', 'LINE 租客 ID', '租客LINE ID', '租客 LINE ID', '租客LINE User ID',
+]
+
+function normRagicKey(s) {
+  return String(s || '').toLowerCase().replace(/[\s_:\-／/()（）\[\]【】]+/g, '')
+}
+
+function pickRagicValue(row, names) {
+  for (const name of names) {
+    const v = row[name]
+    if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim()
+  }
+  const wanted = new Set(names.map(normRagicKey))
+  for (const [k, v] of Object.entries(row)) {
+    if (v === undefined || v === null || String(v).trim() === '') continue
+    if (wanted.has(normRagicKey(k))) return String(v).trim()
+  }
+  for (const [k, v] of Object.entries(row)) {
+    if (v === undefined || v === null || String(v).trim() === '') continue
+    const n = normRagicKey(k)
+    if (n.includes('line') && (n.includes('userid') || n.includes('uid') || n.includes('用戶id') || n.includes('使用者id'))) {
+      return String(v).trim()
+    }
+  }
+  return null
+}
+
+async function findLeaseLineTenant(lineUserId, landlordId, cache) {
+  if (!lineUserId) return null
+  const cacheKey = `${landlordId || 'main'}:${lineUserId}`
+  if (Object.prototype.hasOwnProperty.call(cache, cacheKey)) return cache[cacheKey]
+  let tenant = landlordId ? await findLineTenant(lineUserId, landlordId) : null
+  if (!tenant) {
+    tenant = await prisma.tenant.findFirst({
+      where: {
+        lineUserId,
+        OR: [
+          landlordId ? { landlordId } : undefined,
+          landlordId ? { source: landlordId } : undefined,
+          { landlordId: null, source: 'main' },
+        ].filter(Boolean),
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+  }
+  cache[cacheKey] = tenant || null
+  return cache[cacheKey]
+}
 
 router.post('/admin/api/ragic/sync', async (req, res) => {
   const auth = await resolveRole(req.query.key)
@@ -1184,12 +1238,14 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
     } catch (_) {}
 
     // 取得現有各棟 ID
-    const mpList = await prisma.managedProperty.findMany({ select: { id: true, title: true } })
-    const mpByTitle = Object.fromEntries(mpList.map(m => [m.title, m.id]))
+    const mpList = await prisma.managedProperty.findMany({ select: { id: true, title: true, landlordId: true } })
+    const mpByTitle = Object.fromEntries(mpList.map(m => [m.title, m]))
 
     let created = 0, updated = 0
     let skipNoId = 0, skipNoBuilding = 0, skipNoProperty = 0
+    let linkedLine = 0, rawLine = 0
     const unmatched = new Set()
+    const lineTenantCache = {}
     send({ type: 'start', total: rows.length })
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
@@ -1198,8 +1254,12 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
       const buildingKey = `${row['社區名稱']}|${row['房屋號']}`
       const title = RAGIC_BUILDING_TITLES[buildingKey]
       if (!title) { skipNoBuilding++; unmatched.add(buildingKey); continue }
-      const managedPropertyId = mpByTitle[title]
-      if (!managedPropertyId) { skipNoProperty++; unmatched.add(buildingKey + ' → ' + title + '（後台無此委託物業）'); continue }
+      const managedProperty = mpByTitle[title]
+      if (!managedProperty) { skipNoProperty++; unmatched.add(buildingKey + ' → ' + title + '（後台無此委託物業）'); continue }
+      const lineUserId = pickRagicValue(row, RAGIC_LINE_USER_ID_FIELDS)
+      const lineTenant = lineUserId ? await findLeaseLineTenant(lineUserId, managedProperty.landlordId, lineTenantCache) : null
+      if (lineUserId) rawLine++
+      if (lineTenant) linkedLine++
 
       const data = {
         tenantName: row['承租人'] || '',
@@ -1207,7 +1267,8 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
         rent: parseInt(row['租金/月']) || 0,
         deposit: parseInt(row['押金/2月']) || 0,
         paymentCycle: RAGIC_PAYMENT_CYCLE[row['繳費方式']] || 'MONTHLY',
-        lineUserId: row['LINE User ID'] || null,
+        lineUserId: lineUserId || null,
+        lineTenantId: lineTenant ? lineTenant.id : null,
         meterRate: parseFloat(row['電費單價(/度)']) || 0,
         leaseStart: row['合約日期起日'] ? new Date(row['合約日期起日'].replace(/\//g,'-')) : null,
         leaseEnd: row['合約日期迄日'] ? new Date(row['合約日期迄日'].replace(/\//g,'-')) : null,
@@ -1217,7 +1278,7 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
         parkingSpace: row['車格'] || null,
         parkingFee: parseInt(row['車位租金/月']) || 0,
         note: row['其他備註'] || null,
-        managedPropertyId,
+        managedPropertyId: managedProperty.id,
       }
 
       const existing = await prisma.lease.findFirst({ where: { ragicId } })
@@ -1234,7 +1295,7 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
 
     send({
       type: 'done', ok: true, created, updated, total: rows.length,
-      skipNoId, skipNoBuilding, skipNoProperty,
+      skipNoId, skipNoBuilding, skipNoProperty, rawLine, linkedLine,
       unmatched: [...unmatched].slice(0, 30),
       availableTitles: mpList.map(m => m.title),
     })
