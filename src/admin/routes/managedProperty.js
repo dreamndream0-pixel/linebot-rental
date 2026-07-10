@@ -792,22 +792,9 @@ router.get('/admin/api/managed-leases', async (req, res) => {
     }
     const leases = await prisma.lease.findMany({
       where,
-      include: { managedProperty: { select: { id: true, title: true, ownerName: true, landlordId: true } } },
+      include: { managedProperty: { select: { id: true, title: true, ownerName: true } } },
       orderBy: { leaseEnd: 'asc' },
     })
-
-    const lineTenantCache = {}
-    for (const l of leases) {
-      try {
-        if (!l.lineUserId || l.lineTenantId || !l.managedProperty) continue
-        const lineTenant = await findLeaseLineTenant(l.lineUserId, l.managedProperty.landlordId, lineTenantCache)
-        if (!lineTenant) continue
-        await prisma.lease.update({ where: { id: l.id }, data: { lineTenantId: lineTenant.id } })
-        l.lineTenantId = lineTenant.id
-      } catch (linkErr) {
-        console.warn('代管清單 LINE 自動連結失敗:', l.id, linkErr.message)
-      }
-    }
 
     const now = new Date()
     const result = leases.map(l => {
