@@ -1139,8 +1139,8 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
   if (!apiKey || !formUrl) return res.status(400).json({ error: 'RAGIC_API_KEY 或 RAGIC_FORM_URL 未設定' })
 
   try {
-    const reqUrl = `${formUrl}${formUrl.includes('?') ? '&' : '?'}api_key=${apiKey}&limit=1000`
-    const resp = await fetch(reqUrl, { headers: { 'Content-Type': 'application/json' } })
+    const reqUrl = `${formUrl}${formUrl.includes('?') ? '&' : '?'}api=&limit=1000`
+    const resp = await fetch(reqUrl, { headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + apiKey } })
     const rawText = await resp.text()
     if (!resp.ok) {
       return res.json({ ok: true, created: 0, updated: 0, total: 0, rawCount: 0, httpStatus: resp.status, rawText: rawText.slice(0, 600), syncAt: new Date().toISOString() })
@@ -1252,8 +1252,8 @@ router.post('/admin/api/ragic/sync-utility', async (req, res) => {
   if (!apiKey || !formUrl) return res.status(400).json({ error: 'RAGIC_API_KEY 或 RAGIC_UTILITY_FORM_URL 未設定' })
 
   try {
-    const resp = await fetch(`${formUrl}?api_key=${apiKey}&limit=2000`, {
-      headers: { 'Content-Type': 'application/json' }
+    const resp = await fetch(`${formUrl}${formUrl.includes('?') ? '&' : '?'}api=&limit=2000`, {
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + apiKey }
     })
     if (!resp.ok) return res.status(502).json({ error: `Ragic API 錯誤 ${resp.status}` })
     const data = await resp.json()
@@ -1368,8 +1368,8 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
   }
 
   try {
-    const resp = await fetch(`${formUrl}?api_key=${apiKey}&limit=2000`, {
-      headers: { 'Content-Type': 'application/json' }
+    const resp = await fetch(`${formUrl}${formUrl.includes('?') ? '&' : '?'}api=&limit=2000`, {
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + apiKey }
     })
     if (!resp.ok) return res.status(502).json({ error: `Ragic API 錯誤 ${resp.status}` })
     const data = await resp.json()
