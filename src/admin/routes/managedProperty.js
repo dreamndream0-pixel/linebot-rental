@@ -1139,7 +1139,6 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
   if (!apiKey || !formUrl) return res.status(400).json({ error: 'RAGIC_API_KEY 或 RAGIC_FORM_URL 未設定' })
 
   try {
-    const fetch = (...args) => import('node-fetch').then(m => m.default(...args))
     const resp = await fetch(`${formUrl}?api_key=${apiKey}&limit=1000`, {
       headers: { 'Content-Type': 'application/json' }
     })
@@ -1226,7 +1225,6 @@ router.post('/admin/api/ragic/sync-utility', async (req, res) => {
   if (!apiKey || !formUrl) return res.status(400).json({ error: 'RAGIC_API_KEY 或 RAGIC_UTILITY_FORM_URL 未設定' })
 
   try {
-    const fetch = (...args) => import('node-fetch').then(m => m.default(...args))
     const resp = await fetch(`${formUrl}?api_key=${apiKey}&limit=2000`, {
       headers: { 'Content-Type': 'application/json' }
     })
@@ -1343,7 +1341,6 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
   }
 
   try {
-    const fetch = (...args) => import('node-fetch').then(m => m.default(...args))
     const resp = await fetch(`${formUrl}?api_key=${apiKey}&limit=2000`, {
       headers: { 'Content-Type': 'application/json' }
     })
