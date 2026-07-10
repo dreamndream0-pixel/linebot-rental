@@ -10,6 +10,18 @@ function ownFilter(auth) {
   return auth.role === 'super' ? {} : { landlordId: auth.landlordId }
 }
 
+// Ragic 同步權限：super 一律可用；房東需在「功能模組」被授權 ragic
+async function hasRagicFeature(auth) {
+  if (!auth) return false
+  if (auth.role === 'super') return true
+  if (!auth.landlordId) return false
+  try {
+    const rows = await prisma.$queryRawUnsafe(`SELECT features FROM landlords WHERE id = $1`, auth.landlordId)
+    const f = rows[0] && rows[0].features ? JSON.parse(rows[0].features) : {}
+    return f.ragic === true
+  } catch (_) { return false }
+}
+
 function addMonths(date, months) {
   const d = new Date(date)
   const day = d.getDate()
@@ -1120,7 +1132,7 @@ const RAGIC_BUILDING_TITLES = {
 
 router.post('/admin/api/ragic/sync', async (req, res) => {
   const auth = await resolveRole(req.query.key)
-  if (!auth || auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  if (!(await hasRagicFeature(auth))) return res.status(403).json({ error: 'forbidden' })
 
   const apiKey = process.env.RAGIC_API_KEY
   const formUrl = process.env.RAGIC_FORM_URL
@@ -1207,7 +1219,7 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
 // 環境變數: RAGIC_UTILITY_FORM_URL（如 https://ap11.ragic.com/urbanite/電費明細/1）
 router.post('/admin/api/ragic/sync-utility', async (req, res) => {
   const auth = await resolveRole(req.query.key)
-  if (!auth || auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  if (!(await hasRagicFeature(auth))) return res.status(403).json({ error: 'forbidden' })
 
   const apiKey = process.env.RAGIC_API_KEY
   const formUrl = process.env.RAGIC_UTILITY_FORM_URL
@@ -1305,7 +1317,7 @@ router.post('/admin/api/ragic/sync-utility', async (req, res) => {
 // 環境變數: RAGIC_RENT_FORM_URL（如 https://ap11.ragic.com/urbanite/租金繳納明細/1）
 router.post('/admin/api/ragic/sync-rent', async (req, res) => {
   const auth = await resolveRole(req.query.key)
-  if (!auth || auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  if (!(await hasRagicFeature(auth))) return res.status(403).json({ error: 'forbidden' })
 
   const apiKey = process.env.RAGIC_API_KEY
   const formUrl = process.env.RAGIC_RENT_FORM_URL

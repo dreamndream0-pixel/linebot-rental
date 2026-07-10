@@ -4,7 +4,8 @@ const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
 
-const DEFAULT_FEATURES = { bot: true, site: true, heroSlides: true, booking: true, repair: true, community: true, csvImport: true, social: true }
+// 預設全開的功能為 true；ragic 為需授權的進階功能，預設關閉。
+const DEFAULT_FEATURES = { bot: true, site: true, heroSlides: true, booking: true, repair: true, community: true, csvImport: true, social: true, ragic: false }
 
 function parseFeatures(json) {
   if (!json) return { ...DEFAULT_FEATURES }

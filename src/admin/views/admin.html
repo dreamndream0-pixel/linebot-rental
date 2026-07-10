@@ -858,8 +858,11 @@ function refreshOwnFeatures() {
 }
 
 // 總管理員永遠回 true；房東依 features 設定判斷
+// 預設關閉、需明確授權才開放的進階功能（opt-in）
+var OPT_IN_FEATURES = { ragic: true }
 function feat(key) {
   if (DATA && DATA.role === 'super') return true
+  if (OPT_IN_FEATURES[key]) return _ownFeatures[key] === true
   return _ownFeatures[key] !== false
 }
 
@@ -3049,13 +3052,14 @@ var FEATURE_MODULES = [
   { key: 'csvImport',  label: '📊 CSV 匯出/匯入',      desc: '批次新增、更新房源資料' },
   { key: 'social',     label: '📣 社群發布',           desc: '房源一鍵發文到 Facebook／Instagram／Threads' },
   { key: 'managed',   label: '🏢 包租代管',           desc: '包租代管委託、租約管理、繳費明細追蹤' },
+  { key: 'ragic',     label: '🔗 Ragic 同步',         desc: '從 Ragic 同步合約、電費、租金資料（進階功能，預設關閉）', def: false },
 ]
 
 function openFeaturesEditor(landlordId) {
   var l = (DATA.landlords || []).find(function(x){ return x.id === landlordId })
   var current = {}
   try { current = l && l.features ? JSON.parse(l.features) : {} } catch {}
-  FEATURE_MODULES.forEach(function(m) { if (current[m.key] === undefined) current[m.key] = true })
+  FEATURE_MODULES.forEach(function(m) { if (current[m.key] === undefined) current[m.key] = (m.def !== false) })
 
   var rows = FEATURE_MODULES.map(function(m) {
     var checked = current[m.key] !== false
@@ -5355,7 +5359,7 @@ async function renderManagedTab() {
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#7D6A9A;" onclick="btnLoad(this, showCommissionList)">📁 委託列表（' + MANAGED.list.length + '）</button>' +
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#5A7D8C;" onclick="btnLoad(this, showLeaseList)">📋 代管清單</button>' +
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#6B7F6E;" onclick="btnLoad(this, showManagedReport)">📊 收支報表</button>' +
-      (DATA.role === 'super' ? (
+      (feat('ragic') ? (
         '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#8B6A42;margin-left:auto;" onclick="btnLoad(this, syncRagic)">🔄 合約同步</button>' +
         '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#4A7A6A;" onclick="btnLoad(this, syncRagicUtility)">⚡ 電費同步</button>' +
         '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#7A5A3A;" onclick="btnLoad(this, syncRagicRent)">💰 租金同步</button>'
