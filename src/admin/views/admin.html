@@ -6324,18 +6324,34 @@ async function loadManagedOpts() {
 
 // 代管清單分頁狀態
 var LEASE_TAB = 'active'
-var LEASE_SORT = 'tenant'   // tenant / title / rentDesc / rentAsc / endAsc / nextRent
+var LEASE_SORT = 'tenant'   // tenant / room / title / rent / end / nextRent
+var LEASE_SORT_DIR = 'asc'
 var LEASE_SEARCH = ''
 
 function leaseSortCompare(a, b) {
+  var dir = LEASE_SORT_DIR === 'desc' ? -1 : 1
+  var diff = 0
   switch (LEASE_SORT) {
-    case 'title':   return String(a.managedTitle || '').localeCompare(String(b.managedTitle || ''), 'zh-Hant')
-    case 'rentDesc':return (b.rent || 0) - (a.rent || 0)
-    case 'rentAsc': return (a.rent || 0) - (b.rent || 0)
-    case 'endAsc':  return new Date(a.leaseEnd || '2999-12-31') - new Date(b.leaseEnd || '2999-12-31')
-    case 'nextRent':return new Date(a.nextRentDate || '2999-12-31') - new Date(b.nextRentDate || '2999-12-31')
-    default:        return String(a.tenantName || '').localeCompare(String(b.tenantName || ''), 'zh-Hant')
+    case 'room':
+      diff = String(a.roomLabel || '').localeCompare(String(b.roomLabel || ''), 'zh-Hant', { numeric: true })
+      break
+    case 'title':
+      diff = String(a.managedTitle || '').localeCompare(String(b.managedTitle || ''), 'zh-Hant')
+      break
+    case 'rent':
+      diff = (a.rent || 0) - (b.rent || 0)
+      break
+    case 'end':
+      diff = new Date(a.leaseEnd || '2999-12-31') - new Date(b.leaseEnd || '2999-12-31')
+      break
+    case 'nextRent':
+      diff = new Date(a.nextRentDate || '2999-12-31') - new Date(b.nextRentDate || '2999-12-31')
+      break
+    default:
+      diff = String(a.tenantName || '').localeCompare(String(b.tenantName || ''), 'zh-Hant')
   }
+  if (!diff) diff = String(a.roomLabel || '').localeCompare(String(b.roomLabel || ''), 'zh-Hant', { numeric: true })
+  return diff * dir
 }
 function applyLeaseFilterSort(list) {
   var q = LEASE_SEARCH.trim().toLowerCase()
@@ -6348,6 +6364,15 @@ function applyLeaseFilterSort(list) {
     : list.slice()
   out.sort(leaseSortCompare)
   return out
+}
+function setLeaseSort(key) {
+  if (LEASE_SORT === key) {
+    LEASE_SORT_DIR = LEASE_SORT_DIR === 'asc' ? 'desc' : 'asc'
+  } else {
+    LEASE_SORT = key
+    LEASE_SORT_DIR = 'asc'
+  }
+  renderLeaseList()
 }
 async function showLeaseList() {
   var box = document.getElementById('managedReportBox')
@@ -6368,6 +6393,14 @@ function renderLeaseList() {
     return '<button class="spin-btn" onclick="btnLoad(this, function(){ LEASE_TAB=\'' + key + '\'; return renderLeaseList() })" style="padding:8px 16px;border:none;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;background:' + (active ? color : '#EEE') + ';color:' + (active ? '#fff' : '#888') + ';">' + label + ' ' + count + '</button>'
   }
   function fmt(dt) { return dt ? new Date(dt).toLocaleDateString('zh-TW') : '—' }
+  function sortTh(key, label) {
+    var active = LEASE_SORT === key
+    var arrow = active ? (LEASE_SORT_DIR === 'asc' ? '↑' : '↓') : '↕'
+    return '<th style="padding:8px;text-align:left;font-size:12px;white-space:nowrap;">' +
+      '<button onclick="setLeaseSort(\'' + key + '\')" style="border:none;background:none;padding:0;color:' + (active ? '#4A6741' : '#222') + ';font-size:12px;font-weight:700;cursor:pointer;">' +
+        label + ' <span style="font-size:11px;color:' + (active ? '#4A6741' : '#aaa') + ';">' + arrow + '</span>' +
+      '</button></th>'
+  }
 
   function leaseRow(l) {
     var endInfo = fmt(l.leaseEnd)
@@ -6381,7 +6414,8 @@ function renderLeaseList() {
       ? '<span style="color:#06C755;font-size:12px;">● LINE</span>'
       : '<span style="color:#ccc;font-size:12px;">○ 未綁</span>'
     return '<tr>' +
-      '<td style="padding:8px;font-size:13px;"><span style="display:inline-flex;align-items:center;gap:5px;">' + esc(l.tenantName) + '<button title="編輯房客合約" class="spin-btn" onclick="btnLoad(this, function(){ return editLeaseFromList(\'' + l.id + '\') })" style="border:none;background:none;color:#4A6741;cursor:pointer;font-size:13px;padding:0;">✎</button></span>' + (l.roomLabel ? '<br><span style="font-size:11px;color:#999;">' + esc(l.roomLabel) + '</span>' : '') + '</td>' +
+      '<td style="padding:8px;font-size:13px;"><span style="display:inline-flex;align-items:center;gap:5px;">' + esc(l.tenantName) + '<button title="編輯房客合約" class="spin-btn" onclick="btnLoad(this, function(){ return editLeaseFromList(\'' + l.id + '\') })" style="border:none;background:none;color:#4A6741;cursor:pointer;font-size:13px;padding:0;">✎</button></span></td>' +
+      '<td style="padding:8px;font-size:13px;color:#555;">' + esc(l.roomLabel || '—') + '</td>' +
       '<td style="padding:8px;font-size:13px;">' + esc(l.managedTitle) + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + fmt(l.leaseStart) + '<br>~ ' + endInfo + '</td>' +
       '<td style="padding:8px;font-size:13px;">NT$ ' + Number(l.rent).toLocaleString() + '<br><span style="font-size:11px;color:#999;">下期 ' + nextRent + '</span></td>' +
@@ -6396,7 +6430,13 @@ function renderLeaseList() {
   var groups = {}, order = []
   list.forEach(function(l) { var k = l.ownerName || '（未填房東）'; if (!groups[k]) { groups[k] = []; order.push(k) } groups[k].push(l) })
 
-  var th = '<tr style="background:#FAF8F4;"><th style="padding:8px;text-align:left;font-size:12px;">承租人</th><th style="padding:8px;text-align:left;font-size:12px;">社區</th><th style="padding:8px;text-align:left;font-size:12px;">租期</th><th style="padding:8px;text-align:left;font-size:12px;">租金/下期</th><th style="padding:8px;text-align:left;font-size:12px;">連結</th><th style="padding:8px;text-align:left;font-size:12px;">對帳</th></tr>'
+  var th = '<tr style="background:#FAF8F4;">' +
+    sortTh('tenant', '承租人') +
+    sortTh('room', '房號') +
+    sortTh('title', '社區') +
+    sortTh('end', '租期') +
+    sortTh('rent', '租金/下期') +
+    '<th style="padding:8px;text-align:left;font-size:12px;">連結</th><th style="padding:8px;text-align:left;font-size:12px;">對帳</th></tr>'
 
   var groupsHtml = order.map(function(owner, gi) {
     var items = groups[owner]
@@ -6423,11 +6463,8 @@ function renderLeaseList() {
       tabBtn('ended', '已終止', counts.ended, '#888') +
     '</div>' +
     '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">' +
-      '<input id="leaseSearchInput" value="' + esc(LEASE_SEARCH) + '" placeholder="🔍 搜尋承租人／社區／房東" oninput="LEASE_SEARCH=this.value;clearTimeout(window._leaseSearchT);window._leaseSearchT=setTimeout(function(){var p=document.getElementById(\'leaseSearchInput\');var s=p?p.selectionStart:null;renderLeaseList();var n=document.getElementById(\'leaseSearchInput\');if(n){n.focus();if(s!=null)n.setSelectionRange(s,s);}},250)" style="flex:1;min-width:180px;padding:8px 12px;border:1.5px solid #E5E0D5;border-radius:8px;font-size:13px;">' +
-      '<select onchange="LEASE_SORT=this.value;renderLeaseList()" style="padding:8px 12px;border:1.5px solid #E5E0D5;border-radius:8px;font-size:13px;background:#fff;">' +
-        [['tenant','承租人 A→Z'],['title','社區 A→Z'],['rentDesc','租金高→低'],['rentAsc','租金低→高'],['endAsc','到期日近→遠'],['nextRent','下期繳租近→遠']]
-          .map(function(o){ return '<option value="' + o[0] + '"' + (LEASE_SORT===o[0]?' selected':'') + '>排序：' + o[1] + '</option>' }).join('') +
-      '</select>' +
+      '<input id="leaseSearchInput" value="' + esc(LEASE_SEARCH) + '" placeholder="🔍 搜尋承租人／房號／社區／房東" oninput="LEASE_SEARCH=this.value;clearTimeout(window._leaseSearchT);window._leaseSearchT=setTimeout(function(){var p=document.getElementById(\'leaseSearchInput\');var s=p?p.selectionStart:null;renderLeaseList();var n=document.getElementById(\'leaseSearchInput\');if(n){n.focus();if(s!=null)n.setSelectionRange(s,s);}},250)" style="flex:1;min-width:180px;padding:8px 12px;border:1.5px solid #E5E0D5;border-radius:8px;font-size:13px;">' +
+      '<span style="font-size:12px;color:#888;white-space:nowrap;">點表頭箭頭可排序</span>' +
       '<span style="font-size:12px;color:#888;white-space:nowrap;">共 ' + shownCount + ' 筆</span>' +
     '</div>' +
     groupsHtml +
