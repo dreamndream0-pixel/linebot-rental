@@ -6398,11 +6398,17 @@ async function showLeaseList() {
 function renderLeaseList() {
   var box = document.getElementById('managedReportBox')
   var d = MANAGED.leaseList
-  var counts = { active: d.active.length, expiring: d.expiring.length, expired: d.expired.length, ended: d.ended.length }
+  var counts = {
+    active: (d.active || []).length,
+    rentDueSoon: (d.rentDueSoon || []).length,
+    expiring: (d.expiring || []).length,
+    expired: (d.expired || []).length,
+    ended: (d.ended || []).length
+  }
 
   function tabBtn(key, label, count, color) {
     var active = LEASE_TAB === key
-    return '<button class="spin-btn" onclick="btnLoad(this, function(){ LEASE_TAB=\'' + key + '\'; return renderLeaseList() })" style="padding:8px 16px;border:none;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;background:' + (active ? color : '#EEE') + ';color:' + (active ? '#fff' : '#888') + ';">' + label + ' ' + count + '</button>'
+    return '<button class="spin-btn" onclick="btnLoad(this, function(){ LEASE_TAB=\'' + key + '\'; if(LEASE_TAB===\'rentDueSoon\'){ LEASE_SORT=\'nextRent\'; LEASE_SORT_DIR=\'asc\'; } return renderLeaseList() })" style="padding:8px 16px;border:none;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;background:' + (active ? color : '#EEE') + ';color:' + (active ? '#fff' : '#888') + ';">' + label + ' ' + count + '</button>'
   }
   function fmt(dt) { return dt ? new Date(dt).toLocaleDateString('zh-TW') : '—' }
   function sortTh(key, label) {
@@ -6419,6 +6425,10 @@ function renderLeaseList() {
     if (l.daysToEnd != null && l.status === 'EXPIRING') endInfo += ' <span style="color:#E5A33C;font-size:11px;">即將釋出·' + l.daysToEnd + '天</span>'
     if (l.status === 'EXPIRED') endInfo += ' <span style="color:#C0524A;font-size:11px;">已過期</span>'
     var nextRent = l.nextRentDate ? new Date(l.nextRentDate).toLocaleDateString('zh-TW') : '—'
+    var rentHint = ''
+    if (l.daysToRent != null) {
+      rentHint = l.daysToRent <= 0 ? ' · 今天繳租' : ' · ' + l.daysToRent + '天後繳租'
+    }
     var propLink = l.propertyId
       ? '<a href="' + (DATA.siteUrl || '') + '/property/' + l.propertyId + '" target="_blank" style="color:#4A6741;font-size:12px;">🔗 房源頁</a>'
       : '<span style="font-size:12px;color:#bbb;">房源未連結</span>'
@@ -6433,7 +6443,7 @@ function renderLeaseList() {
       '<td style="padding:8px;font-size:13px;color:#555;">' + esc(l.roomLabel || '—') + '</td>' +
       '<td style="padding:8px;font-size:13px;">' + esc(l.managedTitle) + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + fmt(l.leaseStart) + '<br>~ ' + endInfo + '</td>' +
-      '<td style="padding:8px;font-size:13px;">NT$ ' + Number(l.rent).toLocaleString() + '<br><span style="font-size:11px;color:#999;">下期 ' + nextRent + '</span></td>' +
+      '<td style="padding:8px;font-size:13px;">NT$ ' + Number(l.rent).toLocaleString() + '<br><span style="font-size:11px;color:#999;">下期 ' + nextRent + rentHint + '</span></td>' +
       '<td style="padding:8px;">' + propLink + '<br>' + lineBadge + '</td>' +
       '<td style="padding:8px;"><button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;" onclick="btnLoad(this, function(){ return openLeaseLedger(\'' + l.id + '\') })">對帳</button></td>' +
     '</tr>'
@@ -6473,6 +6483,7 @@ function renderLeaseList() {
     '</div>' +
     '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">' +
       tabBtn('active', '承租中', counts.active, '#4A8A4A') +
+      tabBtn('rentDueSoon', '即將繳費租金', counts.rentDueSoon, '#7A8F45') +
       tabBtn('expiring', '即將到期', counts.expiring, '#E5A33C') +
       tabBtn('expired', '已到期', counts.expired, '#C0524A') +
       tabBtn('ended', '已終止', counts.ended, '#888') +

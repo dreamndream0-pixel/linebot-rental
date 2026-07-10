@@ -797,6 +797,8 @@ router.get('/admin/api/managed-leases', async (req, res) => {
     })
 
     const now = new Date()
+    const rentDueLimit = new Date(now)
+    rentDueLimit.setDate(rentDueLimit.getDate() + 7)
     const result = leases.map(l => {
       let computedStatus = l.status
       let daysToEnd = null
@@ -809,10 +811,12 @@ router.get('/admin/api/managed-leases', async (req, res) => {
       }
       // 計算下期收租日
       let nextRentDate = null
+      let daysToRent = null
       if (l.status === 'ACTIVE' && l.rentPayDay) {
         const d = new Date(now.getFullYear(), now.getMonth(), l.rentPayDay)
         if (d < now) d.setMonth(d.getMonth() + 1)
         nextRentDate = d
+        daysToRent = Math.ceil((d - now) / 86400000)
       }
       return {
         id: l.id,
@@ -833,6 +837,7 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         lineBound: !!l.lineUserId,
         rentPayDay: l.rentPayDay,
         nextRentDate,
+        daysToRent,
         managedTitle: l.managedProperty ? l.managedProperty.title : '未連結物業',
         managedId: l.managedProperty ? l.managedProperty.id : '',
         ownerName: l.managedProperty ? l.managedProperty.ownerName : '（未填房東）',
@@ -841,6 +846,7 @@ router.get('/admin/api/managed-leases', async (req, res) => {
 
     res.json({
       active: result.filter(r => r.status === 'ACTIVE'),
+      rentDueSoon: result.filter(r => r.status === 'ACTIVE' && r.nextRentDate && new Date(r.nextRentDate) <= rentDueLimit),
       expiring: result.filter(r => r.status === 'EXPIRING'),
       expired: result.filter(r => r.status === 'EXPIRED'),
       ended: result.filter(r => r.status === 'ENDED'),
