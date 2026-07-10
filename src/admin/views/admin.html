@@ -5767,12 +5767,25 @@ async function syncRagic() {
   // 都沒同步進去時，跳出診斷讓房東知道卡在哪
   if ((data.created + data.updated) === 0) {
     var lines = []
-    lines.push('Ragic 抓到「承租中」' + data.total + ' 筆，但 0 筆寫入。原因：')
-    if (data.total === 0) lines.push('• Ragic 沒有「承租狀態=承租中」的資料（或欄位名稱不符）')
-    if (data.skipNoId) lines.push('• ' + data.skipNoId + ' 筆缺「合約編號」')
-    if (data.skipNoBuilding) lines.push('• ' + data.skipNoBuilding + ' 筆的「社區名稱|房屋號」不在對照表')
-    if (data.skipNoProperty) lines.push('• ' + data.skipNoProperty + ' 筆對照到標題但後台沒有該委託物業')
-    if (data.unmatched && data.unmatched.length) lines.push('\n對不上的建物：\n' + data.unmatched.join('\n'))
+    if (data.total === 0) {
+      lines.push('Ragic 抓到「承租中」0 筆。')
+      lines.push('Ragic 回傳資料列數：' + (data.rawCount || 0) + ' 筆')
+      if (data.statusValues && data.statusValues.length) {
+        lines.push('\n實際「承租狀態」欄位的值有：\n' + data.statusValues.join('、'))
+        lines.push('（程式在找「承租中」，若上面沒有這三個字，就是狀態值不同）')
+      } else {
+        lines.push('\n⚠️ 資料裡找不到「承租狀態」這個欄位。')
+      }
+      if (data.sampleFields && data.sampleFields.length) {
+        lines.push('\nRagic 實際欄位名稱：\n' + data.sampleFields.join('、'))
+      }
+    } else {
+      lines.push('Ragic 抓到「承租中」' + data.total + ' 筆，但 0 筆寫入。原因：')
+      if (data.skipNoId) lines.push('• ' + data.skipNoId + ' 筆缺「合約編號」')
+      if (data.skipNoBuilding) lines.push('• ' + data.skipNoBuilding + ' 筆的「社區名稱|房屋號」不在對照表')
+      if (data.skipNoProperty) lines.push('• ' + data.skipNoProperty + ' 筆對照到標題但後台沒有該委託物業')
+      if (data.unmatched && data.unmatched.length) lines.push('\n對不上的建物：\n' + data.unmatched.join('\n'))
+    }
     if (data.availableTitles && data.availableTitles.length) lines.push('\n後台現有委託物業標題：\n' + data.availableTitles.join('、'))
     alert(lines.join('\n'))
   }

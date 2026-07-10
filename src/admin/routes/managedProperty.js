@@ -1144,7 +1144,20 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
     })
     if (!resp.ok) return res.status(502).json({ error: `Ragic API 錯誤 ${resp.status}` })
     const data = await resp.json()
-    const rows = Object.values(data).filter(r => typeof r === 'object' && r['承租狀態'] === '承租中')
+    const allObjs = Object.values(data).filter(r => r && typeof r === 'object')
+    const rows = allObjs.filter(r => r['承租狀態'] === '承租中')
+
+    // 抓不到承租中資料時，回傳原始欄位診斷，方便對出正確欄位名/狀態值
+    if (rows.length === 0) {
+      return res.json({
+        ok: true, created: 0, updated: 0, total: 0,
+        rawCount: allObjs.length,
+        sampleFields: allObjs[0] ? Object.keys(allObjs[0]) : [],
+        statusValues: [...new Set(allObjs.map(r => r['承租狀態']).filter(v => v !== undefined && v !== ''))].slice(0, 15),
+        availableTitles: (await prisma.managedProperty.findMany({ select: { title: true } })).map(m => m.title),
+        syncAt: new Date().toISOString(),
+      })
+    }
 
     // 取得現有各棟 ID
     const mpList = await prisma.managedProperty.findMany({ select: { id: true, title: true } })
