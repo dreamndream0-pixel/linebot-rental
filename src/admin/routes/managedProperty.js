@@ -1170,6 +1170,18 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
       return res.end()
     }
 
+    // 清除舊版「合約同步」建立的摘要財務記錄（避免與租金/電費明細同步重複計算）
+    try {
+      await prisma.managementRecord.deleteMany({
+        where: {
+          OR: [
+            { AND: [{ description: { startsWith: '[ragic:' } }, { description: { endsWith: ':rent]' } }] },
+            { AND: [{ description: { startsWith: '[ragic:' } }, { description: { endsWith: ':util]' } }] },
+          ],
+        },
+      })
+    } catch (_) {}
+
     // 取得現有各棟 ID
     const mpList = await prisma.managedProperty.findMany({ select: { id: true, title: true } })
     const mpByTitle = Object.fromEntries(mpList.map(m => [m.title, m.id]))
@@ -1215,25 +1227,8 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
         await prisma.lease.create({ data: { ...data, ragicId, status: 'ACTIVE' } })
         created++
       }
-
-      // 財務摘要記錄
-      const rentTotal = parseInt(row['租金總繳金額']) || 0
-      const utilTotal = parseInt(row['預繳電費總額']) || 0
-      const lease = await prisma.lease.findFirst({ where: { ragicId } })
-      if (lease) {
-        if (rentTotal > 0) {
-          const descKey = `[ragic:${ragicId}:rent]`
-          const ex = await prisma.managementRecord.findFirst({ where: { description: descKey } })
-          if (ex) await prisma.managementRecord.update({ where: { id: ex.id }, data: { amount: rentTotal } })
-          else await prisma.managementRecord.create({ data: { managedPropertyId, leaseId: lease.id, type: 'INCOME', category: 'RENT', amount: rentTotal, description: descKey, recordDate: new Date() } })
-        }
-        if (utilTotal > 0) {
-          const descKey = `[ragic:${ragicId}:util]`
-          const ex = await prisma.managementRecord.findFirst({ where: { description: descKey } })
-          if (ex) await prisma.managementRecord.update({ where: { id: ex.id }, data: { amount: utilTotal } })
-          else await prisma.managementRecord.create({ data: { managedPropertyId, leaseId: lease.id, type: 'INCOME', category: 'UTILITY', amount: utilTotal, description: descKey, recordDate: new Date() } })
-        }
-      }
+      // 註：租金/電費的收支明細改由「租金同步」「電費同步」各自建立明細記錄，
+      // 合約同步不再建立摘要財務記錄，避免與明細同步重複計算。
     }
 
     send({
