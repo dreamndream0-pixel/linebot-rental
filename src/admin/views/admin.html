@@ -6324,6 +6324,31 @@ async function loadManagedOpts() {
 
 // 代管清單分頁狀態
 var LEASE_TAB = 'active'
+var LEASE_SORT = 'tenant'   // tenant / title / rentDesc / rentAsc / endAsc / nextRent
+var LEASE_SEARCH = ''
+
+function leaseSortCompare(a, b) {
+  switch (LEASE_SORT) {
+    case 'title':   return String(a.managedTitle || '').localeCompare(String(b.managedTitle || ''), 'zh-Hant')
+    case 'rentDesc':return (b.rent || 0) - (a.rent || 0)
+    case 'rentAsc': return (a.rent || 0) - (b.rent || 0)
+    case 'endAsc':  return new Date(a.leaseEnd || '2999-12-31') - new Date(b.leaseEnd || '2999-12-31')
+    case 'nextRent':return new Date(a.nextRentDate || '2999-12-31') - new Date(b.nextRentDate || '2999-12-31')
+    default:        return String(a.tenantName || '').localeCompare(String(b.tenantName || ''), 'zh-Hant')
+  }
+}
+function applyLeaseFilterSort(list) {
+  var q = LEASE_SEARCH.trim().toLowerCase()
+  var out = q
+    ? list.filter(function(l) {
+        return [l.tenantName, l.managedTitle, l.roomLabel, l.ownerName].some(function(v) {
+          return String(v || '').toLowerCase().indexOf(q) !== -1
+        })
+      })
+    : list.slice()
+  out.sort(leaseSortCompare)
+  return out
+}
 async function showLeaseList() {
   var box = document.getElementById('managedReportBox')
   box.innerHTML = '<div class="empty">載入代管清單中...</div>'
@@ -6365,8 +6390,9 @@ function renderLeaseList() {
     '</tr>'
   }
 
-  // 依房東（屋主）分組
-  var list = d[LEASE_TAB] || []
+  // 依房東（屋主）分組（先套用搜尋與排序）
+  var list = applyLeaseFilterSort(d[LEASE_TAB] || [])
+  var shownCount = list.length
   var groups = {}, order = []
   list.forEach(function(l) { var k = l.ownerName || '（未填房東）'; if (!groups[k]) { groups[k] = []; order.push(k) } groups[k].push(l) })
 
@@ -6390,11 +6416,19 @@ function renderLeaseList() {
       '<h3 style="margin:0;font-size:16px;">📋 代管清單（依房東分類）</h3>' +
       '<button onclick="document.getElementById(\'managedReportBox\').innerHTML=\'\'" style="border:none;background:none;font-size:18px;cursor:pointer;color:#999;">×</button>' +
     '</div>' +
-    '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">' +
+    '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">' +
       tabBtn('active', '承租中', counts.active, '#4A8A4A') +
       tabBtn('expiring', '即將到期', counts.expiring, '#E5A33C') +
       tabBtn('expired', '已到期', counts.expired, '#C0524A') +
       tabBtn('ended', '已終止', counts.ended, '#888') +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">' +
+      '<input id="leaseSearchInput" value="' + esc(LEASE_SEARCH) + '" placeholder="🔍 搜尋承租人／社區／房東" oninput="LEASE_SEARCH=this.value;clearTimeout(window._leaseSearchT);window._leaseSearchT=setTimeout(function(){var p=document.getElementById(\'leaseSearchInput\');var s=p?p.selectionStart:null;renderLeaseList();var n=document.getElementById(\'leaseSearchInput\');if(n){n.focus();if(s!=null)n.setSelectionRange(s,s);}},250)" style="flex:1;min-width:180px;padding:8px 12px;border:1.5px solid #E5E0D5;border-radius:8px;font-size:13px;">' +
+      '<select onchange="LEASE_SORT=this.value;renderLeaseList()" style="padding:8px 12px;border:1.5px solid #E5E0D5;border-radius:8px;font-size:13px;background:#fff;">' +
+        [['tenant','承租人 A→Z'],['title','社區 A→Z'],['rentDesc','租金高→低'],['rentAsc','租金低→高'],['endAsc','到期日近→遠'],['nextRent','下期繳租近→遠']]
+          .map(function(o){ return '<option value="' + o[0] + '"' + (LEASE_SORT===o[0]?' selected':'') + '>排序：' + o[1] + '</option>' }).join('') +
+      '</select>' +
+      '<span style="font-size:12px;color:#888;white-space:nowrap;">共 ' + shownCount + ' 筆</span>' +
     '</div>' +
     groupsHtml +
     '</div>'
@@ -6522,16 +6556,13 @@ async function openLeaseLedger(leaseId) {
   var l = all.filter(function(x){ return x.id === leaseId })[0]
   if (!l) { showToast('❌ 找不到租約'); return }
 
-  var [res, billRes] = await Promise.all([
-    fetch('/admin/api/managed/' + l.managedId + '?key=' + encodeURIComponent(KEY)),
-    fetch('/admin/api/managed/lease/' + leaseId + '/billing?key=' + encodeURIComponent(KEY))
-  ])
-  if (!res.ok || !billRes.ok) { showToast('❌ 載入失敗'); return }
-  var mp = await res.json()
+  var billRes = await fetch('/admin/api/managed/lease/' + leaseId + '/billing?key=' + encodeURIComponent(KEY))
+  if (!billRes.ok) { showToast('❌ 載入失敗'); return }
   var billing = await billRes.json()
   UNLOCKED_ROWS = {}
   _LAST_BILLING = billing
-  var recs = mp.incomes || []
+  // records 由 billing 端點一併回傳（此物業內綁定本租約或未綁定的收支），不再另打 /managed/:id
+  var recs = billing.records || []
   var start = l.leaseStart ? new Date(l.leaseStart) : null
   var end = l.leaseEnd ? new Date(l.leaseEnd) : null
   var inPeriod = recs.filter(function(r){

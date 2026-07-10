@@ -858,7 +858,8 @@ router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
       prisma.rentPayment.findMany({ where: { leaseId: lease.id }, orderBy: { periodStart: 'asc' } }),
     ])
     const rentSchedule = buildRentSchedule(lease, rentPayments)
-    res.json({ lease, rentSchedule, utilityReadings })
+    // 一併回傳收支記錄，前端就不必再打較重的 /managed/:id（大幅加快對帳開啟）
+    res.json({ lease, rentSchedule, utilityReadings, records })
   } catch (e) {
     console.error('租約帳務載入失敗:', e.message)
     res.status(500).json({ error: e.message })
