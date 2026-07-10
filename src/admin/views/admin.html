@@ -5770,6 +5770,11 @@ async function syncRagic() {
     if (data.total === 0) {
       lines.push('Ragic 抓到「承租中」0 筆。')
       lines.push('Ragic 回傳資料列數：' + (data.rawCount || 0) + ' 筆')
+      if (data.httpStatus) lines.push('⚠️ Ragic API 回應狀態碼：' + data.httpStatus + '（非 200，多為金鑰或網址錯誤）')
+      if (data.rawCount === 0 && data.rawText) {
+        lines.push('\nRagic 原始回應（前段）：\n' + data.rawText)
+      }
+      if (data.topLevel && data.rawCount === 0) lines.push('\n回應最上層結構：' + (Array.isArray(data.topLevel) ? data.topLevel.join('、') : data.topLevel))
       if (data.statusValues && data.statusValues.length) {
         lines.push('\n實際「承租狀態」欄位的值有：\n' + data.statusValues.join('、'))
         lines.push('（程式在找「承租中」，若上面沒有這三個字，就是狀態值不同）')

@@ -1139,19 +1139,24 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
   if (!apiKey || !formUrl) return res.status(400).json({ error: 'RAGIC_API_KEY 或 RAGIC_FORM_URL 未設定' })
 
   try {
-    const resp = await fetch(`${formUrl}?api_key=${apiKey}&limit=1000`, {
-      headers: { 'Content-Type': 'application/json' }
-    })
-    if (!resp.ok) return res.status(502).json({ error: `Ragic API 錯誤 ${resp.status}` })
-    const data = await resp.json()
-    const allObjs = Object.values(data).filter(r => r && typeof r === 'object')
+    const reqUrl = `${formUrl}${formUrl.includes('?') ? '&' : '?'}api_key=${apiKey}&limit=1000`
+    const resp = await fetch(reqUrl, { headers: { 'Content-Type': 'application/json' } })
+    const rawText = await resp.text()
+    if (!resp.ok) {
+      return res.json({ ok: true, created: 0, updated: 0, total: 0, rawCount: 0, httpStatus: resp.status, rawText: rawText.slice(0, 600), syncAt: new Date().toISOString() })
+    }
+    let data = null
+    try { data = JSON.parse(rawText) } catch (_) {}
+    const allObjs = data ? Object.values(data).filter(r => r && typeof r === 'object') : []
     const rows = allObjs.filter(r => r['承租狀態'] === '承租中')
 
-    // 抓不到承租中資料時，回傳原始欄位診斷，方便對出正確欄位名/狀態值
+    // 抓不到承租中資料時，回傳原始診斷（原始回應／欄位名／狀態值），方便定位問題
     if (rows.length === 0) {
       return res.json({
         ok: true, created: 0, updated: 0, total: 0,
         rawCount: allObjs.length,
+        topLevel: data && !Array.isArray(data) ? Object.keys(data).slice(0, 20) : (Array.isArray(data) ? '陣列(' + data.length + ')' : String(data)),
+        rawText: allObjs.length === 0 ? rawText.slice(0, 600) : undefined,
         sampleFields: allObjs[0] ? Object.keys(allObjs[0]) : [],
         statusValues: [...new Set(allObjs.map(r => r['承租狀態']).filter(v => v !== undefined && v !== ''))].slice(0, 15),
         availableTitles: (await prisma.managedProperty.findMany({ select: { title: true } })).map(m => m.title),
