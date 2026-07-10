@@ -1151,12 +1151,15 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
     const mpByTitle = Object.fromEntries(mpList.map(m => [m.title, m.id]))
 
     let created = 0, updated = 0
+    let skipNoId = 0, skipNoBuilding = 0, skipNoProperty = 0
+    const unmatched = new Set()
     for (const row of rows) {
-      const ragicId = row['合約編號']; if (!ragicId) continue
+      const ragicId = row['合約編號']; if (!ragicId) { skipNoId++; continue }
       const buildingKey = `${row['社區名稱']}|${row['房屋號']}`
       const title = RAGIC_BUILDING_TITLES[buildingKey]
-      const managedPropertyId = title && mpByTitle[title]
-      if (!managedPropertyId) continue
+      if (!title) { skipNoBuilding++; unmatched.add(buildingKey); continue }
+      const managedPropertyId = mpByTitle[title]
+      if (!managedPropertyId) { skipNoProperty++; unmatched.add(buildingKey + ' → ' + title + '（後台無此委託物業）'); continue }
 
       const data = {
         tenantName: row['承租人'] || '',
@@ -1206,7 +1209,13 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
       }
     }
 
-    res.json({ ok: true, created, updated, total: rows.length, syncAt: new Date().toISOString() })
+    res.json({
+      ok: true, created, updated, total: rows.length,
+      skipNoId, skipNoBuilding, skipNoProperty,
+      unmatched: [...unmatched].slice(0, 30),
+      availableTitles: mpList.map(m => m.title),
+      syncAt: new Date().toISOString(),
+    })
   } catch (e) {
     console.error('Ragic 同步失敗:', e.message)
     res.status(500).json({ error: e.message })
