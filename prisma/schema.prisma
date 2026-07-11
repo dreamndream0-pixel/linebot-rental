@@ -692,6 +692,7 @@ model RentPayment {
   payMethod   String?
   receiptUrl  String?
   note        String?
+  settled     Boolean  @default(false)   // 已結清（Ragic 已收款；含折扣時實收<應繳也算清）
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

@@ -106,6 +106,12 @@ prisma.$connect()
       console.error('⚠️ 租客最後留言欄位確認失敗:', e.message)
     }
     try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE rent_payments ADD COLUMN IF NOT EXISTS "settled" BOOLEAN NOT NULL DEFAULT false`)
+      console.log('✅ 租金已結清欄位已確認')
+    } catch (e) {
+      console.error('⚠️ 租金已結清欄位確認失敗:', e.message)
+    }
+    try {
       await prisma.$executeRawUnsafe(`ALTER TABLE management_records ADD COLUMN IF NOT EXISTS "leaseId" TEXT`)
       await prisma.$executeRawUnsafe(`ALTER TABLE management_records ADD COLUMN IF NOT EXISTS "payoutId" TEXT`)
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "management_records_leaseId_idx" ON management_records ("leaseId")`)

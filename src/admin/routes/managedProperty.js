@@ -100,8 +100,10 @@ function buildRentSchedule(lease, rentPayments) {
       payMethod: p.payMethod,
       receiptUrl: p.receiptUrl,
       note: p.note,
+      settled: !!p.settled,
       locked: true,
-      unpaid: Math.max(0, (p.amount || 0) - (p.paidAmount || 0)),
+      // 已結清（含折扣時實收<應繳）視為無欠款；否則以應繳−已繳計算
+      unpaid: p.settled ? 0 : Math.max(0, (p.amount || 0) - (p.paidAmount || 0)),
     })
   })
 
@@ -1515,32 +1517,39 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
       })
 
       if (existing) {
-        // 若已付款狀態有更新則同步
-        if (isPaid && paidAmount > 0 && existing.paidAmount === 0) {
-          // 建立對應財務記錄
-          await prisma.managementRecord.create({
-            data: {
-              managedPropertyId: lease.managedPropertyId,
-              leaseId: lease.id,
-              type: 'INCOME',
-              category,
-              amount,
-              description: `[ragic-rent:${ragicId}] ${desc}`,
-              recordDate: paidDate || dueDate,
-            }
-          })
+        const descKey = `[ragic-rent:${ragicId}] ${desc}`
+        if (isPaid && paidAmount > 0) {
+          // 冪等校正：收入記錄以「已繳金額」實收為準（含折扣時實收<應繳），並標記已結清
+          const rec = await prisma.managementRecord.findFirst({ where: { description: descKey } })
+          if (rec) {
+            if (rec.amount !== paidAmount) await prisma.managementRecord.update({ where: { id: rec.id }, data: { amount: paidAmount } })
+          } else {
+            await prisma.managementRecord.create({
+              data: {
+                managedPropertyId: lease.managedPropertyId,
+                leaseId: lease.id,
+                type: 'INCOME',
+                category,
+                amount: paidAmount,
+                description: descKey,
+                recordDate: paidDate || dueDate,
+              }
+            })
+          }
           await prisma.rentPayment.update({
             where: { id: existing.id },
-            data: { paidAmount, paidDate, payMethod, note }
+            data: { paidAmount, paidDate, payMethod, note, settled: true }
           })
           updated++
         } else {
+          // 未收款：確保未標記已結清（收支不列入）
+          if (existing.settled) await prisma.rentPayment.update({ where: { id: existing.id }, data: { settled: false } })
           skipped++
         }
         continue
       }
 
-      // 新記錄：已付才建財務流水
+      // 新記錄：已付才建財務流水（收入以「已繳金額」實收為準）
       let recordId = null
       if (isPaid && paidAmount > 0) {
         const rec = await prisma.managementRecord.create({
@@ -1549,7 +1558,7 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
             leaseId: lease.id,
             type: 'INCOME',
             category,
-            amount,
+            amount: paidAmount,
             description: `[ragic-rent:${ragicId}] ${desc}`,
             recordDate: paidDate || dueDate,
           }
@@ -1569,6 +1578,7 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
           paidDate,
           payMethod,
           note,
+          settled: isPaid,
         }
       })
       created++
