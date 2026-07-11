@@ -6344,6 +6344,7 @@ var LEASE_TAB = 'active'
 var LEASE_SORT = 'tenant'   // tenant / room / title / rent / end / nextRent
 var LEASE_SORT_DIR = 'asc'
 var LEASE_SEARCH = ''
+var LEASE_DUE = ''          // '' / '7' / '14' / '30'：只看即將繳費 N 天內
 
 function leaseSortCompare(a, b) {
   var dir = LEASE_SORT_DIR === 'desc' ? -1 : 1
@@ -6379,6 +6380,11 @@ function applyLeaseFilterSort(list) {
         })
       })
     : list.slice()
+  // 即將繳費篩選：保留下期繳租在 N 天內（含已逾期）的租約
+  if (LEASE_DUE) {
+    var n = parseInt(LEASE_DUE)
+    out = out.filter(function(l) { return l.daysToRent != null && l.daysToRent <= n })
+  }
   out.sort(leaseSortCompare)
   return out
 }
@@ -6496,6 +6502,10 @@ function renderLeaseList() {
     '</div>' +
     '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">' +
       '<input id="leaseSearchInput" value="' + esc(LEASE_SEARCH) + '" placeholder="🔍 搜尋承租人／房號／社區／房東" oninput="LEASE_SEARCH=this.value;clearTimeout(window._leaseSearchT);window._leaseSearchT=setTimeout(function(){var p=document.getElementById(\'leaseSearchInput\');var s=p?p.selectionStart:null;renderLeaseList();var n=document.getElementById(\'leaseSearchInput\');if(n){n.focus();if(s!=null)n.setSelectionRange(s,s);}},250)" style="flex:1;min-width:180px;padding:8px 12px;border:1.5px solid #E5E0D5;border-radius:8px;font-size:13px;">' +
+      '<select onchange="LEASE_DUE=this.value;renderLeaseList()" style="padding:8px 12px;border:1.5px solid #E5E0D5;border-radius:8px;font-size:13px;background:#fff;">' +
+        [['','即將繳費：全部'],['7','即將繳費：一週內'],['14','即將繳費：兩週內'],['30','即將繳費：一個月內']]
+          .map(function(o){ return '<option value="' + o[0] + '"' + (LEASE_DUE===o[0]?' selected':'') + '>' + o[1] + '</option>' }).join('') +
+      '</select>' +
       '<span style="font-size:12px;color:#888;white-space:nowrap;">點表頭箭頭可排序</span>' +
       '<span style="font-size:12px;color:#888;white-space:nowrap;">共 ' + shownCount + ' 筆</span>' +
     '</div>' +
