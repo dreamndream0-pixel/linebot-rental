@@ -1497,9 +1497,33 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
 
     const rows = Object.values(data).filter(r => typeof r === 'object' && r['合約編號'])
 
-    // 預載對照表：把每筆 3 次 DB 查詢（租約／繳款／收入記錄）降到迴圈前 3 次
+    // 預載租約
     const allLeases = await prisma.lease.findMany({ select: { id: true, ragicId: true, managedPropertyId: true } })
     const leaseByRagic = {}; allLeases.forEach(l => { if (l.ragicId) leaseByRagic[l.ragicId] = l })
+
+    // Ragic 為租金唯一來源：先清除這些租約中「非 Ragic 來源」的租金/車位收入與其繳款記錄
+    // （手動在對帳頁儲存、或舊資料造成的重複，例如「租金 2026-…（匯款）」）
+    const ragicLeaseIds = [...new Set(rows.map(r => (leaseByRagic[r['合約編號']] || {}).id).filter(Boolean))]
+    let cleaned = 0
+    if (ragicLeaseIds.length) {
+      const manualRecs = await prisma.managementRecord.findMany({
+        where: {
+          leaseId: { in: ragicLeaseIds },
+          type: 'INCOME',
+          category: { in: ['RENT', 'PARKING'] },
+          NOT: { description: { startsWith: '[ragic-rent:' } },
+        },
+        select: { id: true },
+      })
+      const manualIds = manualRecs.map(r => r.id)
+      if (manualIds.length) {
+        await prisma.rentPayment.deleteMany({ where: { recordId: { in: manualIds } } })
+        const del = await prisma.managementRecord.deleteMany({ where: { id: { in: manualIds } } })
+        cleaned = del.count || manualIds.length
+      }
+    }
+
+    // 預載對照表（清理後）：把每筆繳款／收入記錄查詢降到迴圈前一次
     const leaseIds = allLeases.map(l => l.id)
     const payKey = (leaseId, periodStart, amount) => leaseId + '|' + new Date(periodStart).toISOString() + '|' + amount
     const paymentMap = {}
@@ -1610,7 +1634,7 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
       created++
     }
 
-    send({ type: 'done', ok: true, created, updated, skipped })
+    send({ type: 'done', ok: true, created, updated, skipped, cleaned })
     res.end()
   } catch (e) {
     console.error('Ragic 租金同步失敗:', e.message)

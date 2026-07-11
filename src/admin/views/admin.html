@@ -5883,7 +5883,7 @@ async function syncRagicRent() {
   ragicProgressHide()
   if (!data) { showToast('❌ 同步未完成，請重試'); return }
   if (data.ok === false) { showToast('❌ 租金同步失敗：' + (data.error || '')); return }
-  showToast('✅ 租金同步完成！新增 ' + data.created + ' 筆 / 更新已付款 ' + data.updated + ' 筆')
+  showToast('✅ 租金同步完成！新增 ' + data.created + ' 筆 / 更新 ' + data.updated + ' 筆' + (data.cleaned ? ' / 清除重複 ' + data.cleaned + ' 筆' : ''))
 }
 
 // ── 收支報表 ───────────────────────────────────────────────────
