@@ -6429,6 +6429,7 @@ function renderLeaseList() {
     if (l.daysToRent != null) {
       rentHint = l.daysToRent <= 0 ? ' · 今天繳租' : ' · ' + l.daysToRent + '天後繳租'
     }
+    var displayRent = l.nextRentAmount || l.rent
     var propLink = l.propertyId
       ? '<a href="' + (DATA.siteUrl || '') + '/property/' + l.propertyId + '" target="_blank" style="color:#4A6741;font-size:12px;">🔗 房源頁</a>'
       : '<span style="font-size:12px;color:#bbb;">房源未連結</span>'
@@ -6443,7 +6444,7 @@ function renderLeaseList() {
       '<td style="padding:8px;font-size:13px;color:#555;">' + esc(l.roomLabel || '—') + '</td>' +
       '<td style="padding:8px;font-size:13px;">' + esc(l.managedTitle) + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + fmt(l.leaseStart) + '<br>~ ' + endInfo + '</td>' +
-      '<td style="padding:8px;font-size:13px;">NT$ ' + Number(l.rent).toLocaleString() + '<br><span style="font-size:11px;color:#999;">下期 ' + nextRent + rentHint + '</span></td>' +
+      '<td style="padding:8px;font-size:13px;">NT$ ' + Number(displayRent).toLocaleString() + '<br><span style="font-size:11px;color:#999;">下期 ' + nextRent + rentHint + '</span></td>' +
       '<td style="padding:8px;">' + propLink + '<br>' + lineBadge + '</td>' +
       '<td style="padding:8px;"><button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;" onclick="btnLoad(this, function(){ return openLeaseLedger(\'' + l.id + '\') })">對帳</button></td>' +
     '</tr>'

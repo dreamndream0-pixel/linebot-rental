@@ -139,6 +139,13 @@ function buildRentSchedule(lease, rentPayments) {
   return rows
 }
 
+function nextUnpaidRentRow(lease, today = new Date()) {
+  const todayStart = startOfDay(today)
+  return buildRentSchedule(lease, lease.rentPayments || [])
+    .filter(r => (r.unpaid || 0) > 0 && r.dueDate && startOfDay(r.dueDate) >= todayStart)
+    .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0] || null
+}
+
 function assertPeriod(period) {
   return typeof period === 'string' && /^\d{4}-\d{2}$/.test(period)
 }
@@ -792,12 +799,16 @@ router.get('/admin/api/managed-leases', async (req, res) => {
     }
     const leases = await prisma.lease.findMany({
       where,
-      include: { managedProperty: { select: { id: true, title: true, ownerName: true } } },
+      include: {
+        managedProperty: { select: { id: true, title: true, ownerName: true } },
+        rentPayments: { orderBy: { periodStart: 'asc' } },
+      },
       orderBy: { leaseEnd: 'asc' },
     })
 
     const now = new Date()
-    const rentDueLimit = new Date(now)
+    const today = startOfDay(now)
+    const rentDueLimit = startOfDay(now)
     rentDueLimit.setDate(rentDueLimit.getDate() + 7)
     const result = leases.map(l => {
       let computedStatus = l.status
@@ -809,14 +820,15 @@ router.get('/admin/api/managed-leases', async (req, res) => {
           else if (daysToEnd <= 30) computedStatus = 'EXPIRING'
         }
       }
-      // 計算下期收租日
+      // 用租金明細排程計算下一筆未繳租金，避免繳費週期/合約起日/已繳紀錄算錯。
+      const nextRent = l.status === 'ACTIVE' ? nextUnpaidRentRow(l, now) : null
       let nextRentDate = null
       let daysToRent = null
-      if (l.status === 'ACTIVE' && l.rentPayDay) {
-        const d = new Date(now.getFullYear(), now.getMonth(), l.rentPayDay)
-        if (d < now) d.setMonth(d.getMonth() + 1)
-        nextRentDate = d
-        daysToRent = Math.ceil((d - now) / 86400000)
+      let nextRentAmount = null
+      if (nextRent) {
+        nextRentDate = nextRent.dueDate
+        nextRentAmount = nextRent.amount
+        daysToRent = Math.ceil((startOfDay(nextRentDate) - today) / 86400000)
       }
       return {
         id: l.id,
@@ -837,6 +849,7 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         lineBound: !!l.lineUserId,
         rentPayDay: l.rentPayDay,
         nextRentDate,
+        nextRentAmount,
         daysToRent,
         managedTitle: l.managedProperty ? l.managedProperty.title : '未連結物業',
         managedId: l.managedProperty ? l.managedProperty.id : '',
@@ -846,7 +859,7 @@ router.get('/admin/api/managed-leases', async (req, res) => {
 
     res.json({
       active: result.filter(r => r.status === 'ACTIVE'),
-      rentDueSoon: result.filter(r => r.status === 'ACTIVE' && r.nextRentDate && new Date(r.nextRentDate) <= rentDueLimit),
+      rentDueSoon: result.filter(r => r.status === 'ACTIVE' && r.nextRentDate && startOfDay(r.nextRentDate) <= rentDueLimit),
       expiring: result.filter(r => r.status === 'EXPIRING'),
       expired: result.filter(r => r.status === 'EXPIRED'),
       ended: result.filter(r => r.status === 'ENDED'),
