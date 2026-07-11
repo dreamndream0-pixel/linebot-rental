@@ -5360,35 +5360,40 @@ async function renderManagedTab() {
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#5A7D8C;" onclick="btnLoad(this, showLeaseList)">📋 代管清單</button>' +
       '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#6B7F6E;" onclick="btnLoad(this, showManagedReport)">📊 收支報表</button>' +
       (feat('ragic') ? (
-        '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#8B6A42;margin-left:auto;" onclick="btnLoad(this, syncRagic)">🔄 合約同步</button>' +
-        '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#4A7A6A;" onclick="btnLoad(this, syncRagicUtility)">⚡ 電費同步</button>' +
-        '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#7A5A3A;" onclick="btnLoad(this, syncRagicRent)">💰 租金同步</button>'
+        '<button class="btn ragic-sync-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#8B6A42;margin-left:auto;position:relative;overflow:hidden;min-width:120px;" onclick="ragicSyncBtn(this,\'contract\')">🔄 合約同步</button>' +
+        '<button class="btn ragic-sync-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#4A7A6A;position:relative;overflow:hidden;min-width:120px;" onclick="ragicSyncBtn(this,\'utility\')">⚡ 電費同步</button>' +
+        '<button class="btn ragic-sync-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#7A5A3A;position:relative;overflow:hidden;min-width:120px;" onclick="ragicSyncBtn(this,\'rent\')">💰 租金同步</button>'
       ) : '') +
-    '</div>' +
-    '<div id="ragicProgress" style="display:none;margin-bottom:16px;background:#FAF8F4;border:1px solid #E5E0D5;border-radius:12px;padding:14px 16px;">' +
-      '<div id="ragicProgressLabel" style="font-size:13px;color:var(--charcoal);font-weight:700;margin-bottom:8px;">準備中…</div>' +
-      '<div style="height:14px;background:var(--oat-mid);border-radius:8px;overflow:hidden;">' +
-        '<div id="ragicProgressFill" style="height:100%;width:0%;background:linear-gradient(90deg,#8B6A42,#4A7A6A);border-radius:8px;transition:width .25s ease;"></div>' +
-      '</div>' +
     '</div>' +
     '<div id="managedReportBox"></div>'
 }
 
-// ── Ragic 同步進度條 ─────────────────────────────────────────────
+// ── Ragic 同步：進度直接顯示在按鈕上 ─────────────────────────────
+var _ragicBtn = null
+function ragicSyncBtn(btn, type) {
+  if (btn.classList.contains('ragic-syncing')) return
+  _ragicBtn = btn
+  var fn = type === 'contract' ? syncRagic : type === 'utility' ? syncRagicUtility : syncRagicRent
+  Promise.resolve(fn()).catch(function(){})
+}
 function ragicProgressShow(label) {
-  var box = document.getElementById('ragicProgress'); if (!box) return
-  box.style.display = 'block'
-  var l = document.getElementById('ragicProgressLabel'); if (l) l.textContent = label || '準備中…'
-  var f = document.getElementById('ragicProgressFill'); if (f) f.style.width = '0%'
+  var b = _ragicBtn; if (!b) return
+  if (b.dataset.orig === undefined) b.dataset.orig = b.textContent
+  b.classList.add('ragic-syncing')
+  b.innerHTML = '<span class="ragic-fill" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:rgba(255,255,255,.32);transition:width .2s ease;"></span>' +
+                '<span class="ragic-txt" style="position:relative;">' + (label || '同步中…') + '</span>'
 }
 function ragicProgressSet(current, total) {
+  var b = _ragicBtn; if (!b) return
   var pct = total ? Math.round(current / total * 100) : 0
-  var f = document.getElementById('ragicProgressFill'); if (f) f.style.width = pct + '%'
-  var l = document.getElementById('ragicProgressLabel')
-  if (l) l.textContent = '同步中… ' + current + ' / ' + total + '　(' + pct + '%)'
+  var fill = b.querySelector('.ragic-fill'); if (fill) fill.style.width = pct + '%'
+  var txt = b.querySelector('.ragic-txt'); if (txt) txt.textContent = current + '/' + total + '　' + pct + '%'
 }
 function ragicProgressHide() {
-  var box = document.getElementById('ragicProgress'); if (box) box.style.display = 'none'
+  var b = _ragicBtn; if (!b) return
+  b.classList.remove('ragic-syncing')
+  if (b.dataset.orig !== undefined) { b.textContent = b.dataset.orig; delete b.dataset.orig }
+  _ragicBtn = null
 }
 
 // 讀取 NDJSON 串流，逐行解析進度，回傳最後的 done 物件

@@ -1260,19 +1260,23 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
       })
     } catch (_) {}
 
-    // 取得現有各棟 ID
+    // 取得現有各棟 ID + 預載既有租約（避免每筆再查一次 lease）
     const mpList = await prisma.managedProperty.findMany({ select: { id: true, title: true, landlordId: true } })
     const mpByTitle = Object.fromEntries(mpList.map(m => [m.title, m]))
+    const leaseByRagic = {}
+    ;(await prisma.lease.findMany({ select: { id: true, ragicId: true } }))
+      .forEach(l => { if (l.ragicId) leaseByRagic[l.ragicId] = l })
 
     let created = 0, updated = 0
     let skipNoId = 0, skipNoBuilding = 0, skipNoProperty = 0
     let linkedLine = 0, rawLine = 0
     const unmatched = new Set()
     const lineTenantCache = {}
+    const step = Math.max(1, Math.floor(rows.length / 100))
     send({ type: 'start', total: rows.length })
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
-      send({ type: 'progress', current: i + 1, total: rows.length })
+      if (i % step === 0 || i === rows.length - 1) send({ type: 'progress', current: i + 1, total: rows.length })
       const ragicId = row['合約編號']; if (!ragicId) { skipNoId++; continue }
       const buildingKey = `${row['社區名稱']}|${row['房屋號']}`
       const title = RAGIC_BUILDING_TITLES[buildingKey]
@@ -1304,12 +1308,13 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
         managedPropertyId: managedProperty.id,
       }
 
-      const existing = await prisma.lease.findFirst({ where: { ragicId } })
+      const existing = leaseByRagic[ragicId]
       if (existing) {
         await prisma.lease.update({ where: { id: existing.id }, data })
         updated++
       } else {
-        await prisma.lease.create({ data: { ...data, ragicId, status: 'ACTIVE' } })
+        const nl = await prisma.lease.create({ data: { ...data, ragicId, status: 'ACTIVE' } })
+        leaseByRagic[ragicId] = nl
         created++
       }
       // 註：租金/電費的收支明細改由「租金同步」「電費同步」各自建立明細記錄，
@@ -1373,12 +1378,23 @@ router.post('/admin/api/ragic/sync-utility', async (req, res) => {
 
     let readingCreated = 0, readingSkipped = 0, meterUpdated = 0
 
+    // 預載對照表：租約（by ragicId）＋既有抄表（避免每筆再查）
+    const leaseByRagic = {}
+    ;(await prisma.lease.findMany({ select: { id: true, ragicId: true } }))
+      .forEach(l => { if (l.ragicId) leaseByRagic[l.ragicId] = l })
+    const readingKey = (leaseId, startDegree, startDate) => leaseId + '|' + startDegree + '|' + new Date(startDate).toISOString()
+    const readingSet = new Set()
+    ;(await prisma.utilityReading.findMany({ select: { leaseId: true, startDegree: true, startDate: true } }))
+      .forEach(r => { readingSet.add(readingKey(r.leaseId, r.startDegree, r.startDate)) })
+
     const leaseGroups = Object.entries(byLease)
+    const stepU = Math.max(1, Math.floor(leaseGroups.length / 100))
     send({ type: 'start', total: leaseGroups.length })
     let _gi = 0
     for (const [ragicId, leaseRows] of leaseGroups) {
-      send({ type: 'progress', current: ++_gi, total: leaseGroups.length })
-      const leaseRes = await prisma.lease.findFirst({ where: { ragicId } })
+      _gi++
+      if (_gi % stepU === 0 || _gi === leaseGroups.length) send({ type: 'progress', current: _gi, total: leaseGroups.length })
+      const leaseRes = leaseByRagic[ragicId]
       if (!leaseRes) continue
       const leaseId = leaseRes.id
 
@@ -1405,11 +1421,10 @@ router.post('/admin/api/ragic/sync-utility', async (req, res) => {
 
         if (!endDate || !startDate || !endDegree) continue
 
-        // 防重複
-        const ex = await prisma.utilityReading.findFirst({
-          where: { leaseId, startDegree, startDate: new Date(startDate) }
-        })
-        if (ex) { readingSkipped++; continue }
+        // 防重複（用預載的集合，不再逐筆查 DB）
+        const rk = readingKey(leaseId, startDegree, startDate)
+        if (readingSet.has(rk)) { readingSkipped++; continue }
+        readingSet.add(rk)
 
         await prisma.utilityReading.create({
           data: {
@@ -1482,17 +1497,27 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
 
     const rows = Object.values(data).filter(r => typeof r === 'object' && r['合約編號'])
 
+    // 預載對照表：把每筆 3 次 DB 查詢（租約／繳款／收入記錄）降到迴圈前 3 次
+    const allLeases = await prisma.lease.findMany({ select: { id: true, ragicId: true, managedPropertyId: true } })
+    const leaseByRagic = {}; allLeases.forEach(l => { if (l.ragicId) leaseByRagic[l.ragicId] = l })
+    const leaseIds = allLeases.map(l => l.id)
+    const payKey = (leaseId, periodStart, amount) => leaseId + '|' + new Date(periodStart).toISOString() + '|' + amount
+    const paymentMap = {}
+    ;(await prisma.rentPayment.findMany({ where: { leaseId: { in: leaseIds } } }))
+      .forEach(p => { paymentMap[payKey(p.leaseId, p.periodStart, p.amount)] = p })
+    const recordByDesc = {}
+    ;(await prisma.managementRecord.findMany({ where: { description: { startsWith: '[ragic-rent:' } } }))
+      .forEach(r => { recordByDesc[r.description] = r })
+
     let created = 0, updated = 0, skipped = 0
+    const step = Math.max(1, Math.floor(rows.length / 100)) // 進度最多回報約 100 次，降低串流負擔
 
     send({ type: 'start', total: rows.length })
     for (let _i = 0; _i < rows.length; _i++) {
       const row = rows[_i]
-      send({ type: 'progress', current: _i + 1, total: rows.length })
+      if (_i % step === 0 || _i === rows.length - 1) send({ type: 'progress', current: _i + 1, total: rows.length })
       const ragicId = row['合約編號']
-      const lease = await prisma.lease.findFirst({
-        where: { ragicId },
-        select: { id: true, managedPropertyId: true }
-      })
+      const lease = leaseByRagic[ragicId]
       if (!lease) { skipped++; continue }
 
       const desc      = row['說明'] || ''
@@ -1512,15 +1537,13 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
       const note        = [desc, row['備註']].filter(Boolean).join(' | ') || null
       const isPaid      = row['已收款'] === 'Yes'
 
-      const existing = await prisma.rentPayment.findFirst({
-        where: { leaseId: lease.id, periodStart, amount }
-      })
+      const existing = paymentMap[payKey(lease.id, periodStart, amount)]
 
       if (existing) {
         const descKey = `[ragic-rent:${ragicId}] ${desc}`
         if (isPaid && paidAmount > 0) {
           // 冪等校正：收入記錄以「已繳金額」實收為準（含折扣時實收<應繳），並標記已結清
-          const rec = await prisma.managementRecord.findFirst({ where: { description: descKey } })
+          const rec = recordByDesc[descKey]
           if (rec) {
             if (rec.amount !== paidAmount) await prisma.managementRecord.update({ where: { id: rec.id }, data: { amount: paidAmount } })
           } else {
@@ -1552,6 +1575,7 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
       // 新記錄：已付才建財務流水（收入以「已繳金額」實收為準）
       let recordId = null
       if (isPaid && paidAmount > 0) {
+        const descKey = `[ragic-rent:${ragicId}] ${desc}`
         const rec = await prisma.managementRecord.create({
           data: {
             managedPropertyId: lease.managedPropertyId,
@@ -1559,14 +1583,15 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
             type: 'INCOME',
             category,
             amount: paidAmount,
-            description: `[ragic-rent:${ragicId}] ${desc}`,
+            description: descKey,
             recordDate: paidDate || dueDate,
           }
         })
         recordId = rec.id
+        recordByDesc[descKey] = rec
       }
 
-      await prisma.rentPayment.create({
+      const newPay = await prisma.rentPayment.create({
         data: {
           leaseId: lease.id,
           recordId,
@@ -1581,6 +1606,7 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
           settled: isPaid,
         }
       })
+      paymentMap[payKey(lease.id, periodStart, amount)] = newPay
       created++
     }
 
