@@ -55,7 +55,7 @@ router.post('/admin/api/landlord/:id', express.json(), async (req, res) => {
   if (isActive !== undefined) data.isActive = isActive
   if (lineOfficialId !== undefined) {
     const v = String(lineOfficialId || '').trim()
-    if (v && !v.startsWith('@')) return res.status(400).json({ error: 'LINE 官方帳號 ID 請以 @ 開頭，例如 @xiaowo' })
+    if (v && !v.startsWith('@') && !/^https?:\/\//i.test(v)) return res.status(400).json({ error: 'LINE 聯絡資訊請填 @帳號ID 或完整 https:// 連結' })
     data.lineOfficialId = v || null
   }
 

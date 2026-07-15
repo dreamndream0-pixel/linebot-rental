@@ -2739,7 +2739,7 @@ function renderLandlords() {
       '<div class="landlord-info-item"><div class="label">電話</div><div class="value">' + esc(l.phone || '未填寫') + '</div></div>' +
       '<div class="landlord-info-item"><div class="label">加入日期</div><div class="value">' + fmtDate(l.createdAt) + '</div></div>' +
       '<div class="landlord-info-item"><div class="label">房源數</div><div class="value">' + propCount + ' 間</div></div>' +
-      '<div class="landlord-info-item full"><div class="label">LINE 官方帳號 ID</div><div class="value">' + esc(l.lineOfficialId || '未設定') + '</div></div>' +
+      '<div class="landlord-info-item full"><div class="label">LINE 聯絡資訊</div><div class="value">' + esc(l.lineOfficialId || '未設定') + '</div></div>' +
       '<div class="landlord-info-item full"><div class="label">登入金鑰</div><div class="value landlord-key-row"><span class="uid" title="金鑰已加密保存">已加密保存，需重發才會顯示新金鑰</span><button class="landlord-icon-btn" title="重發金鑰" onclick="event.stopPropagation();regenerateKey(\'' + l.id + '\')">↻</button></div></div>' +
       '<div class="landlord-info-item full"><div class="label">Webhook URL</div><div class="value"><span class="uid" onclick="copyText(\'' + webhookUrl + '\')" title="點擊複製" style="font-size:11px;">' + webhookUrl + '</span></div></div>' +
       '</div>' +
@@ -3423,7 +3423,7 @@ async function editLandlord(id) {
     '<div class="modal-field"><label>房東名稱</label><input id="' + formId + '_name" value="' + esc(l.name || '') + '"></div>' +
     '<div class="modal-field"><label>Email（登入帳號）</label><input id="' + formId + '_email" type="email" value="' + esc(l.email || '') + '"></div>' +
     '<div class="modal-field full"><label>電話</label><input id="' + formId + '_phone" value="' + esc(l.phone || '') + '" placeholder="可留空"></div>' +
-    '<div class="modal-field full"><label>LINE 官方帳號 ID</label><input id="' + formId + '_lineOfficialId" value="' + esc(l.lineOfficialId || '') + '" placeholder="@你的官方帳號ID"><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;">只用於前台 LINE 聯絡按鈕，不需要設定 Bot Token。請填 Basic ID 或 Premium ID，例如 @xiaowo。</div></div>' +
+    '<div class="modal-field full"><label>LINE 聯絡資訊</label><input id="' + formId + '_lineOfficialId" value="' + esc(l.lineOfficialId || '') + '" placeholder="@官方帳號ID 或 https://line.me/..."><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;">只用於前台 LINE 聯絡按鈕，不需要設定 Bot Token。可填官方帳號 ID、個人 LINE 連結或 lin.ee 短連結。</div></div>' +
     '</div>'
   var foot =
     '<button class="action-btn" onclick="closeAdminModal(\'' + modalId + '\')">取消</button>' +
@@ -3445,7 +3445,7 @@ async function saveLandlordInline(id, formId) {
   if (!name) { showToast('❌ 房東名稱不可空白'); return }
   if (!email) { showToast('❌ Email 不可空白'); return }
 
-  if (lineOfficialId && !lineOfficialId.startsWith('@')) { showToast('LINE 官方帳號 ID 請以 @ 開頭'); return }
+  if (lineOfficialId && !lineOfficialId.startsWith('@') && !/^https?:\/\//i.test(lineOfficialId)) { showToast('LINE 聯絡資訊請填 @帳號ID 或完整 https:// 連結'); return }
 
   var res = await fetch('/admin/api/landlord/' + id + '?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'},
