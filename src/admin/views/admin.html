@@ -2739,6 +2739,7 @@ function renderLandlords() {
       '<div class="landlord-info-item"><div class="label">電話</div><div class="value">' + esc(l.phone || '未填寫') + '</div></div>' +
       '<div class="landlord-info-item"><div class="label">加入日期</div><div class="value">' + fmtDate(l.createdAt) + '</div></div>' +
       '<div class="landlord-info-item"><div class="label">房源數</div><div class="value">' + propCount + ' 間</div></div>' +
+      '<div class="landlord-info-item full"><div class="label">LINE 官方帳號 ID</div><div class="value">' + esc(l.lineOfficialId || '未設定') + '</div></div>' +
       '<div class="landlord-info-item full"><div class="label">登入金鑰</div><div class="value landlord-key-row"><span class="uid" title="金鑰已加密保存">已加密保存，需重發才會顯示新金鑰</span><button class="landlord-icon-btn" title="重發金鑰" onclick="event.stopPropagation();regenerateKey(\'' + l.id + '\')">↻</button></div></div>' +
       '<div class="landlord-info-item full"><div class="label">Webhook URL</div><div class="value"><span class="uid" onclick="copyText(\'' + webhookUrl + '\')" title="點擊複製" style="font-size:11px;">' + webhookUrl + '</span></div></div>' +
       '</div>' +
@@ -3422,6 +3423,7 @@ async function editLandlord(id) {
     '<div class="modal-field"><label>房東名稱</label><input id="' + formId + '_name" value="' + esc(l.name || '') + '"></div>' +
     '<div class="modal-field"><label>Email（登入帳號）</label><input id="' + formId + '_email" type="email" value="' + esc(l.email || '') + '"></div>' +
     '<div class="modal-field full"><label>電話</label><input id="' + formId + '_phone" value="' + esc(l.phone || '') + '" placeholder="可留空"></div>' +
+    '<div class="modal-field full"><label>LINE 官方帳號 ID</label><input id="' + formId + '_lineOfficialId" value="' + esc(l.lineOfficialId || '') + '" placeholder="@你的官方帳號ID"><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;">只用於前台 LINE 聯絡按鈕，不需要設定 Bot Token。請填 Basic ID 或 Premium ID，例如 @xiaowo。</div></div>' +
     '</div>'
   var foot =
     '<button class="action-btn" onclick="closeAdminModal(\'' + modalId + '\')">取消</button>' +
@@ -3434,16 +3436,20 @@ async function saveLandlordInline(id, formId) {
   var nameEl = document.getElementById(formId + '_name')
   var emailEl = document.getElementById(formId + '_email')
   var phoneEl = document.getElementById(formId + '_phone')
+  var lineOfficialIdEl = document.getElementById(formId + '_lineOfficialId')
   var name = nameEl ? nameEl.value.trim() : ''
   var email = emailEl ? emailEl.value.trim() : ''
   var phone = phoneEl ? phoneEl.value.trim() : ''
+  var lineOfficialId = lineOfficialIdEl ? lineOfficialIdEl.value.trim() : ''
 
   if (!name) { showToast('❌ 房東名稱不可空白'); return }
   if (!email) { showToast('❌ Email 不可空白'); return }
 
+  if (lineOfficialId && !lineOfficialId.startsWith('@')) { showToast('LINE 官方帳號 ID 請以 @ 開頭'); return }
+
   var res = await fetch('/admin/api/landlord/' + id + '?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ name: name, email: email, phone: phone })
+    body: JSON.stringify({ name: name, email: email, phone: phone, lineOfficialId: lineOfficialId })
   })
   var data = await res.json()
   if (!res.ok) { showToast('❌ ' + (data.error || '更新失敗')); return }

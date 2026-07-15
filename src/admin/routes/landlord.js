@@ -41,7 +41,7 @@ router.post('/admin/api/landlord/:id', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
 
-  const { name, email, phone, isActive } = req.body
+  const { name, email, phone, isActive, lineOfficialId } = req.body
   const data = {}
   if (name !== undefined) {
     if (!name.trim()) return res.status(400).json({ error: '房東名稱不可空白' })
@@ -53,6 +53,11 @@ router.post('/admin/api/landlord/:id', express.json(), async (req, res) => {
   }
   if (phone !== undefined) data.phone = phone.trim() || null
   if (isActive !== undefined) data.isActive = isActive
+  if (lineOfficialId !== undefined) {
+    const v = String(lineOfficialId || '').trim()
+    if (v && !v.startsWith('@')) return res.status(400).json({ error: 'LINE 官方帳號 ID 請以 @ 開頭，例如 @xiaowo' })
+    data.lineOfficialId = v || null
+  }
 
   try {
     const landlord = await prisma.landlord.update({ where: { id: req.params.id }, data })
