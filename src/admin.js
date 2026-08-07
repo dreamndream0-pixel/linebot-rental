@@ -200,6 +200,7 @@ router.use(require('./admin/routes/webusers'))
 router.use(require('./admin/routes/social'))
 router.use(require('./admin/routes/fbUserToken'))
 router.use(require('./admin/routes/managedProperty'))
+router.use(require('./admin/routes/smartlock'))
 
 router.use('/admin/assets', express.static(path.join(__dirname, 'admin/assets')))
 
