@@ -1,16 +1,124 @@
 // src/smartlock.js — 智慧門鎖（TTLock）房客自助取密碼
+// 移植自 rubyclean：以「房間 → 門鎖」為單位，後台每個房間可填一個房客 LINE User ID。
+// 房客在 LINE 輸入「密碼」→ 依其 User ID 找到對應房間 → 回傳當日密碼。
+//   - keypad（普通密碼鎖）：依房號＋日期用固定算式計算（免呼叫 API）
+//   - ttlock（TTLock 電子鎖）：呼叫 TTLock API 產生當日限時密碼
+//   - traditional（傳統喇叭鎖）：無密碼，提示聯絡房東
 // 每個房東各自一組 TTLock 帳號（存於 landlord.ttlockConfig）
-// 房客綁定由後台手動維護（LockTenant），只有綁定的 LINE User ID 能索取
-// 規則：密碼當天有效、同日同碼；免費 3 次/年（每年重置），第 4 次起每次收 50 元
 const crypto = require('crypto')
 const prisma = require('./db')
 
 const TTLOCK_BASE = 'https://euapi.ttlock.com'
-const FREE_QUOTA = 3          // 每年免費次數
-const CHARGE_AMOUNT = 50      // 超過後每次作業費
 
 function md5(input) {
   return crypto.createHash('md5').update(String(input), 'utf8').digest('hex')
+}
+
+// ── 建物 / 房號清單（移植自 rubyclean）──
+const BUILDINGS = [
+  { id: 'HB11', label: '紅寶石 11號', rooms: ['101','102','201','202','301','302','501','502','601','602'] },
+  { id: 'HB21', label: '紅寶石 21號', rooms: ['101','102','103','201','202','203','205','301','302','303','305','501','502','503','505','601','602','603','605','801','802'] },
+  { id: 'HB28', label: '紅寶石 28號', rooms: ['101','102','103','201','202','203','205','301','302','303','305','501','502','601'] },
+  { id: 'ZF22', label: '致富讚 22號', rooms: ['101','102','103','201','202','203','205','301','302','303','305','501','502','503','505','601','602'] },
+  { id: 'QY',   label: '青雲巷 25-21號', rooms: ['101','102','201','202','301','302','401','402'] },
+]
+
+// ── 門鎖預設值（移植自 rubyclean DEFAULT_LOCK_DB）──
+// type: 'keypad' | 'ttlock' | 'traditional'；ids: TTLock lockId（可多把）
+const DEFAULT_LOCK_DB = {
+  'HB11_101':{ type:'keypad' },
+  'HB11_102':{ type:'ttlock', ids:[12753002] },
+  'HB11_201':{ type:'keypad' },
+  'HB11_202':{ type:'keypad' },
+  'HB11_301':{ type:'keypad' },
+  'HB11_302':{ type:'keypad' },
+  'HB11_501':{ type:'keypad' },
+  'HB11_502':{ type:'ttlock', ids:[32882028] },
+  'HB11_601':{ type:'keypad' },
+  'HB11_602':{ type:'keypad' },
+  'HB21_101':{ type:'ttlock', ids:[13800282] },
+  'HB21_102':{ type:'ttlock', ids:[32878932] },
+  'HB21_103':{ type:'keypad' },
+  'HB21_201':{ type:'keypad' },
+  'HB21_202':{ type:'keypad' },
+  'HB21_203':{ type:'ttlock', ids:[32880434] },
+  'HB21_205':{ type:'keypad' },
+  'HB21_301':{ type:'ttlock', ids:[24395270] },
+  'HB21_302':{ type:'ttlock', ids:[10999534] },
+  'HB21_303':{ type:'ttlock', ids:[6376868] },
+  'HB21_305':{ type:'ttlock', ids:[16918742] },
+  'HB21_501':{ type:'ttlock', ids:[15632352] },
+  'HB21_502':{ type:'keypad' },
+  'HB21_503':{ type:'ttlock', ids:[20489980] },
+  'HB21_505':{ type:'ttlock', ids:[33791528] },
+  'HB21_601':{ type:'ttlock', ids:[13604176] },
+  'HB21_602':{ type:'ttlock', ids:[10246462] },
+  'HB21_603':{ type:'keypad' },
+  'HB21_605':{ type:'ttlock', ids:[10767426] },
+  'HB21_801':{ type:'ttlock', ids:[13414546] },
+  'HB21_802':{ type:'ttlock', ids:[15477822,23388358] },
+  'HB28_101':{ type:'traditional' },
+  'HB28_102':{ type:'traditional' },
+  'HB28_103':{ type:'traditional' },
+  'HB28_201':{ type:'traditional' },
+  'HB28_202':{ type:'traditional' },
+  'HB28_203':{ type:'traditional' },
+  'HB28_205':{ type:'traditional' },
+  'HB28_301':{ type:'traditional' },
+  'HB28_302':{ type:'traditional' },
+  'HB28_303':{ type:'traditional' },
+  'HB28_305':{ type:'traditional' },
+  'HB28_501':{ type:'traditional' },
+  'HB28_502':{ type:'traditional' },
+  'HB28_601':{ type:'traditional' },
+  'ZF22_101':{ type:'ttlock', ids:[5581676] },
+  'ZF22_102':{ type:'ttlock', ids:[5581754] },
+  'ZF22_103':{ type:'ttlock', ids:[5564488] },
+  'ZF22_201':{ type:'ttlock', ids:[9752434] },
+  'ZF22_202':{ type:'ttlock', ids:[5581690] },
+  'ZF22_203':{ type:'ttlock', ids:[5564320] },
+  'ZF22_205':{ type:'ttlock', ids:[5581600] },
+  'ZF22_301':{ type:'ttlock', ids:[5564472] },
+  'ZF22_302':{ type:'ttlock', ids:[5581734] },
+  'ZF22_303':{ type:'ttlock', ids:[5564492] },
+  'ZF22_305':{ type:'keypad' },
+  'ZF22_501':{ type:'keypad' },
+  'ZF22_502':{ type:'keypad' },
+  'ZF22_503':{ type:'keypad' },
+  'ZF22_505':{ type:'keypad' },
+  'ZF22_601':{ type:'keypad' },
+  'ZF22_602':{ type:'keypad' },
+  'QY_101':{ type:'keypad' },
+  'QY_102':{ type:'keypad' },
+  'QY_201':{ type:'keypad' },
+  'QY_202':{ type:'keypad' },
+  'QY_301':{ type:'keypad' },
+  'QY_302':{ type:'keypad' },
+  'QY_401':{ type:'keypad' },
+  'QY_402':{ type:'keypad' },
+}
+
+// roomKey（HB11_101）→ 建物 label（紅寶石 11號）
+function buildingLabelOf(roomKey) {
+  const bid = String(roomKey || '').split('_')[0]
+  const b = BUILDINGS.find(x => x.id === bid)
+  return b ? b.label : ''
+}
+
+// 普通密碼鎖：依房號＋日期計算固定密碼（移植自 rubyclean calcKeypadPassword）
+function calcKeypadPassword(room, dateObj) {
+  const d = dateObj || new Date()
+  const dow = d.getDay() === 0 ? 7 : d.getDay()
+  const roomStr = String(room).replace(/[^0-9]/g, '')
+  const r1 = parseInt(roomStr[0]) || 0
+  const r3 = parseInt(roomStr[2]) || 0
+  const isOdd = dow % 2 === 1
+  const d1 = isOdd ? dow - 1 : dow + 1
+  const reversed = roomStr.split('').reverse().join('')
+  const raw = isOdd ? r1 - r3 : r1 + r3
+  const d5 = ((raw % 10) + 10) % 10
+  const d6 = d1 + 1
+  return `${d1}${reversed}${d5}${d6}#`
 }
 
 // 台北時區日期字串 YYYY-MM-DD
@@ -21,7 +129,12 @@ function taipeiDateStr(ms = Date.now()) {
     String(d.getUTCDate()).padStart(2, '0')
 }
 
-// 今日密碼有效區間：現在 → 台北當日 23:59:59
+// 台北「現在」時間（getDay() 依台北星期計算密碼鎖）
+function taipeiNow(ms = Date.now()) {
+  return new Date(ms + 8 * 3600 * 1000)
+}
+
+// 今日 TTLock 密碼有效區間：現在 → 台北當日 23:59:59
 function taipeiTodayWindow() {
   const now = Date.now()
   const d = new Date(now + 8 * 3600 * 1000)
@@ -36,6 +149,15 @@ function parseCreds(landlord) {
   try { c = JSON.parse(landlord.ttlockConfig) } catch { return null }
   if (!c || !c.clientId || !c.clientSecret || !c.username || !c.password) return null
   return c
+}
+
+// 解析房東的門鎖房間設定（{ roomKey: { type, ids, userId } }）
+function parseRooms(landlord) {
+  if (!landlord || !landlord.lockRooms) return {}
+  try {
+    const r = JSON.parse(landlord.lockRooms)
+    return (r && typeof r === 'object') ? r : {}
+  } catch { return {} }
 }
 
 // 是否已授權 smartlock 功能
@@ -103,20 +225,6 @@ async function generatePasscode(accessToken, creds, lockId, startDate, endDate, 
   return resp.json()
 }
 
-// 組回覆訊息
-function renderReply(passcodes, n, charged, dateStr) {
-  const lines = passcodes.length > 1
-    ? passcodes.map((p, i) => `門鎖 ${i + 1}：${p.pw}`).join('\n')
-    : `門鎖密碼：${passcodes[0].pw}`
-  let msg = `🔐 ${lines}\n有效至今日 23:59（${dateStr}）`
-  if (charged) {
-    msg += `\n⚠️ 本次為本年度第 ${n} 次索取，收取作業費 ${CHARGE_AMOUNT} 元，已記入您的帳款。`
-  } else {
-    msg += `\n（本年度第 ${n} 次，免費）`
-  }
-  return msg
-}
-
 // 是否為索取密碼的訊息
 function isPasscodeRequest(text) {
   return /密碼|密码|門鎖密碼|门锁密码|開門|开门|開鎖|开锁/.test(text || '')
@@ -131,88 +239,80 @@ async function handleTenantPasscode(landlordId, lineUserId) {
   try {
     landlord = await prisma.landlord.findUnique({
       where: { id: landlordId },
-      select: { id: true, features: true, ttlockConfig: true },
+      select: { id: true, features: true, ttlockConfig: true, lockRooms: true },
     })
   } catch (e) { return null }
 
   // 功能未授權 → 略過（不回應，避免干擾其他房東）
   if (!landlordHasSmartlock(landlord)) return null
 
-  const creds = parseCreds(landlord)
-  if (!creds) {
-    return { type: 'text', text: '門鎖服務尚未設定完成，請聯絡房東。' }
-  }
+  const rooms = parseRooms(landlord)
+  // 找出所有綁定此 User ID 的房間
+  const matched = Object.keys(rooms)
+    .filter(k => rooms[k] && rooms[k].userId && String(rooms[k].userId).trim() === String(lineUserId).trim())
+    .map(k => ({ key: k, type: rooms[k].type, ids: rooms[k].ids }))
 
-  const t = await prisma.lockTenant.findUnique({
-    where: { landlordId_lineUserId: { landlordId, lineUserId } },
-  })
-  if (!t || !Array.isArray(t.lockIds) || t.lockIds.length === 0) {
+  if (matched.length === 0) {
     return { type: 'text', text: '您尚未開通門鎖密碼服務，請聯絡房東。' }
   }
 
   const today = taipeiDateStr()
-  const year = Number(today.slice(0, 4))
+  const now = taipeiNow()
 
-  // 當天重複索取 → 回傳同一組密碼（不計次、不收費）
-  if (t.todayDate === today && t.todayData && Array.isArray(t.todayData.passcodes) && t.todayData.passcodes.length) {
-    return { type: 'text', text: renderReply(t.todayData.passcodes, t.todayData.n, t.todayData.charged, today) }
-  }
-
-  // 每年重置免費額度
-  const issuedBase = (t.year === year) ? (t.issuedThisYear || 0) : 0
-  const n = issuedBase + 1
-  const charged = n > FREE_QUOTA
-
-  const token = await getToken(creds)
-  if (!token.access_token) {
-    return { type: 'text', text: '系統暫時無法連線門鎖服務，請稍後再試。' }
+  // 有 TTLock 房間才連線取 token
+  const needsTtlock = matched.some(r => r.type === 'ttlock' && Array.isArray(r.ids) && r.ids.length)
+  let creds = null, token = null
+  if (needsTtlock) {
+    creds = parseCreds(landlord)
+    if (!creds) return { type: 'text', text: '門鎖服務尚未設定完成，請聯絡房東。' }
+    token = await getToken(creds)
+    if (!token.access_token) {
+      return { type: 'text', text: '系統暫時無法連線門鎖服務，請稍後再試。' }
+    }
   }
 
   const { startDate, endDate } = taipeiTodayWindow()
-  const passcodes = []
-  for (let i = 0; i < t.lockIds.length; i++) {
-    const lockId = t.lockIds[i]
-    const name = `房客密碼-${today}` + (t.lockIds.length > 1 ? `-${i + 1}` : '')
-    const pw = await generatePasscode(token.access_token, creds, lockId, startDate, endDate, name)
-    if (!pw || !pw.keyboardPwd) {
-      return { type: 'text', text: '產生密碼失敗，請稍後再試或聯絡房東。' }
+  const lines = []
+  for (const r of matched) {
+    const roomNo = r.key.split('_').slice(1).join('_')
+    const bl = buildingLabelOf(r.key)
+    const label = (bl ? bl + ' ' : '') + roomNo
+    if (r.type === 'keypad') {
+      lines.push(`${label}：${calcKeypadPassword(roomNo, now)}`)
+    } else if (r.type === 'ttlock' && Array.isArray(r.ids) && r.ids.length) {
+      for (let i = 0; i < r.ids.length; i++) {
+        const name = `房客密碼-${today}` + (r.ids.length > 1 ? `-${i + 1}` : '')
+        const pw = await generatePasscode(token.access_token, creds, r.ids[i], startDate, endDate, name)
+        const suffix = r.ids.length > 1 ? `（門鎖 ${i + 1}）` : ''
+        if (!pw || !pw.keyboardPwd) {
+          lines.push(`${label}${suffix}：產生失敗，請稍後再試`)
+        } else {
+          lines.push(`${label}${suffix}：${pw.keyboardPwd}#`)
+        }
+      }
+    } else {
+      lines.push(`${label}：此房為傳統鎖，無密碼，請聯絡房東`)
     }
-    passcodes.push({ lockId, pw: pw.keyboardPwd + '#', keyboardPwdId: pw.keyboardPwdId })
   }
 
-  // 產生成功才記次 / 記帳
-  const charges = Array.isArray(t.charges) ? t.charges : []
-  if (charged) charges.push({ date: today, amount: CHARGE_AMOUNT, paid: false })
-
-  try {
-    await prisma.lockTenant.update({
-      where: { id: t.id },
-      data: {
-        year,
-        issuedThisYear: n,
-        todayDate: today,
-        todayData: { passcodes, n, charged },
-        charges,
-      },
-    })
-  } catch (e) {
-    console.error('更新門鎖用量失敗:', e.message)
-  }
-
-  return { type: 'text', text: renderReply(passcodes, n, charged, today) }
+  return { type: 'text', text: `🔐 今日門鎖密碼（${today}）\n` + lines.join('\n') + `\n有效至今日 23:59` }
 }
 
 module.exports = {
   md5,
   taipeiDateStr,
+  taipeiNow,
   taipeiTodayWindow,
   parseCreds,
+  parseRooms,
   landlordHasSmartlock,
   getToken,
   listLocks,
   generatePasscode,
+  calcKeypadPassword,
   isPasscodeRequest,
   handleTenantPasscode,
-  FREE_QUOTA,
-  CHARGE_AMOUNT,
+  BUILDINGS,
+  DEFAULT_LOCK_DB,
+  buildingLabelOf,
 }
