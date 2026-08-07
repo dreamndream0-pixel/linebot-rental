@@ -859,7 +859,7 @@ function refreshOwnFeatures() {
 
 // 總管理員永遠回 true；房東依 features 設定判斷
 // 預設關閉、需明確授權才開放的進階功能（opt-in）
-var OPT_IN_FEATURES = { ragic: true }
+var OPT_IN_FEATURES = { ragic: true, smartlock: true }
 function feat(key) {
   if (DATA && DATA.role === 'super') return true
   if (OPT_IN_FEATURES[key]) return _ownFeatures[key] === true
@@ -3054,6 +3054,7 @@ var FEATURE_MODULES = [
   { key: 'social',     label: '📣 社群發布',           desc: '房源一鍵發文到 Facebook／Instagram／Threads' },
   { key: 'managed',   label: '🏢 包租代管',           desc: '包租代管委託、租約管理、繳費明細追蹤' },
   { key: 'ragic',     label: '🔗 Ragic 同步',         desc: '從 Ragic 同步合約、電費、租金資料（進階功能，預設關閉）', def: false },
+  { key: 'smartlock', label: '🔐 智慧門鎖',           desc: '包租代管內的 TTLock 門鎖：房客用 LINE 自助取當日密碼（進階功能，預設關閉）', def: false },
 ]
 
 function openFeaturesEditor(landlordId) {
@@ -5461,12 +5462,219 @@ function managedCard(m) {
       '👤 屋主：' + esc(m.ownerName) + (m.ownerPhone ? '（' + esc(m.ownerPhone) + '）' : '') + '<br>' +
       '🏠 房間數：' + m.roomCount + '　|　' + feeText +
     '</div>' +
-    '<div style="display:flex;gap:8px;margin-top:14px;">' +
+    '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">' +
       '<button class="btn" style="flex:1;width:auto;white-space:nowrap;font-size:13px;padding:8px 4px;" onclick="btnLoad(this, function(){ return openManagedDetail(\'' + m.id + '\') })">明細對帳</button>' +
       '<button class="btn" style="flex:1;width:auto;white-space:nowrap;background:#5A7D8C;font-size:13px;padding:8px 4px;" onclick="btnLoad(this, function(){ return openContractManager(\'' + m.id + '\') })">合約租約</button>' +
+      (feat('smartlock') ? '<button class="btn" style="flex:1;width:auto;white-space:nowrap;background:#6B5A9A;font-size:13px;padding:8px 4px;" onclick="btnLoad(this, function(){ return openSmartLock(\'' + m.id + '\') })">🔐 門鎖密碼</button>' : '') +
       '<button class="btn" style="flex:1;width:auto;white-space:nowrap;background:#8A8A8A;font-size:13px;padding:8px 4px;" onclick="openManagedForm(\'' + m.id + '\')">編輯</button>' +
     '</div>' +
   '</div>'
+}
+
+// ══════════════════════════════════════════════
+// 智慧門鎖（TTLock）— 包租代管內的門鎖密碼管理
+// ══════════════════════════════════════════════
+var SMARTLOCK = { managedId: null, locks: [], tenants: [], hasCreds: false }
+
+async function openSmartLock(managedId) {
+  SMARTLOCK.managedId = managedId
+  var q = '?key=' + encodeURIComponent(KEY) + '&managedId=' + encodeURIComponent(managedId)
+  try {
+    var cfg = await fetch('/admin/api/smartlock/config' + q).then(function(r){ return r.json() })
+    SMARTLOCK.hasCreds = !!cfg.hasCreds
+    SMARTLOCK.username = cfg.username || ''
+  } catch (e) { SMARTLOCK.hasCreds = false }
+  await slLoadTenants()
+  slRenderModal()
+}
+
+async function slLoadTenants() {
+  var q = '?key=' + encodeURIComponent(KEY) + '&managedId=' + encodeURIComponent(SMARTLOCK.managedId)
+  try { SMARTLOCK.tenants = await fetch('/admin/api/smartlock/tenants' + q).then(function(r){ return r.json() }) }
+  catch (e) { SMARTLOCK.tenants = [] }
+  if (!Array.isArray(SMARTLOCK.tenants)) SMARTLOCK.tenants = []
+}
+
+function slModalClose() { var el = document.getElementById('smartlockModal'); if (el) el.remove() }
+
+function slRenderModal() {
+  var existing = document.getElementById('smartlockModal'); if (existing) existing.remove()
+  var html = '<div id="smartlockModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:320;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;max-width:640px;width:100%;padding:24px;margin:auto;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+        '<h3 style="margin:0;font-size:18px;">🔐 門鎖密碼管理</h3>' +
+        '<button onclick="slModalClose()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+      '</div>' +
+      slCredsSection() +
+      slBindSection() +
+      slTenantsSection() +
+    '</div></div>'
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
+function slCredsSection() {
+  var status = SMARTLOCK.hasCreds
+    ? '<span style="color:#3A8A5A;font-weight:700;">✅ 已設定' + (SMARTLOCK.username ? '（' + esc(SMARTLOCK.username) + '）' : '') + '</span>'
+    : '<span style="color:#C55;font-weight:700;">⚠️ 尚未設定 TTLock 帳密</span>'
+  return '<div style="border:1px solid #E5E0D5;border-radius:12px;padding:14px;margin-bottom:16px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+      '<div style="font-weight:700;font-size:14px;">TTLock 帳號　' + status + '</div>' +
+      '<button class="btn" style="width:auto;padding:6px 12px;font-size:12px;" onclick="slToggleCreds()">設定帳密</button>' +
+    '</div>' +
+    '<div id="slCredsForm" style="display:none;margin-top:12px;">' +
+      slInput('slClientId', 'Client ID') +
+      slInput('slClientSecret', 'Client Secret') +
+      slInput('slUsername', 'TTLock 帳號（username）') +
+      slInput('slPassword', 'TTLock 密碼', 'password') +
+      '<button class="btn" style="width:100%;margin-top:8px;" onclick="slSaveCreds(this)">儲存帳密</button>' +
+      '<div id="slCredsStatus" style="font-size:12px;color:#999;margin-top:6px;"></div>' +
+    '</div>' +
+  '</div>'
+}
+
+function slInput(id, label, type) {
+  return '<label style="display:block;font-size:12px;color:#888;margin:8px 0 4px;">' + label + '</label>' +
+    '<input id="' + id + '" type="' + (type || 'text') + '" style="width:100%;padding:9px 11px;border:1px solid #DDD;border-radius:8px;font-size:14px;">'
+}
+
+function slToggleCreds() {
+  var el = document.getElementById('slCredsForm')
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
+}
+
+async function slSaveCreds(btn) {
+  var body = {
+    managedId: SMARTLOCK.managedId,
+    clientId: document.getElementById('slClientId').value.trim(),
+    clientSecret: document.getElementById('slClientSecret').value.trim(),
+    username: document.getElementById('slUsername').value.trim(),
+    password: document.getElementById('slPassword').value.trim(),
+  }
+  var st = document.getElementById('slCredsStatus'); st.textContent = '儲存中…'
+  try {
+    var res = await fetch('/admin/api/smartlock/config?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    var d = await res.json()
+    if (!res.ok) { st.textContent = '❌ ' + (d.error || '儲存失敗'); st.style.color = '#C55'; return }
+    SMARTLOCK.hasCreds = true; SMARTLOCK.username = body.username
+    slRenderModal()
+  } catch (e) { st.textContent = '❌ ' + e.message; st.style.color = '#C55' }
+}
+
+function slBindSection() {
+  return '<div style="border:1px solid #E5E0D5;border-radius:12px;padding:14px;margin-bottom:16px;">' +
+    '<div style="font-weight:700;font-size:14px;margin-bottom:8px;">➕ 綁定房客</div>' +
+    slInput('slUserId', 'LINE User ID（房客，形如 U....）') +
+    slInput('slName', '房客／房號備註（選填）') +
+    '<label style="display:block;font-size:12px;color:#888;margin:8px 0 4px;">門鎖 Lock ID（多把用逗號分隔）</label>' +
+    '<div style="display:flex;gap:8px;">' +
+      '<input id="slLocks" style="flex:1;padding:9px 11px;border:1px solid #DDD;border-radius:8px;font-size:14px;" placeholder="例：998877 或 998877,998878">' +
+      '<button class="btn" style="width:auto;padding:8px 12px;font-size:12px;background:#5A7D8C;" onclick="slLoadLocks(this)">📋 查鎖</button>' +
+    '</div>' +
+    '<div id="slLockList" style="font-size:12px;color:#666;margin-top:6px;"></div>' +
+    '<button class="btn" style="width:100%;margin-top:10px;" onclick="slSaveTenant(this)">儲存綁定</button>' +
+    '<input type="hidden" id="slEditId" value="">' +
+    '<div id="slBindStatus" style="font-size:12px;color:#999;margin-top:6px;"></div>' +
+  '</div>'
+}
+
+async function slLoadLocks(btn) {
+  var box = document.getElementById('slLockList'); box.textContent = '讀取中…'
+  var q = '?key=' + encodeURIComponent(KEY) + '&managedId=' + encodeURIComponent(SMARTLOCK.managedId)
+  try {
+    var res = await fetch('/admin/api/smartlock/locks' + q)
+    var d = await res.json()
+    if (!res.ok) { box.textContent = '❌ ' + (d.error || '讀取失敗'); return }
+    if (!d.list || !d.list.length) { box.textContent = '（此帳號下沒有門鎖）'; return }
+    box.innerHTML = d.list.map(function(l){
+      return '<div style="padding:4px 0;border-bottom:1px dashed #eee;display:flex;justify-content:space-between;">' +
+        '<span>' + esc(l.name || '(未命名)') + '</span>' +
+        '<code style="cursor:pointer;color:#5A7D8C;" onclick="slAddLockId(' + l.lockId + ')">' + l.lockId + ' ＋</code></div>'
+    }).join('')
+  } catch (e) { box.textContent = '❌ ' + e.message }
+}
+
+function slAddLockId(id) {
+  var input = document.getElementById('slLocks')
+  var cur = input.value.split(',').map(function(s){ return s.trim() }).filter(Boolean)
+  if (cur.indexOf(String(id)) === -1) cur.push(String(id))
+  input.value = cur.join(',')
+}
+
+async function slSaveTenant(btn) {
+  var lockIds = document.getElementById('slLocks').value.split(',').map(function(s){ return Number(s.trim()) }).filter(function(n){ return !isNaN(n) })
+  var body = {
+    managedId: SMARTLOCK.managedId,
+    id: document.getElementById('slEditId').value || undefined,
+    lineUserId: document.getElementById('slUserId').value.trim(),
+    name: document.getElementById('slName').value.trim(),
+    lockIds: lockIds,
+  }
+  var st = document.getElementById('slBindStatus'); st.textContent = '儲存中…'
+  try {
+    var res = await fetch('/admin/api/smartlock/tenant?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    var d = await res.json()
+    if (!res.ok) { st.textContent = '❌ ' + (d.error || '儲存失敗'); st.style.color = '#C55'; return }
+    await slLoadTenants(); slRenderModal()
+  } catch (e) { st.textContent = '❌ ' + e.message; st.style.color = '#C55' }
+}
+
+function slTenantsSection() {
+  var rows
+  if (!SMARTLOCK.tenants.length) {
+    rows = '<div style="color:#999;text-align:center;padding:16px;font-size:13px;">尚無綁定房客</div>'
+  } else {
+    rows = SMARTLOCK.tenants.map(function(t){
+      var owe = t.owe > 0
+        ? '<span style="background:#FBEDED;color:#C55;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;">待收 $' + t.owe + '</span>'
+        : '<span style="color:#bbb;font-size:11px;">—</span>'
+      return '<div style="border-bottom:1px solid #eee;padding:10px 0;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+          '<div style="min-width:0;">' +
+            '<div style="font-weight:700;font-size:14px;">' + esc(t.name || '(未命名)') + '</div>' +
+            '<div style="font-size:11px;color:#999;font-family:monospace;word-break:break-all;">' + esc(t.lineUserId) + '</div>' +
+            '<div style="font-size:12px;color:#666;margin-top:3px;">🔒 ' + (t.lockIds || []).join(', ') + '　|　今年 ' + t.issuedThisYear + ' 次　' + owe + '</div>' +
+          '</div>' +
+          '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">' +
+            '<button class="btn" style="width:auto;padding:4px 10px;font-size:11px;background:#8A8A8A;" onclick="slEditTenant(\'' + t.id + '\')">編輯</button>' +
+            (t.owe > 0 ? '<button class="btn" style="width:auto;padding:4px 10px;font-size:11px;background:#3A8A5A;" onclick="slSettle(\'' + t.id + '\')">結清</button>' : '') +
+            '<button class="btn" style="width:auto;padding:4px 10px;font-size:11px;background:#C55;" onclick="slDeleteTenant(\'' + t.id + '\')">刪除</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    }).join('')
+  }
+  return '<div style="border:1px solid #E5E0D5;border-radius:12px;padding:14px;">' +
+    '<div style="font-weight:700;font-size:14px;margin-bottom:6px;">👥 已綁定房客</div>' + rows +
+  '</div>'
+}
+
+function slEditTenant(id) {
+  var t = SMARTLOCK.tenants.find(function(x){ return x.id === id }); if (!t) return
+  document.getElementById('slEditId').value = t.id
+  document.getElementById('slUserId').value = t.lineUserId
+  document.getElementById('slName').value = t.name || ''
+  document.getElementById('slLocks').value = (t.lockIds || []).join(',')
+  document.getElementById('smartlockModal').scrollTop = 0
+}
+
+async function slSettle(id) {
+  if (!confirm('確定將此房客所有未收帳款標記為「已收款」？')) return
+  try {
+    await fetch('/admin/api/smartlock/tenant/' + id + '/settle?key=' + encodeURIComponent(KEY), { method: 'POST' })
+    await slLoadTenants(); slRenderModal()
+  } catch (e) { alert('操作失敗：' + e.message) }
+}
+
+async function slDeleteTenant(id) {
+  if (!confirm('確定刪除此房客綁定？（不影響已產生的密碼與帳款記錄）')) return
+  try {
+    await fetch('/admin/api/smartlock/tenant/' + id + '?key=' + encodeURIComponent(KEY), { method: 'DELETE' })
+    await slLoadTenants(); slRenderModal()
+  } catch (e) { alert('刪除失敗：' + e.message) }
 }
 
 // ── 新增/編輯表單 ──────────────────────────────────────────────

@@ -90,6 +90,7 @@ model Landlord {
   botEnabled             Boolean   @default(true)   // Bot 是否啟用
   features               String?   @db.Text   // 功能模組開關（JSON）
   socialConfig           String?   @db.Text   // 社群媒體串接設定（JSON：instagram/facebook/threads 帳號與權杖）
+  ttlockConfig           String?   @db.Text   // TTLock 智慧門鎖帳密（JSON：clientId/clientSecret/username/password）
   source                 String    @unique @default(cuid())  // 該房東用戶的來源標記
 
   isActive      Boolean   @default(true)
@@ -102,6 +103,7 @@ model Landlord {
   repairs       Repair[]
   communities   Community[]
   managedProperties ManagedProperty[]
+  lockTenants   LockTenant[]
 
   @@index([email])
   @@index([adminKey])
@@ -675,6 +677,36 @@ model Lease {
   @@index([leaseEnd])
   @@index([status])
   @@map("leases")
+}
+
+// ─────────────────────────────────────────────
+// 智慧門鎖（TTLock）房客綁定：後台手動維護 userId ↔ 門鎖
+// 放在包租代管功能底下，需總管理員授權 features.smartlock 才啟用
+// ─────────────────────────────────────────────
+model LockTenant {
+  id                String   @id @default(cuid())
+  landlordId        String
+  landlord          Landlord @relation(fields: [landlordId], references: [id], onDelete: Cascade)
+  managedPropertyId String?  // 歸屬的代管物件（選填）
+
+  lineUserId        String   // 綁定的房客 LINE User ID（只有此 ID 能索取）
+  name              String?  // 房客／房號備註
+  lockIds           Int[]    @default([])  // TTLock lockId（可多把）
+
+  // 用量與計費（每年重置，前 3 次免費，第 4 次起每次 50 元）
+  year              Int      @default(0)   // 計費年度
+  issuedThisYear    Int      @default(0)   // 本年度已產生密碼次數
+  todayDate         String?  // 台北時區 YYYY-MM-DD（當日密碼快取）
+  todayData         Json?    // { passcodes:[{lockId,pw,keyboardPwdId}], n, charged }
+  charges           Json?    // 待收帳款明細 [{ date, amount, paid }]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([landlordId, lineUserId])
+  @@index([landlordId])
+  @@index([managedPropertyId])
+  @@map("lock_tenants")
 }
 
 model RentPayment {
