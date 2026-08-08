@@ -74,11 +74,16 @@ router.post('/admin/api/landlord/:id/regenerate-key', express.json(), async (req
   if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
 
   const adminKey = 'LL-' + crypto.randomBytes(9).toString('base64url')
-  const landlord = await prisma.landlord.update({
-    where: { id: req.params.id },
-    data: { adminKey: null, adminKeyHash: hashAdminKey(adminKey) }
-  })
-  res.json({ ...landlord, _adminKey: adminKey })
+  try {
+    const landlord = await prisma.landlord.update({
+      where: { id: req.params.id },
+      data: { adminKey: null, adminKeyHash: hashAdminKey(adminKey) }
+    })
+    res.json({ ...landlord, _adminKey: adminKey })
+  } catch (e) {
+    console.error('重發金鑰失敗:', e.message)
+    res.status(500).json({ error: '重發金鑰失敗：' + e.message })
+  }
 })
 
 // 設定 LINE Bot（Channel Secret / Token）
