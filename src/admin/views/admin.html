@@ -465,6 +465,8 @@
     .tenant-card { cursor:pointer; }
     .tenant-card .tenant-field { display:none;grid-column:1/-1; }
     .tenant-card.open .tenant-field { display:block; }
+    /* UID 一律顯示（手機不必展開就能看到／複製，供門鎖綁定使用） */
+    .tenant-card .tenant-field-uid { display:block; }
     .tenant-card.open .tenant-mobile-caret { transform:rotate(180deg); }
     .tenant-edit-row input { min-width:0;width:100%; }
     .tenant-edit-row .action-btn { flex:1; }
@@ -3680,7 +3682,7 @@ function renderLineTenantCard(t) {
       lastMsg +
     '</div>' +
     '<div class="tenant-field"><div class="label">\u52a0\u5165\u6642\u9593</div><div class="value">' + fmtDate(t.createdAt) + '</div></div>' +
-    '<div class="tenant-field"><div class="label">UID</div><div class="value"><span class="uid" onclick="event.stopPropagation();copyText(' + jsArg(t.lineUserId) + ')" title="\u9ede\u64ca\u8907\u88fd">' + esc(t.lineUserId || '-') + '</span></div></div>' +
+    '<div class="tenant-field tenant-field-uid"><div class="label">UID\uff08\u9ede\u64ca\u8907\u88fd\uff09</div><div class="value"><span class="uid" onclick="event.stopPropagation();copyText(' + jsArg(t.lineUserId) + ')" title="\u9ede\u64ca\u8907\u88fd">' + esc(t.lineUserId || '-') + '</span></div></div>' +
     '</div>'
 }
 
@@ -3799,8 +3801,23 @@ async function loadWebUsers() {
 }
 
 function copyText(text) {
-  navigator.clipboard.writeText(text)
-  showToast('📋 已複製 User ID')
+  var ok = false
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text); ok = true
+    }
+  } catch (e) {}
+  if (!ok) {
+    // 手機 in-app 瀏覽器可能沒有 navigator.clipboard，退回用 textarea + execCommand
+    try {
+      var ta = document.createElement('textarea')
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.focus(); ta.select()
+      ok = document.execCommand('copy')
+      document.body.removeChild(ta)
+    } catch (e) {}
+  }
+  showToast(ok ? '📋 已複製 User ID' : '請長按選取複製 User ID')
 }
 
 function fmtDate(d) {
@@ -3824,6 +3841,12 @@ function dateInputValue(d) {
 
 function showToast(msg) {
   var t = document.getElementById('toast')
+  if (!t) {
+    // #toast 不存在時自建一個，避免整個呼叫端因取不到元素而拋錯中斷
+    t = document.createElement('div')
+    t.id = 'toast'; t.className = 'toast'
+    document.body.appendChild(t)
+  }
   t.textContent = msg
   t.classList.add('show')
   setTimeout(function(){ t.classList.remove('show') }, 2000)
