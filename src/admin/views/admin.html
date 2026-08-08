@@ -5793,7 +5793,15 @@ async function lmShowLocks() {
   try {
     var res = await fetch('/admin/api/smartlock/locks?key=' + encodeURIComponent(KEY))
     var d = await res.json()
-    if (!res.ok) { box.textContent = '❌ ' + (d.error || '讀取失敗'); return }
+    if (!res.ok) {
+      var det = d.detail || {}
+      var msg = det.errmsg || det.error_description || det.error || (det.errcode != null ? ('errcode ' + det.errcode) : '')
+      var hint = ''
+      if (/client/i.test(msg) || det.errcode === 10003) hint = '（Client ID／Client Secret 可能有誤）'
+      else if (/password|user/i.test(msg)) hint = '（TTLock 帳號或密碼可能有誤）'
+      box.innerHTML = '❌ ' + esc(d.error || '讀取失敗') + (msg ? '：' + esc(msg) : '') + (hint ? '<br>' + hint : '')
+      return
+    }
     if (!d.list || !d.list.length) { box.textContent = '（此帳號下沒有門鎖）'; return }
     box.innerHTML = '共 ' + d.count + ' 把：' + d.list.map(function(l){
       return '<code style="background:#f2f2f2;padding:1px 5px;border-radius:4px;margin:2px;display:inline-block;">' + esc(l.name || '(未命名)') + '=' + l.lockId + '</code>'
