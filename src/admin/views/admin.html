@@ -3418,15 +3418,40 @@ function showAdminKeyModal(headline, key) {
   document.body.insertAdjacentHTML('beforeend', html)
 }
 
-async function regenerateKey(id) {
-  if (!confirm('確認重發登入金鑰？\n\n重發後舊金鑰會立即失效，房東需要使用新的金鑰登入。')) return
-  var res = await fetch('/admin/api/landlord/' + id + '/regenerate-key?key=' + encodeURIComponent(KEY), {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}'
+// 頁內確認視窗（取代原生 confirm；手機 in-app 瀏覽器如 LINE 內建瀏覽器常會停用原生對話框）
+function showConfirm(opts) {
+  var old = document.getElementById('appConfirmModal'); if (old) old.remove()
+  var html = '<div id="appConfirmModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:380px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.22);">' +
+      (opts.icon ? '<div style="font-size:30px;margin-bottom:8px;">' + opts.icon + '</div>' : '') +
+      '<div style="font-size:17px;font-weight:700;color:#1a1a1a;margin-bottom:8px;">' + (opts.title || '確認') + '</div>' +
+      (opts.msg ? '<div style="font-size:13px;color:#6B7280;margin-bottom:18px;line-height:1.6;white-space:pre-line;">' + opts.msg + '</div>' : '<div style="margin-bottom:18px;"></div>') +
+      '<div style="display:flex;gap:10px;">' +
+        '<button id="appConfirmCancel" style="flex:1;padding:11px;border:1.5px solid #DDD;background:#fff;border-radius:10px;font-size:14px;cursor:pointer;">' + (opts.cancelLabel || '取消') + '</button>' +
+        '<button id="appConfirmOk" style="flex:1;padding:11px;border:none;background:' + (opts.danger ? '#C0504D' : 'var(--deep-sage,#4A6741)') + ';color:#fff;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">' + (opts.okLabel || '確認') + '</button>' +
+      '</div>' +
+    '</div></div>'
+  document.body.insertAdjacentHTML('beforeend', html)
+  function close() { var el = document.getElementById('appConfirmModal'); if (el) el.remove() }
+  document.getElementById('appConfirmCancel').onclick = function () { close(); if (opts.onCancel) opts.onCancel() }
+  document.getElementById('appConfirmOk').onclick = function () { close(); if (opts.onOk) opts.onOk() }
+}
+
+function regenerateKey(id) {
+  showConfirm({
+    icon: '🔑', title: '確認重發登入金鑰？', danger: true,
+    msg: '重發後舊金鑰會立即失效，房東需要使用新的金鑰登入。',
+    okLabel: '確認重發',
+    onOk: async function () {
+      var res = await fetch('/admin/api/landlord/' + id + '/regenerate-key?key=' + encodeURIComponent(KEY), {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}'
+      })
+      var data = await res.json()
+      if (!res.ok || !data._adminKey) { showToast('❌ ' + (data.error || '重發失敗，請稍後再試')); return }
+      showAdminKeyModal('新登入金鑰已產生', data._adminKey)
+      reload()
+    }
   })
-  var data = await res.json()
-  if (!res.ok || !data._adminKey) { showToast('❌ ' + (data.error || '重發失敗，請稍後再試')); return }
-  showAdminKeyModal('新登入金鑰已產生', data._adminKey)
-  reload()
 }
 
 async function editLandlord(id) {
