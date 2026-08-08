@@ -3404,13 +3404,28 @@ async function toggleMenu(id, enable) {
 }
 
 
+// 金鑰浮動視窗（新增房東 / 重發金鑰共用）— 用頁內 modal 取代 alert，手機才看得到
+function showAdminKeyModal(headline, key) {
+  var old = document.getElementById('adminKeyToast'); if (old) old.remove()
+  var html = '<div id="adminKeyToast" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:16px;padding:28px 32px;box-shadow:0 20px 60px rgba(0,0,0,0.22);z-index:10000;max-width:420px;width:90%;text-align:center;">' +
+    '<div style="font-size:32px;margin-bottom:8px;">🔑</div>' +
+    '<div style="font-size:17px;font-weight:700;color:#1a1a1a;margin-bottom:6px;">' + headline + '</div>' +
+    '<div style="font-size:13px;color:#6B7280;margin-bottom:16px;">請將以下登入金鑰交給房東，用於登入管理後台（僅此一次顯示）</div>' +
+    '<div onclick="navigator.clipboard&&navigator.clipboard.writeText(\'' + esc(key) + '\').then(function(){showToast(\'已複製！\')})" style="background:#F5F0EA;border-radius:10px;padding:14px;font-family:monospace;font-size:15px;font-weight:700;letter-spacing:1px;color:var(--deep-sage,#4A6741);cursor:pointer;user-select:all;word-break:break-all;" title="點擊複製">' + esc(key) + '</div>' +
+    '<div style="font-size:12px;color:#9CA3AF;margin-top:8px;">點擊上方金鑰可複製</div>' +
+    '<button onclick="document.getElementById(\'adminKeyToast\').remove()" style="margin-top:20px;background:var(--deep-sage,#4A6741);color:#fff;border:none;border-radius:10px;padding:10px 32px;font-size:14px;font-weight:700;cursor:pointer;">確認關閉</button>' +
+    '</div>'
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
 async function regenerateKey(id) {
   if (!confirm('確認重發登入金鑰？\n\n重發後舊金鑰會立即失效，房東需要使用新的金鑰登入。')) return
   var res = await fetch('/admin/api/landlord/' + id + '/regenerate-key?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}'
   })
   var data = await res.json()
-  alert('🔑 新金鑰：\\n' + data._adminKey + '\\n\\n請交給房東。')
+  if (!res.ok || !data._adminKey) { showToast('❌ ' + (data.error || '重發失敗，請稍後再試')); return }
+  showAdminKeyModal('新登入金鑰已產生', data._adminKey)
   reload()
 }
 
