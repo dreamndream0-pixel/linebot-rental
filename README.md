@@ -14,17 +14,26 @@
 
 ## 智慧門鎖（TTLock）— 包租代管功能
 
-整合自 rubyclean 的門鎖邏輯，讓房客在 LINE 輸入「密碼」即可取得**當日**門鎖密碼。
+整合自 rubyclean 的門鎖管理，直接搬進後台「包租代管」分頁，讓房客在 LINE 輸入「密碼」即可取得**當日**門鎖密碼。
 
 - **權限**：進階功能，預設關閉。由**總管理員**在後台「房東 → ⚙️ 權限設定」勾選 `🔐 智慧門鎖` 才對該房東開放。
-- **帳號**：每個房東各自一組 TTLock 帳密，於後台「包租代管 → 某物件 → 🔐 門鎖密碼 → 設定帳密」填入（存於 `landlord.ttlockConfig`）。
-- **綁定**：後台手動輸入房客 LINE User ID ↔ 門鎖 Lock ID（存於 `LockTenant`）；只有綁定的 User ID 能索取。
-- **規則**：密碼當天有效（台北時區 23:59），同日重複索取回傳同一組；免費 3 次／年（每年重置），第 4 次起每次收 50 元作業費並記入待收帳款。
+- **入口**：後台「包租代管」分頁上方的 `🔐 門鎖管理` 按鈕。裡面用建物分頁列出所有房間，每間可設定：
+  - **門鎖類型**：`🔐 TTLock 電子鎖` / `🔢 普通密碼鎖` / `🗝️ 傳統喇叭鎖`
+  - **Lock ID**：TTLock 的 lockId（可多把，逗號分隔）
+  - **房客 LINE User ID**：填入即綁定，只有此 User ID 能索取該房密碼
+- **匯入預設**：`📥 匯入 rubyclean 預設` 一鍵帶入 rubyclean 既有的門鎖房間資料（保留已填的房客 User ID）。
+- **帳號**：每個房東各自一組 TTLock 帳密，於門鎖管理內「設定帳密」填入（存於 `landlord.ttlockConfig`）。
+- **取密碼**：房客在 LINE 輸入「密碼」→ 依其 User ID 找到綁定房間 → 回傳當日密碼。
+  - 密碼鎖：依房號＋日期以固定算式計算（台北星期）
+  - TTLock：呼叫 API 產生當日限時密碼（有效至台北當日 23:59）
+  - 傳統鎖：提示無密碼，請聯絡房東
 
+> 資料存於房東的 `landlord.lockRooms`（JSON：`{ roomKey: { type, ids, userId } }`）。
+>
 > 依賴 Node.js 全域 `fetch`（Node 18+）。
 >
-> ⚠️ 本次新增了 `landlords.ttlockConfig` 欄位與 `lock_tenants` 資料表——依 UPDATE_GUIDE 規則，
-> `xiaowo-rental/prisma/schema.prisma` 也已同步相同模型，兩份 schema 需保持一致。
+> ⚠️ 本次新增了 `landlords.ttlockConfig`、`landlords.lockRooms` 兩個欄位——依 UPDATE_GUIDE 規則，
+> `xiaowo-rental/prisma/schema.prisma` 也已同步相同欄位，兩份 schema 需保持一致。
 
 ## 快速開始
 
