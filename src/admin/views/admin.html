@@ -3437,19 +3437,40 @@ function showConfirm(opts) {
   document.getElementById('appConfirmOk').onclick = function () { close(); if (opts.onOk) opts.onOk() }
 }
 
+// 頁內資訊視窗（成功顯示金鑰或失敗顯示原因，皆用可見的 modal，不依賴 toast）
+function showInfoModal(title, body, mono) {
+  var old = document.getElementById('appInfoModal'); if (old) old.remove()
+  var html = '<div id="appInfoModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10002;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:420px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.22);">' +
+      '<div style="font-size:17px;font-weight:700;color:#1a1a1a;margin-bottom:12px;">' + title + '</div>' +
+      '<div style="' + (mono ? "font-family:monospace;background:#F5F0EA;border-radius:10px;padding:14px;word-break:break-all;user-select:all;font-weight:700;" : "color:#6B7280;font-size:13px;white-space:pre-line;line-height:1.6;") + '">' + body + '</div>' +
+      '<button onclick="document.getElementById(\'appInfoModal\').remove()" style="margin-top:20px;background:var(--deep-sage,#4A6741);color:#fff;border:none;border-radius:10px;padding:10px 32px;font-size:14px;font-weight:700;cursor:pointer;">確認關閉</button>' +
+    '</div></div>'
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
 function regenerateKey(id) {
   showConfirm({
     icon: '🔑', title: '確認重發登入金鑰？', danger: true,
     msg: '重發後舊金鑰會立即失效，房東需要使用新的金鑰登入。',
     okLabel: '確認重發',
     onOk: async function () {
-      var res = await fetch('/admin/api/landlord/' + id + '/regenerate-key?key=' + encodeURIComponent(KEY), {
-        method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}'
-      })
-      var data = await res.json()
-      if (!res.ok || !data._adminKey) { showToast('❌ ' + (data.error || '重發失敗，請稍後再試')); return }
-      showAdminKeyModal('新登入金鑰已產生', data._adminKey)
-      reload()
+      try {
+        var res = await fetch('/admin/api/landlord/' + id + '/regenerate-key?key=' + encodeURIComponent(KEY), {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}'
+        })
+        var raw = await res.text()
+        var data = {}
+        try { data = JSON.parse(raw) } catch (e) {}
+        if (!res.ok || !data._adminKey) {
+          showInfoModal('⚠️ 重發失敗（HTTP ' + res.status + '）', esc(data.error || raw || '伺服器未回傳金鑰，請稍後再試'))
+          return
+        }
+        showAdminKeyModal('新登入金鑰已產生', data._adminKey)
+        reload()
+      } catch (e) {
+        showInfoModal('⚠️ 重發失敗', esc('連線錯誤：' + (e && e.message ? e.message : e)))
+      }
     }
   })
 }
