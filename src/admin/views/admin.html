@@ -5637,12 +5637,58 @@ async function lmSaveCreds() {
   } catch (e) { st.textContent = '❌ ' + e.message; st.style.color = '#C55' }
 }
 
+var LM_WORKER_DEFAULT = 'https://workerruby-shorten.dreamndream0.workers.dev'
+
 function lmToolbar() {
-  return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' +
-    '<button class="btn" style="width:auto;padding:8px 14px;font-size:13px;background:#5A7D8C;" onclick="lmSeed(this)">📥 匯入 rubyclean 預設</button>' +
-    '<button class="btn" style="width:auto;padding:8px 14px;font-size:13px;background:#8A8A8A;" onclick="lmShowLocks(this)">📋 查 TTLock 門鎖</button>' +
+  return '<div style="border:1px solid #E5E0D5;border-radius:12px;padding:12px;margin-bottom:12px;">' +
+    '<div style="font-weight:700;font-size:13px;margin-bottom:8px;">從 rubyclean 匯入門鎖資料</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+      '<input id="lmWorkerUrl" value="' + LM_WORKER_DEFAULT + '" style="flex:1;min-width:180px;padding:8px 10px;border:1px solid #DDD;border-radius:8px;font-size:12px;font-family:monospace;">' +
+      '<button class="btn" style="width:auto;padding:8px 14px;font-size:13px;background:#6B5A9A;" onclick="lmImportLive(this)">🌐 匯入雲端現況</button>' +
     '</div>' +
-    '<div id="lmLockList" style="font-size:12px;color:#666;margin-bottom:10px;"></div>'
+    '<div style="font-size:11px;color:#999;margin-top:6px;">「雲端現況」會從你 rubyclean 的即時資料抓最新門鎖設定（在你手機／電腦的瀏覽器直接連線）。若連不到再用下方「預設」。</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
+      '<button class="btn" style="width:auto;padding:7px 12px;font-size:12px;background:#5A7D8C;" onclick="lmSeed(this)">📥 匯入內建預設</button>' +
+      '<button class="btn" style="width:auto;padding:7px 12px;font-size:12px;background:#8A8A8A;" onclick="lmShowLocks(this)">📋 查 TTLock 門鎖</button>' +
+    '</div>' +
+    '<div id="lmLockList" style="font-size:12px;color:#666;margin-top:8px;"></div>' +
+  '</div>'
+}
+
+async function lmImportLive() {
+  var base = (document.getElementById('lmWorkerUrl').value || '').trim().replace(/\/+$/, '')
+  if (!base) { showInfoModal('提醒', '請先填入 rubyclean 的 Worker 網址'); return }
+  lmSetMsg('從雲端讀取中…')
+  try {
+    var res = await fetch(base + '/db/get?key=lock_db')
+    var raw = await res.text()
+    var live = {}
+    try { live = JSON.parse(raw) } catch (e) {}
+    if (!live || typeof live !== 'object' || !Object.keys(live).length) {
+      showInfoModal('匯入失敗', esc('雲端未回傳有效門鎖資料（HTTP ' + res.status + '）：\n' + raw.slice(0, 200)))
+      return
+    }
+    var n = 0
+    Object.keys(live).forEach(function (key) {
+      var v = live[key] || {}
+      var cur = LOCKMGR.rooms[key] || {}
+      var type = (['keypad', 'ttlock', 'traditional'].indexOf(v.type) >= 0) ? v.type : 'keypad'
+      var entry = { type: type }
+      if (type === 'ttlock') entry.ids = Array.isArray(v.ids) ? v.ids.map(Number).filter(function (x) { return !isNaN(x) && x > 0 }) : []
+      if (cur.userId) entry.userId = cur.userId  // 保留已填的房客 User ID
+      LOCKMGR.rooms[key] = entry; n++
+    })
+    var save = await fetch('/admin/api/smartlock/rooms?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ landlordId: LOCKMGR.landlordId || undefined, rooms: LOCKMGR.rooms }),
+    })
+    var d = await save.json()
+    if (!save.ok) { showInfoModal('儲存失敗', esc(d.error || '')); return }
+    lmRender()
+    showInfoModal('✅ 已從 rubyclean 雲端匯入', '共匯入／更新 ' + n + ' 間房間，並已儲存（保留原本填的房客 User ID）。', false)
+  } catch (e) {
+    showInfoModal('匯入失敗', esc('無法連線 Worker：' + (e && e.message ? e.message : e) + '\n請確認網址正確，且目前網路可連到該網址。'))
+  }
 }
 
 function lmBuildingTabs() {
