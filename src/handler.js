@@ -683,10 +683,13 @@ async function handleMessage(event, client, landlordId = null) {
       reply = { type: 'text', text: `🔧 ${category}\n\n${t.askRepairDesc}` }
     }
   }
-  // ── 智慧門鎖：房客索取門鎖密碼 ──
-  // handleTenantPasscode 回傳 null 代表該房東未授權 smartlock → reply 保持 null，不回應（不干擾其他房東）
-  else if (require('./smartlock').isPasscodeRequest(text)) {
+  // ── 智慧門鎖：房客索取門鎖密碼（兩步：先確認、再出密碼）──
+  // 回傳 null 代表該房東未授權 smartlock → reply 保持 null，不回應（不干擾其他房東）
+  else if (require('./smartlock').isPasscodeConfirm(text)) {
     reply = await require('./smartlock').handleTenantPasscode(landlordId, userId)
+  }
+  else if (require('./smartlock').isPasscodeRequest(text)) {
+    reply = await require('./smartlock').handleTenantPasscodePrompt(landlordId, userId)
   }
   // ── 明確呼叫選單 ──
   else if (['選單', '主選單', 'menu'].includes(text.toLowerCase())) {
