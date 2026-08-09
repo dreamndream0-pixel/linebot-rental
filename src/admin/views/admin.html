@@ -2749,6 +2749,7 @@ function renderLandlords() {
       '<button class="action-btn" onclick="event.stopPropagation();editLandlord(\'' + l.id + '\')">✏️ 編輯</button>' +
       '<button class="action-btn" onclick="viewLandlordSite(\'' + l.id + '\')">🌐 官網預覽</button>' +
       '<button class="action-btn" onclick="event.stopPropagation();setupBot(\'' + l.id + '\', \'' + esc(l.name).replace(/'/g, '') + '\', \'' + webhookUrl + '\')">🤖 Bot 設定</button>' +
+      '<button class="action-btn" onclick="event.stopPropagation();btnLoad(this, function(){ return checkBotStatus(\'' + l.id + '\') })">🔍 檢查啟用</button>' +
       '<button class="action-btn" onclick="openFeaturesEditor(\'' + l.id + '\')">⚙️ 權限設定</button>' +
       '<button class="action-btn" onclick="openLineRichMenuPanel(\'' + l.id + '\')">📱 LINE 圖文</button>' +
       '<button class="action-btn ' + (l.isActive ? 'danger' : '') + '" onclick="toggleLandlord(\'' + l.id + '\', ' + (!l.isActive) + ')">' + (l.isActive ? '停用' : '啟用') + '</button>' +
@@ -2794,6 +2795,51 @@ function openAdminModal(id, title, subtitle, bodyHtml, footHtml) {
 }
 
 // 設定房東的 LINE Bot
+async function checkBotStatus(id) {
+  try {
+    var res = await fetch('/admin/api/landlord/' + id + '/bot-status?key=' + encodeURIComponent(KEY))
+    var d = await res.json()
+    if (!res.ok) { showInfoModal('檢查失敗', esc(d.error || ('HTTP ' + res.status))); return }
+    renderBotStatusModal(d)
+  } catch (e) { showInfoModal('檢查失敗', esc(e.message || String(e))) }
+}
+
+function renderBotStatusModal(d) {
+  var c = d.checks || {}
+  function row(ok, label, detail) {
+    var icon = ok === true ? '✅' : ok === false ? '❌' : '➖'
+    var color = ok === true ? '#3A8A5A' : ok === false ? '#C0504D' : '#9CA3AF'
+    return '<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #f0eee9;">' +
+      '<span style="font-size:15px;">' + icon + '</span>' +
+      '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;color:' + color + ';">' + label + '</div>' +
+      (detail ? '<div style="font-size:11px;color:#888;word-break:break-all;">' + detail + '</div>' : '') + '</div></div>'
+  }
+  var chatModeOk = c.chatMode === 'bot'
+  var body =
+    row(c.isActive, '房東帳號啟用中', c.isActive ? '' : '房東被停用，Bot 不會運作') +
+    row(c.botEnabled, 'Bot 已啟用（未停用）', '') +
+    row(c.featureBot, '權限：LINE Bot 功能已開', c.featureBot ? '' : '到「權限設定」開啟 🤖 LINE Bot') +
+    row(c.hasSecret, '已填 Channel Secret', '') +
+    row(c.hasToken, '已填 Channel Access Token', '') +
+    row(c.tokenValid, 'Token 有效（LINE 驗證通過）', c.tokenValid === false ? 'Token 錯誤或已失效，請重發後更新' : (c.botDisplayName ? '官方帳號：' + esc(c.botDisplayName) + (c.basicId ? '（' + esc(c.basicId) + '）' : '') : '')) +
+    row(c.webhookSet, 'LINE 已設定 Webhook URL', c.lineWebhookUrl ? esc(c.lineWebhookUrl) : '在 LINE Developers → Messaging API 填入 Webhook URL') +
+    row(c.webhookActive, 'Webhook 已開啟（Use webhook = ON）', '') +
+    row(c.webhookMatches, 'Webhook URL 正確指向本系統', c.webhookMatches === false ? ('應為：' + esc(d.expectedWebhook || '')) : '') +
+    row(chatModeOk, '回應模式為 Webhook（非聊天模式）', chatModeOk ? '' : (c.chatMode === 'chat' ? '目前是「聊天模式」，自動回應會蓋掉 Bot；請到 LINE 官方帳號管理 → 回應設定改為 Bot/Webhook' : '未知'))
+  var head = d.ready
+    ? '<div style="font-size:30px;">✅</div><div style="font-size:17px;font-weight:800;color:#3A8A5A;margin:4px 0 2px;">Bot 已正確啟用</div>'
+    : '<div style="font-size:30px;">⚠️</div><div style="font-size:17px;font-weight:800;color:#C0504D;margin:4px 0 2px;">Bot 尚未完全啟用</div>'
+  var old = document.getElementById('appInfoModal'); if (old) old.remove()
+  var html = '<div id="appInfoModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10002;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:22px;max-width:440px;width:100%;margin:auto;box-shadow:0 20px 60px rgba(0,0,0,0.22);">' +
+      '<div style="text-align:center;margin-bottom:10px;">' + head +
+        '<div style="font-size:12px;color:#888;">' + esc(d.name || '') + (d.lineBotName ? '｜' + esc(d.lineBotName) : '') + '</div></div>' +
+      body +
+      '<button onclick="document.getElementById(\'appInfoModal\').remove()" style="margin-top:16px;width:100%;background:var(--deep-sage,#4A6741);color:#fff;border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;">關閉</button>' +
+    '</div></div>'
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
 async function setupBot(id, name, webhookUrl) {
   var l = (DATA.landlords || []).find(function(x){ return x.id === id }) || {}
   var modalId = 'landlordBotModal'

@@ -128,6 +128,73 @@ router.post('/admin/api/landlord/:id/bot', express.json(), async (req, res) => {
   res.json({ ok: true, id: landlord.id })
 })
 
+// 檢查某房東的 LINE Bot 是否正確啟用（DB 設定 + 向 LINE 驗證 token / webhook / 回應模式）
+router.get('/admin/api/landlord/:id/bot-status', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+
+  const l = await prisma.landlord.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, name: true, isActive: true, botEnabled: true, features: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true },
+  })
+  if (!l) return res.status(404).json({ error: '找不到房東' })
+
+  let featBot = true
+  try { const f = l.features ? JSON.parse(l.features) : {}; featBot = f.bot !== false } catch (e) {}
+
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0]
+  const expectedWebhook = `${proto}://${req.get('host')}/webhook/landlord/${l.id}`
+
+  const checks = {
+    isActive: l.isActive,
+    botEnabled: l.botEnabled !== false,
+    featureBot: featBot,
+    hasSecret: !!l.lineChannelSecret,
+    hasToken: !!l.lineChannelToken,
+    tokenValid: null,     // 向 LINE 驗證
+    botDisplayName: null,
+    basicId: null,
+    chatMode: null,       // 'bot'=Webhook 模式(正確)；'chat'=聊天模式(自動回應會蓋掉 bot)
+    webhookSet: null,
+    webhookActive: null,
+    webhookMatches: null,
+    lineWebhookUrl: null,
+  }
+
+  if (l.lineChannelToken) {
+    try {
+      const info = await fetch('https://api.line.me/v2/bot/info', { headers: { Authorization: `Bearer ${l.lineChannelToken}` } })
+      if (info.ok) {
+        const d = await info.json()
+        checks.tokenValid = true
+        checks.botDisplayName = d.displayName || null
+        checks.basicId = d.basicId || null
+        checks.chatMode = d.chatMode || null
+      } else {
+        checks.tokenValid = false
+      }
+    } catch (e) { checks.tokenValid = false }
+
+    try {
+      const wh = await fetch('https://api.line.me/v2/bot/channel/webhook/endpoint', { headers: { Authorization: `Bearer ${l.lineChannelToken}` } })
+      if (wh.ok) {
+        const d = await wh.json()
+        checks.webhookSet = !!d.endpoint
+        checks.webhookActive = d.active === true
+        checks.lineWebhookUrl = d.endpoint || null
+        checks.webhookMatches = d.endpoint ? (d.endpoint === expectedWebhook) : false
+      }
+    } catch (e) {}
+  }
+
+  const ready = checks.isActive && checks.botEnabled && checks.featureBot &&
+    checks.hasSecret && checks.hasToken && checks.tokenValid === true &&
+    checks.webhookSet === true && checks.webhookActive === true &&
+    checks.webhookMatches === true && checks.chatMode === 'bot'
+
+  res.json({ id: l.id, name: l.name, lineBotName: l.lineBotName || null, expectedWebhook, ready, checks })
+})
+
 // ── Rich Menu ────────────────────────────────────────────────────
 
 router.post('/admin/api/landlord/:id/richmenu', express.json(), async (req, res) => {
