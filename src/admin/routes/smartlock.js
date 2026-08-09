@@ -5,7 +5,7 @@ const express = require('express')
 const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
-const { listLocks, parseCreds, BUILDINGS, DEFAULT_LOCK_DB } = require('../../smartlock')
+const { listLocks, parseCreds, BUILDINGS, DEFAULT_LOCK_DB, parseUsage, unpaidTotal, FREE_QUOTA, CHARGE_AMOUNT } = require('../../smartlock')
 
 // smartlock 功能授權：super 一律可用；房東需被授權 features.smartlock
 async function hasSmartlock(auth) {
@@ -158,6 +158,57 @@ router.post('/admin/api/smartlock/seed', express.json(), async (req, res) => {
       data: { lockRooms: JSON.stringify(merged) },
     })
     res.json({ ok: true, count: Object.keys(merged).length })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── 用量／帳款：列出各房客本年度取密碼次數與待收帳款 ──
+router.get('/admin/api/smartlock/usage', async (req, res) => {
+  const ctx = await authLandlord(req, res); if (!ctx) return
+  try {
+    const landlord = await prisma.landlord.findUnique({
+      where: { id: ctx.landlordId },
+      select: { lockUsage: true, lockRooms: true },
+    })
+    const usage = parseUsage(landlord)
+    const rooms = parseRoomsJson(landlord && landlord.lockRooms)
+    const year = new Date().getFullYear()
+    // 綁定房間對照：userId → [房間 label]
+    const roomsByUser = {}
+    Object.keys(rooms).forEach(k => {
+      const uid = rooms[k] && rooms[k].userId
+      if (uid) { (roomsByUser[uid] = roomsByUser[uid] || []).push(k) }
+    })
+    const list = Object.keys(usage).map(uid => {
+      const u = usage[uid] || {}
+      return {
+        userId: uid,
+        name: u.name || '',
+        rooms: roomsByUser[uid] || [],
+        issuedThisYear: (u.year === year) ? (u.issued || 0) : 0,
+        owe: unpaidTotal(u.charges),
+        charges: Array.isArray(u.charges) ? u.charges : [],
+      }
+    }).sort((a, b) => b.owe - a.owe)
+    res.json({ freeQuota: FREE_QUOTA, chargeAmount: CHARGE_AMOUNT, list })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── 結清某房客帳款（全部標記已收）──
+router.post('/admin/api/smartlock/usage/settle', express.json(), async (req, res) => {
+  const ctx = await authLandlord(req, res); if (!ctx) return
+  const userId = req.body && req.body.userId
+  if (!userId) return res.status(400).json({ error: '缺少 userId' })
+  try {
+    const landlord = await prisma.landlord.findUnique({
+      where: { id: ctx.landlordId },
+      select: { lockUsage: true },
+    })
+    const usage = parseUsage(landlord)
+    if (!usage[userId]) return res.status(404).json({ error: '找不到該房客用量資料' })
+    const charges = (Array.isArray(usage[userId].charges) ? usage[userId].charges : []).map(c => ({ ...c, paid: true }))
+    usage[userId].charges = charges
+    await prisma.landlord.update({ where: { id: ctx.landlordId }, data: { lockUsage: JSON.stringify(usage) } })
+    res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

@@ -92,6 +92,7 @@ model Landlord {
   socialConfig           String?   @db.Text   // 社群媒體串接設定（JSON：instagram/facebook/threads 帳號與權杖）
   ttlockConfig           String?   @db.Text   // TTLock 智慧門鎖帳密（JSON：clientId/clientSecret/username/password）
   lockRooms              String?   @db.Text   // 門鎖房間設定（JSON：{ roomKey: { type, ids, userId } }，移植自 rubyclean lock_db）
+  lockUsage              String?   @db.Text   // 門鎖取密碼用量與帳款（JSON：{ userId: { year, issued, todayDate, todayData, charges } }）
   source                 String    @unique @default(cuid())  // 該房東用戶的來源標記
 
   isActive      Boolean   @default(true)

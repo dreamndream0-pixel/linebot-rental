@@ -104,6 +104,7 @@ prisma.$connect()
       // （例如重發金鑰的 landlord.update）都會因缺欄位而丟錯 → 造成 502。
       await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "ttlockConfig" TEXT`)
       await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "lockRooms" TEXT`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "lockUsage" TEXT`)
       console.log('✅ 智慧門鎖欄位已確認')
     } catch (e) {
       console.error('⚠️ 智慧門鎖欄位確認失敗:', e.message)

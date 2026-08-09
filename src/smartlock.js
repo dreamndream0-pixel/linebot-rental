@@ -7,8 +7,11 @@
 // 每個房東各自一組 TTLock 帳號（存於 landlord.ttlockConfig）
 const crypto = require('crypto')
 const prisma = require('./db')
+const { findLineTenant } = require('./tenantStore')
 
 const TTLOCK_BASE = 'https://euapi.ttlock.com'
+const FREE_QUOTA = 3          // 每年免費次數
+const CHARGE_AMOUNT = 50      // 超過後每次作業費（元）
 
 function md5(input) {
   return crypto.createHash('md5').update(String(input), 'utf8').digest('hex')
@@ -160,6 +163,20 @@ function parseRooms(landlord) {
   } catch { return {} }
 }
 
+// 解析房東的門鎖用量／帳款（{ userId: { year, issued, todayDate, todayData, charges } }）
+function parseUsage(landlord) {
+  if (!landlord || !landlord.lockUsage) return {}
+  try {
+    const u = JSON.parse(landlord.lockUsage)
+    return (u && typeof u === 'object') ? u : {}
+  } catch { return {} }
+}
+
+function unpaidTotal(charges) {
+  if (!Array.isArray(charges)) return 0
+  return charges.filter(c => !c.paid).reduce((s, c) => s + (c.amount || 0), 0)
+}
+
 // 是否已授權 smartlock 功能
 function landlordHasSmartlock(landlord) {
   if (!landlord) return false
@@ -239,12 +256,20 @@ async function handleTenantPasscode(landlordId, lineUserId) {
   try {
     landlord = await prisma.landlord.findUnique({
       where: { id: landlordId },
-      select: { id: true, features: true, ttlockConfig: true, lockRooms: true },
+      select: { id: true, features: true, ttlockConfig: true, lockRooms: true, lockUsage: true },
     })
   } catch (e) { return null }
 
   // 功能未授權 → 略過（不回應，避免干擾其他房東）
   if (!landlordHasSmartlock(landlord)) return null
+
+  // 房客 LINE 名稱（優先用房東備註名，其次 LINE 顯示名）
+  let tenantName = ''
+  try {
+    const t = await findLineTenant(lineUserId, landlordId)
+    if (t) tenantName = t.customName || t.name || ''
+  } catch (e) {}
+  const who = tenantName || '房客'
 
   const rooms = parseRooms(landlord)
   // 找出所有綁定此 User ID 的房間
@@ -253,12 +278,19 @@ async function handleTenantPasscode(landlordId, lineUserId) {
     .map(k => ({ key: k, type: rooms[k].type, ids: rooms[k].ids }))
 
   if (matched.length === 0) {
-    // 尚未綁定：仍回傳其 User ID，方便房客提供給房東設定
-    return { type: 'text', text: `👤 您的 LINE User ID：\n${lineUserId}\n\n您尚未綁定門鎖，請將上面這組 ID 提供給房東設定後，即可自助取當日密碼。` }
+    return { type: 'text', text: `${who} 您好，您尚未綁定門鎖，請聯絡房東為您設定後即可自助取當日密碼。` }
   }
 
   const today = taipeiDateStr()
   const now = taipeiNow()
+  const year = Number(today.slice(0, 4))
+
+  // 同一天重複索取 → 回傳同一組密碼，不計次、不重複收費
+  const usage = parseUsage(landlord)
+  const u = usage[lineUserId] || {}
+  if (u.todayDate === today && u.todayData && Array.isArray(u.todayData.lines) && u.todayData.lines.length) {
+    return { type: 'text', text: renderPasscodeReply(who, u.todayData.lines, today, u.todayData.n, u.todayData.charged) }
+  }
 
   // 有 TTLock 房間才連線取 token
   const needsTtlock = matched.some(r => r.type === 'ttlock' && Array.isArray(r.ids) && r.ids.length)
@@ -296,7 +328,39 @@ async function handleTenantPasscode(landlordId, lineUserId) {
     }
   }
 
-  return { type: 'text', text: `🔐 今日門鎖密碼（${today}）\n👤 您的 User ID：${lineUserId}\n\n` + lines.join('\n') + `\n\n有效至今日 23:59` }
+  // 計次／計費（每年重置；前 FREE_QUOTA 次免費，之後每次 CHARGE_AMOUNT 元）
+  const issuedBase = (u.year === year) ? (u.issued || 0) : 0
+  const n = issuedBase + 1
+  const charged = n > FREE_QUOTA
+  const charges = (u.year === year && Array.isArray(u.charges)) ? u.charges.slice() : []
+  if (charged) charges.push({ date: today, amount: CHARGE_AMOUNT, paid: false })
+
+  usage[lineUserId] = {
+    name: who,
+    year,
+    issued: n,
+    todayDate: today,
+    todayData: { lines, n, charged },
+    charges,
+  }
+  try {
+    await prisma.landlord.update({ where: { id: landlordId }, data: { lockUsage: JSON.stringify(usage) } })
+  } catch (e) { console.error('更新門鎖用量失敗:', e.message) }
+
+  return { type: 'text', text: renderPasscodeReply(who, lines, today, n, charged) }
+}
+
+// 組回覆訊息（顯示房客名稱、密碼、免費／收費資訊）
+function renderPasscodeReply(who, lines, today, n, charged) {
+  let msg = `🔐 ${who} 今日門鎖密碼（${today}）\n\n` + lines.join('\n')
+  if (charged) {
+    msg += `\n\n⚠️ 本年度第 ${n} 次索取，已收取作業費 ${CHARGE_AMOUNT} 元並記入帳款。`
+  } else {
+    const left = FREE_QUOTA - n
+    msg += `\n\n（本年度第 ${n} 次，免費${left >= 0 ? '；尚餘 ' + left + ' 次免費' : ''}）`
+  }
+  msg += `\n有效至今日 23:59`
+  return msg
 }
 
 module.exports = {
@@ -306,6 +370,8 @@ module.exports = {
   taipeiTodayWindow,
   parseCreds,
   parseRooms,
+  parseUsage,
+  unpaidTotal,
   landlordHasSmartlock,
   getToken,
   listLocks,
@@ -316,4 +382,6 @@ module.exports = {
   BUILDINGS,
   DEFAULT_LOCK_DB,
   buildingLabelOf,
+  FREE_QUOTA,
+  CHARGE_AMOUNT,
 }
