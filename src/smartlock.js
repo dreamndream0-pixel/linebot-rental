@@ -215,6 +215,31 @@ async function getToken(creds) {
   return resp.json()
 }
 
+// TTLock access token 記憶體快取（token 效期通常很長，快取可省下每次索取的取 token 往返，加快速度）
+const _tokenCache = new Map()  // key: clientId|username → { access_token, expiresAt }
+function _tokenKey(creds) { return creds.clientId + '|' + creds.username }
+async function getTokenCached(creds) {
+  const key = _tokenKey(creds)
+  const c = _tokenCache.get(key)
+  if (c && c.expiresAt > Date.now() + 60000) return { access_token: c.access_token }
+  const tok = await getToken(creds)
+  if (tok && tok.access_token) {
+    const ttlMs = Math.min((Number(tok.expires_in) || 3600) * 1000, 12 * 3600 * 1000)
+    _tokenCache.set(key, { access_token: tok.access_token, expiresAt: Date.now() + ttlMs })
+  }
+  return tok
+}
+function clearTokenCache(creds) { if (creds) _tokenCache.delete(_tokenKey(creds)) }
+
+// 快速判斷房東是否已授權 smartlock（供 Bot 決定要不要回「處理中」）
+async function isSmartlockEnabled(landlordId) {
+  if (!landlordId) return false
+  try {
+    const l = await prisma.landlord.findUnique({ where: { id: landlordId }, select: { features: true } })
+    return landlordHasSmartlock(l)
+  } catch (e) { return false }
+}
+
 // 列出房東 TTLock 帳號下所有門鎖
 async function listLocks(creds) {
   const token = await getToken(creds)
@@ -391,74 +416,96 @@ async function handleTenantPasscode(landlordId, lineUserId) {
   const today = taipeiDateStr()
   const now = taipeiNow()
   const year = Number(today.slice(0, 4))
+  const matchedKeys = matched.map(m => m.key).sort()
+  const matchedSig = matchedKeys.join(',')
 
-  // 同一天重複索取 → 回傳同一組密碼，不計次、不重複收費
   const usage = parseUsage(landlord)
   const u = usage[lineUserId] || {}
+
+  // 同一天重複索取，且綁定房間沒變 → 回同一組密碼，不計次、不重複收費
+  // 若房間有變（換房）→ 重新產生新房間密碼，但沿用今天的計次，不重複計費
+  let reissue = false
   if (u.todayDate === today && u.todayData) {
-    // 同一天重複索取 → 回同一組密碼，不計次、不重複收費
     let entries = Array.isArray(u.todayData.entries) ? u.todayData.entries : null
-    // 相容舊版快取（只存 lines 字串陣列）
-    if (!entries && Array.isArray(u.todayData.lines)) {
+    if (!entries && Array.isArray(u.todayData.lines)) { // 相容舊版快取
       entries = u.todayData.lines.map(function (l) {
         const i = String(l).indexOf('：')
         return i >= 0 ? { label: l.slice(0, i), value: l.slice(i + 1) } : { label: '', value: String(l) }
       })
     }
-    if (entries && entries.length) {
+    const cachedSig = Array.isArray(u.todayData.roomKeys) ? u.todayData.roomKeys.slice().sort().join(',') : null
+    if (entries && entries.length && cachedSig === matchedSig) {
       return renderPasscodeReply(who, entries, today, u.todayData.n, u.todayData.charged)
     }
+    reissue = true  // 換房或快取格式不符 → 重新產生，但不重複計次/收費
   }
 
-  // 有 TTLock 房間才連線取 token
+  // 有 TTLock 房間才連線取 token（用快取加速）
   const needsTtlock = matched.some(r => r.type === 'ttlock' && Array.isArray(r.ids) && r.ids.length)
   let creds = null, token = null
   if (needsTtlock) {
     creds = parseCreds(landlord)
     if (!creds) return { type: 'text', text: '門鎖服務尚未設定完成，請聯絡房東。' }
-    token = await getToken(creds)
+    token = await getTokenCached(creds)
     if (!token.access_token) {
       return { type: 'text', text: '系統暫時無法連線門鎖服務，請稍後再試。' }
     }
   }
 
   const { startDate, endDate } = taipeiTodayWindow()
-  const entries = []   // { label, value, muted? }
+  // 攤平成 slot；TTLock 密碼平行產生以加速
+  const slots = []
   for (const r of matched) {
     const roomNo = r.key.split('_').slice(1).join('_')
     const bl = buildingLabelOf(r.key)
     const label = (bl ? bl + ' ' : '') + roomNo
     if (r.type === 'keypad') {
-      entries.push({ label, value: calcKeypadPassword(roomNo, now) })
+      slots.push({ kind: 'keypad', label, roomNo })
     } else if (r.type === 'ttlock' && Array.isArray(r.ids) && r.ids.length) {
-      for (let i = 0; i < r.ids.length; i++) {
-        const name = `房客密碼-${today}` + (r.ids.length > 1 ? `-${i + 1}` : '')
-        const pw = await generatePasscode(token.access_token, creds, r.ids[i], startDate, endDate, name)
-        const rlabel = label + (r.ids.length > 1 ? `（門鎖 ${i + 1}）` : '')
-        if (!pw || !pw.keyboardPwd) {
-          entries.push({ label: rlabel, value: '產生失敗，請稍後再試', muted: true })
-        } else {
-          entries.push({ label: rlabel, value: pw.keyboardPwd + '#' })
-        }
-      }
+      r.ids.forEach((id, i) => {
+        slots.push({ kind: 'ttlock', label: label + (r.ids.length > 1 ? `（門鎖 ${i + 1}）` : ''), id })
+      })
     } else {
-      entries.push({ label, value: '傳統鎖，無密碼', muted: true })
+      slots.push({ kind: 'trad', label })
     }
   }
+  let genFailed = false
+  await Promise.all(slots.filter(s => s.kind === 'ttlock').map(async (s) => {
+    const name = `房客密碼-${today}`
+    try {
+      s.pw = await generatePasscode(token.access_token, creds, s.id, startDate, endDate, name)
+    } catch (e) { s.pw = null }
+    if (!s.pw || !s.pw.keyboardPwd) genFailed = true
+  }))
+  if (genFailed) clearTokenCache(creds)  // 可能是 token 失效，下次重取
+  const entries = slots.map(s => {
+    if (s.kind === 'keypad') return { label: s.label, value: calcKeypadPassword(s.roomNo, now) }
+    if (s.kind === 'ttlock') return (s.pw && s.pw.keyboardPwd)
+      ? { label: s.label, value: s.pw.keyboardPwd + '#' }
+      : { label: s.label, value: '產生失敗，請稍後再試', muted: true }
+    return { label: s.label, value: '傳統鎖，無密碼', muted: true }
+  })
 
-  // 計次／計費（每年重置；前 FREE_QUOTA 次免費，之後每次 CHARGE_AMOUNT 元）
-  const issuedBase = (u.year === year) ? (u.issued || 0) : 0
-  const n = issuedBase + 1
-  const charged = n > FREE_QUOTA
-  const charges = (u.year === year && Array.isArray(u.charges)) ? u.charges.slice() : []
-  if (charged) charges.push({ date: today, amount: CHARGE_AMOUNT, paid: false })
+  // 計次／計費（換房重發時沿用今天的次數，不重複計費）
+  let n, charged, charges
+  if (reissue) {
+    n = u.todayData.n
+    charged = u.todayData.charged
+    charges = Array.isArray(u.charges) ? u.charges.slice() : []
+  } else {
+    const issuedBase = (u.year === year) ? (u.issued || 0) : 0
+    n = issuedBase + 1
+    charged = n > FREE_QUOTA
+    charges = (u.year === year && Array.isArray(u.charges)) ? u.charges.slice() : []
+    if (charged) charges.push({ date: today, amount: CHARGE_AMOUNT, paid: false })
+  }
 
   usage[lineUserId] = {
     name: who,
     year,
-    issued: n,
+    issued: (u.year === year) ? Math.max(u.issued || 0, n) : n,
     todayDate: today,
-    todayData: { entries, n, charged },
+    todayData: { entries, n, charged, roomKeys: matchedKeys },
     charges,
   }
   try {
@@ -523,6 +570,7 @@ module.exports = {
   calcKeypadPassword,
   isPasscodeRequest,
   isPasscodeConfirm,
+  isSmartlockEnabled,
   handleTenantPasscodePrompt,
   handleTenantPasscode,
   BUILDINGS,
