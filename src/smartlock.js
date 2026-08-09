@@ -137,11 +137,13 @@ function taipeiNow(ms = Date.now()) {
   return new Date(ms + 8 * 3600 * 1000)
 }
 
-// 今日 TTLock 密碼有效區間：現在 → 台北當日 23:59:59
+// 今日 TTLock 密碼有效區間：現在 → 台北「隔天 00:00」（涵蓋整個今天）
+// 註：TTLock 會把 endDate 無條件捨去（觀察到 23:59:59 被砍成 23:30 提早失效），
+// 故 end 用隔天 00:00 的整點邊界，確保全天到午夜都有效。
 function taipeiTodayWindow() {
   const now = Date.now()
   const d = new Date(now + 8 * 3600 * 1000)
-  const endUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59) - 8 * 3600 * 1000
+  const endUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 0, 0) - 8 * 3600 * 1000
   return { startDate: now, endDate: endUtc }
 }
 
@@ -288,8 +290,19 @@ async function handleTenantPasscode(landlordId, lineUserId) {
   // 同一天重複索取 → 回傳同一組密碼，不計次、不重複收費
   const usage = parseUsage(landlord)
   const u = usage[lineUserId] || {}
-  if (u.todayDate === today && u.todayData && Array.isArray(u.todayData.entries) && u.todayData.entries.length) {
-    return renderPasscodeReply(who, u.todayData.entries, today, u.todayData.n, u.todayData.charged)
+  if (u.todayDate === today && u.todayData) {
+    // 同一天重複索取 → 回同一組密碼，不計次、不重複收費
+    let entries = Array.isArray(u.todayData.entries) ? u.todayData.entries : null
+    // 相容舊版快取（只存 lines 字串陣列）
+    if (!entries && Array.isArray(u.todayData.lines)) {
+      entries = u.todayData.lines.map(function (l) {
+        const i = String(l).indexOf('：')
+        return i >= 0 ? { label: l.slice(0, i), value: l.slice(i + 1) } : { label: '', value: String(l) }
+      })
+    }
+    if (entries && entries.length) {
+      return renderPasscodeReply(who, entries, today, u.todayData.n, u.todayData.charged)
+    }
   }
 
   // 有 TTLock 房間才連線取 token
