@@ -405,14 +405,16 @@
     .top-actions-wrap { position:absolute;top:0;right:0;z-index:40; }
     .top-actions { position:static;width:auto;max-width:220px;justify-content:flex-end;align-content:flex-start;gap:6px;flex-wrap:nowrap;z-index:5; }
     .top-actions a, .top-actions button { padding:7px 10px !important;font-size:12px !important;line-height:1.2; }
-    #userChip { display:flex !important; }
+    /* 手機版帳號資訊統一顯示在右上角 .mobile-account-chip，隱藏標題下方的重複區塊 */
+    #userChip { display:none !important; }
     .user-chip { padding:5px 9px;gap:6px;max-width:140px; }
     .uc-avatar { display:none; }
     .uc-info { min-width:0; }
     .uc-name, .uc-role { display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     #accountLabel { font-size:12px !important; }
     .role-flipcard { display:none; }
-    .mobile-logout-btn { display:inline-flex !important;align-items:center;justify-content:center;background:white !important;border:1px solid var(--line) !important;border-radius:999px !important;color:#26362D !important;font-weight:800;box-shadow:0 2px 8px rgba(20,40,28,.08); }
+    /* 登出已整合在右上角帳號選單，隱藏標題下方的重複登出鈕 */
+    .mobile-logout-btn { display:none !important; }
     .um-dropdown { top:calc(100% + 8px);right:0;min-width:156px;z-index:80; }
     .admin-toolbar { align-items:stretch;gap:10px; }
     .admin-toolbar-left, .admin-toolbar-right { width:100%;display:grid;grid-template-columns:1fr;gap:8px; }
