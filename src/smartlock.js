@@ -11,7 +11,18 @@ const { findLineTenant } = require('./tenantStore')
 
 const TTLOCK_BASE = 'https://euapi.ttlock.com'
 const FREE_QUOTA = 3          // 每年免費次數
-const CHARGE_AMOUNT = 50      // 超過後每次作業費（元）
+const CHARGE_AMOUNT = 100     // 超過後每次系統作業處理費（元）
+// 卡片共用說明文字
+const POLICY_TEXT = `合約期間內，免費索取 ${FREE_QUOTA} 次密碼，第 ${FREE_QUOTA + 1} 次起，每次酌收系統作業處理費 $${CHARGE_AMOUNT} 元。`
+const KEY_REMINDER = '🔑 提醒您！出房門務必記得帶鑰匙。'
+
+// 由 charges 計算累計金額與待收
+function chargeTotals(charges) {
+  const arr = Array.isArray(charges) ? charges : []
+  const total = arr.reduce((s, c) => s + (c.amount || 0), 0)
+  const owe = arr.filter(c => !c.paid).reduce((s, c) => s + (c.amount || 0), 0)
+  return { total, owe, count: arr.length }
+}
 
 function md5(input) {
   return crypto.createHash('md5').update(String(input), 'utf8').digest('hex')
@@ -285,15 +296,27 @@ async function handleTenantPasscodePrompt(landlordId, lineUserId) {
   const u = usage[lineUserId] || {}
   const alreadyToday = !!(u.todayDate === today && u.todayData)
   const issuedThisYear = (u.year === year) ? (u.issued || 0) : 0
+  const totals = chargeTotals(u.charges)
 
-  let infoText
+  // 本次狀態
+  let thisText, thisColor
   if (alreadyToday) {
-    infoText = '您今日已索取過，將顯示同一組密碼（不另計次、不重複收費）。'
+    thisText = '您今日已索取過，將顯示同一組密碼（不另計次、不重複收費）。'
+    thisColor = '#3A8A5A'
   } else {
     const n = issuedThisYear + 1
     const charged = n > FREE_QUOTA
-    infoText = `本年度已索取 ${issuedThisYear} 次（每年前 ${FREE_QUOTA} 次免費）。\n本次為第 ${n} 次，` +
-      (charged ? `需收取作業費 ${CHARGE_AMOUNT} 元。` : '免費。')
+    thisText = charged
+      ? `本次為第 ${n} 次，需收取系統作業處理費 $${CHARGE_AMOUNT} 元。`
+      : `本次為第 ${n} 次，免費（尚餘 ${Math.max(0, FREE_QUOTA - n)} 次免費）。`
+    thisColor = charged ? '#C0504D' : '#3A8A5A'
+  }
+
+  function infoRow(label, value, valueColor) {
+    return { type: 'box', layout: 'baseline', contents: [
+      { type: 'text', text: label, size: 'sm', color: '#999999', flex: 4 },
+      { type: 'text', text: value, size: 'sm', flex: 6, weight: 'bold', wrap: true, color: valueColor || '#333333' },
+    ]}
   }
 
   return {
@@ -309,8 +332,15 @@ async function handleTenantPasscodePrompt(landlordId, lineUserId) {
         type: 'box', layout: 'vertical', spacing: 'sm',
         contents: [
           { type: 'text', text: `${who} 您好`, weight: 'bold', size: 'md' },
-          { type: 'text', text: infoText, size: 'sm', color: '#666666', wrap: true, margin: 'sm' },
-          { type: 'text', text: '確認後將顯示今日門鎖密碼。', size: 'xs', color: '#999999', margin: 'md', wrap: true },
+          { type: 'separator', margin: 'md' },
+          { type: 'box', layout: 'vertical', spacing: 'sm', margin: 'md', contents: [
+            infoRow('已索取次數', `本年度 ${issuedThisYear} 次`),
+            infoRow('累計作業費', `$${totals.total}` + (totals.owe > 0 ? `（待收 $${totals.owe}）` : ''), totals.owe > 0 ? '#C0504D' : '#333333'),
+          ]},
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: thisText, size: 'sm', color: thisColor, wrap: true, margin: 'md', weight: 'bold' },
+          { type: 'text', text: POLICY_TEXT, size: 'xs', color: '#999999', wrap: true, margin: 'md' },
+          { type: 'text', text: KEY_REMINDER, size: 'xs', color: '#C9913A', wrap: true, margin: 'sm' },
         ],
       },
       footer: {
@@ -470,6 +500,7 @@ function renderPasscodeReply(who, entries, today, n, charged) {
           { type: 'separator', margin: 'md' },
           { type: 'text', text: '有效至今日 23:59', size: 'xs', color: '#999999', margin: 'md' },
           { type: 'text', text: feeText, size: 'xs', color: charged ? '#C0504D' : '#aaaaaa', margin: 'sm', wrap: true },
+          { type: 'text', text: KEY_REMINDER, size: 'xs', color: '#C9913A', margin: 'md', wrap: true },
         ],
       },
     },
