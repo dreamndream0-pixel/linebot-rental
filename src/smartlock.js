@@ -288,8 +288,8 @@ async function handleTenantPasscode(landlordId, lineUserId) {
   // 同一天重複索取 → 回傳同一組密碼，不計次、不重複收費
   const usage = parseUsage(landlord)
   const u = usage[lineUserId] || {}
-  if (u.todayDate === today && u.todayData && Array.isArray(u.todayData.lines) && u.todayData.lines.length) {
-    return { type: 'text', text: renderPasscodeReply(who, u.todayData.lines, today, u.todayData.n, u.todayData.charged) }
+  if (u.todayDate === today && u.todayData && Array.isArray(u.todayData.entries) && u.todayData.entries.length) {
+    return renderPasscodeReply(who, u.todayData.entries, today, u.todayData.n, u.todayData.charged)
   }
 
   // 有 TTLock 房間才連線取 token
@@ -305,26 +305,26 @@ async function handleTenantPasscode(landlordId, lineUserId) {
   }
 
   const { startDate, endDate } = taipeiTodayWindow()
-  const lines = []
+  const entries = []   // { label, value, muted? }
   for (const r of matched) {
     const roomNo = r.key.split('_').slice(1).join('_')
     const bl = buildingLabelOf(r.key)
     const label = (bl ? bl + ' ' : '') + roomNo
     if (r.type === 'keypad') {
-      lines.push(`${label}：${calcKeypadPassword(roomNo, now)}`)
+      entries.push({ label, value: calcKeypadPassword(roomNo, now) })
     } else if (r.type === 'ttlock' && Array.isArray(r.ids) && r.ids.length) {
       for (let i = 0; i < r.ids.length; i++) {
         const name = `房客密碼-${today}` + (r.ids.length > 1 ? `-${i + 1}` : '')
         const pw = await generatePasscode(token.access_token, creds, r.ids[i], startDate, endDate, name)
-        const suffix = r.ids.length > 1 ? `（門鎖 ${i + 1}）` : ''
+        const rlabel = label + (r.ids.length > 1 ? `（門鎖 ${i + 1}）` : '')
         if (!pw || !pw.keyboardPwd) {
-          lines.push(`${label}${suffix}：產生失敗，請稍後再試`)
+          entries.push({ label: rlabel, value: '產生失敗，請稍後再試', muted: true })
         } else {
-          lines.push(`${label}${suffix}：${pw.keyboardPwd}#`)
+          entries.push({ label: rlabel, value: pw.keyboardPwd + '#' })
         }
       }
     } else {
-      lines.push(`${label}：此房為傳統鎖，無密碼，請聯絡房東`)
+      entries.push({ label, value: '傳統鎖，無密碼', muted: true })
     }
   }
 
@@ -340,27 +340,52 @@ async function handleTenantPasscode(landlordId, lineUserId) {
     year,
     issued: n,
     todayDate: today,
-    todayData: { lines, n, charged },
+    todayData: { entries, n, charged },
     charges,
   }
   try {
     await prisma.landlord.update({ where: { id: landlordId }, data: { lockUsage: JSON.stringify(usage) } })
   } catch (e) { console.error('更新門鎖用量失敗:', e.message) }
 
-  return { type: 'text', text: renderPasscodeReply(who, lines, today, n, charged) }
+  return renderPasscodeReply(who, entries, today, n, charged)
 }
 
-// 組回覆訊息（顯示房客名稱、密碼、免費／收費資訊）
-function renderPasscodeReply(who, lines, today, n, charged) {
-  let msg = `🔐 ${who} 今日門鎖密碼（${today}）\n\n` + lines.join('\n')
-  if (charged) {
-    msg += `\n\n⚠️ 本年度第 ${n} 次索取，已收取作業費 ${CHARGE_AMOUNT} 元並記入帳款。`
-  } else {
-    const left = FREE_QUOTA - n
-    msg += `\n\n（本年度第 ${n} 次，免費${left >= 0 ? '；尚餘 ' + left + ' 次免費' : ''}）`
+// 組回覆訊息（Flex 卡片，風格比照租金/水電繳費提醒）
+function renderPasscodeReply(who, entries, today, n, charged) {
+  const rows = entries.map(e => ({
+    type: 'box', layout: 'baseline', margin: 'md', contents: [
+      { type: 'text', text: e.label, size: 'sm', color: '#999999', flex: 4, wrap: true },
+      { type: 'text', text: e.value, size: e.muted ? 'sm' : 'lg', flex: 5, weight: 'bold', wrap: true,
+        color: e.muted ? '#aaaaaa' : '#6B5A9A' },
+    ],
+  }))
+  const feeText = charged
+    ? `⚠️ 本年度第 ${n} 次索取，已收取作業費 ${CHARGE_AMOUNT} 元並記入帳款。`
+    : `本年度第 ${n} 次（每年前 ${FREE_QUOTA} 次免費，尚餘 ${Math.max(0, FREE_QUOTA - n)} 次）`
+  const altPw = entries.map(e => `${e.label}：${e.value}`).join('\n')
+  return {
+    type: 'flex',
+    altText: `🔐 門鎖密碼\n${altPw}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#6B5A9A', paddingAll: '16px',
+        contents: [{ type: 'text', text: '🔐 門鎖密碼', weight: 'bold', size: 'lg', color: '#ffffff' }],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          { type: 'text', text: `${who} 您好`, weight: 'bold', size: 'md' },
+          { type: 'text', text: `以下是您 ${today} 的門鎖密碼`, size: 'sm', color: '#666666', wrap: true },
+          { type: 'separator', margin: 'md' },
+          ...rows,
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: '有效至今日 23:59', size: 'xs', color: '#999999', margin: 'md' },
+          { type: 'text', text: feeText, size: 'xs', color: charged ? '#C0504D' : '#aaaaaa', margin: 'sm', wrap: true },
+        ],
+      },
+    },
   }
-  msg += `\n有效至今日 23:59`
-  return msg
 }
 
 module.exports = {
