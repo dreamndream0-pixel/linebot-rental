@@ -5719,9 +5719,78 @@ function lmToolbar() {
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
       '<button class="btn" style="width:auto;padding:7px 12px;font-size:12px;background:#5A7D8C;" onclick="lmSeed(this)">📥 匯入內建預設</button>' +
       '<button class="btn" style="width:auto;padding:7px 12px;font-size:12px;background:#8A8A8A;" onclick="lmShowLocks(this)">📋 查 TTLock 門鎖</button>' +
+      '<button class="btn" style="width:auto;padding:7px 12px;font-size:12px;background:#8B6A42;" onclick="lmShowUsage(this)">💰 用量／帳款</button>' +
     '</div>' +
     '<div id="lmLockList" style="font-size:12px;color:#666;margin-top:8px;"></div>' +
   '</div>'
+}
+
+async function lmShowUsage() {
+  try {
+    var res = await fetch('/admin/api/smartlock/usage?key=' + encodeURIComponent(KEY) + (LOCKMGR.landlordId ? '&landlordId=' + encodeURIComponent(LOCKMGR.landlordId) : ''))
+    var d = await res.json()
+    if (!res.ok) { showInfoModal('讀取失敗', esc(d.error || ('HTTP ' + res.status))); return }
+    lmRenderUsage(d)
+  } catch (e) { showInfoModal('讀取失敗', esc(e.message || String(e))) }
+}
+
+function lmRenderUsage(d) {
+  var list = d.list || []
+  var rows = list.length
+    ? list.map(function(t){
+        var oweBadge = t.owe > 0
+          ? '<span style="background:#FBEDED;color:#C55;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;">待收 $' + t.owe + '</span>'
+          : '<span style="color:#bbb;font-size:11px;">已結清</span>'
+        return '<div style="border-bottom:1px solid #eee;padding:10px 0;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+            '<div style="min-width:0;">' +
+              '<div style="font-weight:700;font-size:14px;">' + esc(t.name || '(未命名)') + '</div>' +
+              '<div style="font-size:11px;color:#999;font-family:monospace;word-break:break-all;">' + esc(t.userId) + '</div>' +
+              '<div style="font-size:12px;color:#666;margin-top:3px;">今年索取 ' + t.issuedThisYear + ' 次（免費 ' + d.freeQuota + ' 次）　' + oweBadge + '</div>' +
+            '</div>' +
+            (t.owe > 0 ? '<button class="btn" style="width:auto;padding:5px 12px;font-size:11px;background:#3A8A5A;flex-shrink:0;" onclick="lmSettle(\'' + esc(t.userId).replace(/\\/g,'') + '\')">結清</button>' : '') +
+          '</div>' + lmChargesDetail(t.charges) +
+        '</div>'
+      }).join('')
+    : '<div style="color:#999;text-align:center;padding:16px;font-size:13px;">尚無取密碼記錄</div>'
+  var old = document.getElementById('appInfoModal'); if (old) old.remove()
+  var html = '<div id="appInfoModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10002;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:22px;max-width:460px;width:100%;margin:auto;box-shadow:0 20px 60px rgba(0,0,0,0.22);">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+        '<h3 style="margin:0;font-size:17px;">💰 門鎖用量／帳款</h3>' +
+        '<button onclick="document.getElementById(\'appInfoModal\').remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#888;margin-bottom:10px;">每年免費 ' + d.freeQuota + ' 次，第 ' + (d.freeQuota + 1) + ' 次起每次 $' + d.chargeAmount + '</div>' +
+      rows +
+    '</div></div>'
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
+function lmChargesDetail(charges) {
+  if (!Array.isArray(charges) || !charges.length) return ''
+  return '<div style="margin-top:6px;font-size:11px;color:#999;">' +
+    charges.map(function(c){
+      return (c.paid ? '✅' : '🔸') + ' ' + esc(c.date || '') + ' $' + (c.amount || 0) + (c.paid ? '（已收）' : '（待收）')
+    }).join('　') + '</div>'
+}
+
+function lmSettle(userId) {
+  showConfirm({
+    icon: '💰', title: '確認結清帳款？',
+    msg: '將此房客所有未收帳款標記為「已收款」。',
+    okLabel: '確認結清',
+    onOk: async function () {
+      try {
+        var res = await fetch('/admin/api/smartlock/usage/settle?key=' + encodeURIComponent(KEY), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ landlordId: LOCKMGR.landlordId || undefined, userId: userId }),
+        })
+        var d = await res.json()
+        if (!res.ok) { showInfoModal('結清失敗', esc(d.error || '')); return }
+        lmShowUsage()
+      } catch (e) { showInfoModal('結清失敗', esc(e.message || String(e))) }
+    }
+  })
 }
 
 async function lmImportLive() {
