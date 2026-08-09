@@ -686,7 +686,21 @@ async function handleMessage(event, client, landlordId = null) {
   // ── 智慧門鎖：房客索取門鎖密碼（兩步：先確認、再出密碼）──
   // 回傳 null 代表該房東未授權 smartlock → reply 保持 null，不回應（不干擾其他房東）
   else if (require('./smartlock').isPasscodeConfirm(text)) {
-    reply = await require('./smartlock').handleTenantPasscode(landlordId, userId)
+    const sl = require('./smartlock')
+    if (await sl.isSmartlockEnabled(landlordId)) {
+      // 先立即回覆「處理中」，再用 push 送出密碼卡，避免產碼等待時無回饋
+      try {
+        await client.replyMessage(event.replyToken, { type: 'text', text: '⏳ 作業處理中，請稍後…' })
+      } catch (e) { console.error('回覆處理中失敗:', e.message) }
+      try {
+        const card = await sl.handleTenantPasscode(landlordId, userId)
+        if (card) await client.pushMessage(userId, card)
+      } catch (e) {
+        console.error('門鎖密碼處理失敗:', e.message)
+        try { await client.pushMessage(userId, { type: 'text', text: '產生密碼失敗，請稍後再試或聯絡房東。' }) } catch (_) {}
+      }
+      reply = null  // 已自行回覆，避免下方再次 replyMessage
+    }
   }
   else if (require('./smartlock').isPasscodeRequest(text)) {
     reply = await require('./smartlock').handleTenantPasscodePrompt(landlordId, userId)
