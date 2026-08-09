@@ -253,7 +253,8 @@ async function handleTenantPasscode(landlordId, lineUserId) {
     .map(k => ({ key: k, type: rooms[k].type, ids: rooms[k].ids }))
 
   if (matched.length === 0) {
-    return { type: 'text', text: '您尚未開通門鎖密碼服務，請聯絡房東。' }
+    // 尚未綁定：仍回傳其 User ID，方便房客提供給房東設定
+    return { type: 'text', text: `👤 您的 LINE User ID：\n${lineUserId}\n\n您尚未綁定門鎖，請將上面這組 ID 提供給房東設定後，即可自助取當日密碼。` }
   }
 
   const today = taipeiDateStr()
@@ -295,7 +296,7 @@ async function handleTenantPasscode(landlordId, lineUserId) {
     }
   }
 
-  return { type: 'text', text: `🔐 今日門鎖密碼（${today}）\n` + lines.join('\n') + `\n有效至今日 23:59` }
+  return { type: 'text', text: `🔐 今日門鎖密碼（${today}）\n👤 您的 User ID：${lineUserId}\n\n` + lines.join('\n') + `\n\n有效至今日 23:59` }
 }
 
 module.exports = {
