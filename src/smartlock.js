@@ -314,6 +314,11 @@ async function handleTenantPasscodePrompt(landlordId, lineUserId) {
   if (matched.length === 0) {
     return { type: 'text', text: `${who} 您好，您尚未綁定門鎖，請聯絡房東為您設定後即可自助取當日密碼。` }
   }
+  const roomLabels = matched.map(k => {
+    const roomNo = k.split('_').slice(1).join('_')
+    const bl = buildingLabelOf(k)
+    return (bl ? bl + ' ' : '') + roomNo
+  }).join('、')
 
   const today = taipeiDateStr()
   const year = Number(today.slice(0, 4))
@@ -359,6 +364,7 @@ async function handleTenantPasscodePrompt(landlordId, lineUserId) {
           { type: 'text', text: `${who} 您好`, weight: 'bold', size: 'md' },
           { type: 'separator', margin: 'md' },
           { type: 'box', layout: 'vertical', spacing: 'sm', margin: 'md', contents: [
+            infoRow('房間', roomLabels, '#6B5A9A'),
             infoRow('已索取次數', `本年度 ${issuedThisYear} 次`),
             infoRow('累計作業費', `$${totals.total}` + (totals.owe > 0 ? `（待收 $${totals.owe}）` : ''), totals.owe > 0 ? '#C0504D' : '#333333'),
           ]},
