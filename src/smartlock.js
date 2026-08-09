@@ -244,9 +244,84 @@ async function generatePasscode(accessToken, creds, lockId, startDate, endDate, 
   return resp.json()
 }
 
-// 是否為索取密碼的訊息
+// 確認索取（第二步）的關鍵字
+const CONFIRM_TEXT = '確認索取密碼'
+function isPasscodeConfirm(text) {
+  return /確認索取密碼|确认索取密码|確認取密碼/.test(text || '')
+}
+
+// 是否為索取密碼的訊息（第一步）；排除「確認索取」關鍵字
 function isPasscodeRequest(text) {
+  if (isPasscodeConfirm(text)) return false
   return /密碼|密码|門鎖密碼|门锁密码|開門|开门|開鎖|开锁/.test(text || '')
+}
+
+// 第一步：房客索取密碼 → 回傳「確認索取」卡片（顯示次數，不產生密碼、不計次）
+// 回傳：LINE message 物件；房東未授權 → null
+async function handleTenantPasscodePrompt(landlordId, lineUserId) {
+  if (!landlordId || !lineUserId) return null
+  let landlord
+  try {
+    landlord = await prisma.landlord.findUnique({
+      where: { id: landlordId },
+      select: { id: true, features: true, lockRooms: true, lockUsage: true },
+    })
+  } catch (e) { return null }
+  if (!landlordHasSmartlock(landlord)) return null
+
+  let tenantName = ''
+  try { const t = await findLineTenant(lineUserId, landlordId); if (t) tenantName = t.customName || t.name || '' } catch (e) {}
+  const who = tenantName || '房客'
+
+  const rooms = parseRooms(landlord)
+  const matched = Object.keys(rooms).filter(k => rooms[k] && rooms[k].userId && String(rooms[k].userId).trim() === String(lineUserId).trim())
+  if (matched.length === 0) {
+    return { type: 'text', text: `${who} 您好，您尚未綁定門鎖，請聯絡房東為您設定後即可自助取當日密碼。` }
+  }
+
+  const today = taipeiDateStr()
+  const year = Number(today.slice(0, 4))
+  const usage = parseUsage(landlord)
+  const u = usage[lineUserId] || {}
+  const alreadyToday = !!(u.todayDate === today && u.todayData)
+  const issuedThisYear = (u.year === year) ? (u.issued || 0) : 0
+
+  let infoText
+  if (alreadyToday) {
+    infoText = '您今日已索取過，將顯示同一組密碼（不另計次、不重複收費）。'
+  } else {
+    const n = issuedThisYear + 1
+    const charged = n > FREE_QUOTA
+    infoText = `本年度已索取 ${issuedThisYear} 次（每年前 ${FREE_QUOTA} 次免費）。\n本次為第 ${n} 次，` +
+      (charged ? `需收取作業費 ${CHARGE_AMOUNT} 元。` : '免費。')
+  }
+
+  return {
+    type: 'flex',
+    altText: '請確認索取門鎖密碼',
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#6B5A9A', paddingAll: '16px',
+        contents: [{ type: 'text', text: '🔐 索取門鎖密碼', weight: 'bold', size: 'lg', color: '#ffffff' }],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          { type: 'text', text: `${who} 您好`, weight: 'bold', size: 'md' },
+          { type: 'text', text: infoText, size: 'sm', color: '#666666', wrap: true, margin: 'sm' },
+          { type: 'text', text: '確認後將顯示今日門鎖密碼。', size: 'xs', color: '#999999', margin: 'md', wrap: true },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical',
+        contents: [{
+          type: 'button', style: 'primary', color: '#6B5A9A',
+          action: { type: 'message', label: '確認索取密碼', text: CONFIRM_TEXT },
+        }],
+      },
+    },
+  }
 }
 
 // 核心：房客索取密碼
@@ -416,6 +491,8 @@ module.exports = {
   generatePasscode,
   calcKeypadPassword,
   isPasscodeRequest,
+  isPasscodeConfirm,
+  handleTenantPasscodePrompt,
   handleTenantPasscode,
   BUILDINGS,
   DEFAULT_LOCK_DB,
