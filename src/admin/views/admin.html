@@ -123,6 +123,18 @@
   .tab:hover { background: #F3F7F3; }
   .tab.active { background: linear-gradient(90deg, #EAF3EC, #F5F8F5); color: var(--deep-sage); }
   .tab-icon { width:22px;text-align:center;font-size:16px; }
+  /* 分組下拉式導覽 */
+  .nav-group { position:relative; }
+  .nav-group-btn { width:100%;display:flex;align-items:center;gap:12px;padding:13px 16px;border-radius:8px;border:none;background:transparent;color:#111827;font-size:15px;cursor:pointer;font-weight:700;text-align:left;transition:background .15s,color .15s; white-space:nowrap; }
+  .nav-group-btn:hover { background:#F3F7F3; }
+  .nav-group-btn.active { background:linear-gradient(90deg,#EAF3EC,#F5F8F5);color:var(--deep-sage); }
+  .nav-group-caret { margin-left:auto;font-size:11px;color:#9aa2a0;transition:transform .15s; }
+  .nav-group.open .nav-group-caret { transform:rotate(180deg); }
+  .nav-group-menu { display:none;position:fixed;z-index:200;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.14);min-width:190px;max-width:calc(100vw - 16px);padding:6px; }
+  .nav-group.open .nav-group-menu { display:block; }
+  .nav-leaf { display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;background:transparent;border-radius:8px;font-size:14px;font-weight:600;color:#111827;text-align:left;cursor:pointer;white-space:nowrap; }
+  .nav-leaf:hover { background:#F3F7F3; }
+  .nav-leaf.active { background:#EAF3EC;color:var(--deep-sage); }
   .quick-panel, .help-panel {
     margin-top: auto;
     background: linear-gradient(135deg, #F4FAF4, #FFFFFF);
@@ -991,6 +1003,7 @@ document.addEventListener('click', function() {
   if (dd) dd.classList.remove('open')
   var mobileDd = document.getElementById('mobileAccountMenu')
   if (mobileDd) mobileDd.classList.remove('open')
+  document.querySelectorAll('.nav-group.open').forEach(function(x) { x.classList.remove('open') })
 })
 
 // 總管理員 → 仲介視角（建立 imp:true 模擬 session，畫面等同仲介本人登入）
@@ -1040,27 +1053,77 @@ async function reload() {
   renderTab()
 }
 
+// \u76ee\u524d\u767b\u5165\u8eab\u4efd\u53ef\u7528\u7684\u5206\u9801\uff08\u542b\u6b0a\u9650\u5224\u65b7\uff09\u2192 { id: {id,label,icon} }
+function availableTabs() {
+  var t = {}
+  function add(id, label, icon) { t[id] = { id: id, label: label, icon: icon } }
+  add('overview', '\u7e3d\u89bd', 'chart')
+  if (DATA.role === 'super' || feat('tenants')) add('tenants', DATA.role === 'super' ? '\u7528\u6236\u7ba1\u7406' : '\u79df\u5ba2\u7ba1\u7406', 'users')
+  add('properties', '\u623f\u6e90\u7ba1\u7406', 'home')
+  if (DATA.role === 'super' || feat('booking')) add('bookings', '\u770b\u623f\u9810\u7d04', 'calendar')
+  if (DATA.role === 'super' || feat('repair')) add('repairs', '\u7dad\u4fee\u7ba1\u7406', 'wrench')
+  if (DATA.role === 'super' || feat('managed')) add('managed', '\u5305\u79df\u4ee3\u7ba1', 'building')
+  if (DATA.role === 'super') add('landlords', '\u623f\u6771\u7ba1\u7406', 'building')
+  if (DATA.role === 'super' || feat('community')) add('community', '\u793e\u5340\u7ba1\u7406', 'community')
+  if (DATA.role === 'super' || feat('social')) add('socialPosting', '\u793e\u7fa4\u7ba1\u7406', 'share')
+  if (DATA.role === 'super' || feat('heroSlides')) add('heroSettings', '\u9996\u9801\u8a2d\u5b9a', 'image')
+  if (DATA.role === 'super') add('footerSettings', '\u9801\u5c3e\u8a2d\u5b9a', 'clipboard')
+  if (DATA.role === 'landlord' && feat('bot')) add('botSettings', '\u7cfb\u7d71\u8a2d\u5b9a', 'wrench')
+  return t
+}
+
+// \u9078\u55ae\u5206\u7d44\uff08\u4f9d\u300c\u7e3d\u89bd\uff0f\u5b98\u7db2\u8a2d\u7f6e\uff0f\u51fa\u79df\u7ba1\u7406\uff0f\u5305\u79df\u4ee3\u7ba1\uff0f\u7cfb\u7d71\u8a2d\u7f6e\u300d\uff09
+var MENU_GROUPS = [
+  { label: '\u7e3d\u89bd', icon: 'chart', tab: 'overview' },
+  { label: '\u5b98\u7db2\u8a2d\u7f6e', icon: 'image', children: ['heroSettings', 'socialPosting', 'community', 'footerSettings'] },
+  { label: '\u51fa\u79df\u7ba1\u7406', icon: 'home', children: ['tenants', 'properties', 'bookings'] },
+  { label: '\u5305\u79df\u4ee3\u7ba1', icon: 'building', children: ['managed', 'repairs'] },
+  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['landlords', 'botSettings'] },
+]
+
 function renderTabBar() {
-  var tabs = []
-  tabs.push({ id: 'overview', label: '\u7e3d\u89bd', icon: 'chart' })
-  if (DATA.role === 'super' || feat('tenants')) tabs.push({ id: 'tenants', label: DATA.role === 'super' ? '\u7528\u6236\u7ba1\u7406' : '\u79df\u5ba2\u7ba1\u7406', icon: 'users' })
-  tabs.push({ id: 'properties', label: '\u623f\u6e90\u7ba1\u7406', icon: 'home' })
-  if (DATA.role === 'super' || feat('booking')) tabs.push({ id: 'bookings', label: '\u9810\u7d04\u7ba1\u7406', icon: 'calendar' })
-  if (DATA.role === 'super' || feat('repair')) tabs.push({ id: 'repairs', label: '\u7dad\u4fee\u7ba1\u7406', icon: 'wrench' })
-  if (DATA.role === 'super' || feat('managed')) tabs.push({ id: 'managed', label: '\u5305\u79df\u4ee3\u7ba1', icon: 'building' })
-  if (DATA.role === 'super') {
-    tabs.push({ id: 'landlords', label: '\u623f\u6771\u7ba1\u7406', icon: 'building' })
-  }
-  if (DATA.role === 'super' || feat('community')) tabs.push({ id: 'community', label: '\u793e\u5340\u7ba1\u7406', icon: 'community' })
-  if (DATA.role === 'super' || feat('social')) tabs.push({ id: 'socialPosting', label: '\u793e\u7fa4\u7ba1\u7406', icon: 'share' })
-  if (DATA.role === 'super' || feat('heroSlides')) tabs.push({ id: 'heroSettings', label: '\u9996\u9801\u8a2d\u5b9a', icon: 'image' })
-  if (DATA.role === 'super') tabs.push({ id: 'footerSettings', label: '\u9801\u5c3e\u8a2d\u5b9a', icon: 'clipboard' })
-  if (DATA.role === 'landlord' && feat('bot')) {
-    tabs.push({ id: 'botSettings', label: '\u7cfb\u7d71\u8a2d\u5b9a', icon: 'wrench' })
-  }
-  document.getElementById('tabBar').innerHTML = tabs.map(function(t) {
-    return '<button class="tab' + (currentTab === t.id ? ' active' : '') + '" data-tab="' + t.id + '" onclick="switchTab(this.dataset.tab)"><span class="tab-icon">' + uiLineIcon(t.icon) + '</span><span>' + t.label + '</span></button>'
+  var avail = availableTabs()
+  var html = MENU_GROUPS.map(function(g) {
+    if (g.tab) {
+      if (!avail[g.tab]) return ''
+      var active = currentTab === g.tab
+      return '<div class="nav-group"><button class="nav-group-btn' + (active ? ' active' : '') + '" onclick="switchTab(\'' + g.tab + '\')">' +
+        '<span class="tab-icon">' + uiLineIcon(g.icon) + '</span><span>' + g.label + '</span></button></div>'
+    }
+    var children = (g.children || []).filter(function(id) { return avail[id] })
+    if (!children.length) return ''
+    var groupActive = children.indexOf(currentTab) >= 0
+    var items = children.map(function(id) {
+      var t = avail[id]
+      return '<button class="nav-leaf' + (currentTab === id ? ' active' : '') + '" onclick="switchTab(\'' + id + '\')">' +
+        '<span class="tab-icon">' + uiLineIcon(t.icon) + '</span><span>' + t.label + '</span></button>'
+    }).join('')
+    return '<div class="nav-group">' +
+      '<button class="nav-group-btn' + (groupActive ? ' active' : '') + '" onclick="toggleNavGroup(event, this)">' +
+        '<span class="tab-icon">' + uiLineIcon(g.icon) + '</span><span>' + g.label + '</span><span class="nav-group-caret">\u25be</span></button>' +
+      '<div class="nav-group-menu">' + items + '</div>' +
+    '</div>'
   }).join('')
+  document.getElementById('tabBar').innerHTML = html
+}
+
+function toggleNavGroup(e, btn) {
+  e.stopPropagation()
+  var g = btn.parentElement
+  var wasOpen = g.classList.contains('open')
+  document.querySelectorAll('.nav-group.open').forEach(function(x) { x.classList.remove('open') })
+  if (!wasOpen) {
+    g.classList.add('open')
+    // 選單用 fixed 定位，避免被水平捲動的分頁列裁切；並避免超出右側邊界
+    var menu = g.querySelector('.nav-group-menu')
+    if (menu) {
+      var r = btn.getBoundingClientRect()
+      var w = menu.offsetWidth || 200
+      var left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8))
+      menu.style.top = (r.bottom + 4) + 'px'
+      menu.style.left = left + 'px'
+    }
+  }
 }
 
 function tabTitle(tab) {
@@ -1105,9 +1168,8 @@ function renderStats() {
 function switchTab(tab) {
   currentTab = tab
   try { sessionStorage.setItem('adminTab', tab) } catch (e) {}
-  document.querySelectorAll('.tab').forEach(function(t) {
-    t.classList.toggle('active', t.dataset.tab === tab)
-  })
+  document.querySelectorAll('.nav-group.open').forEach(function(x) { x.classList.remove('open') })
+  renderTabBar()   // 重新渲染分組導覽以更新作用中狀態
   updatePageTitle()
   renderTab()
 }
