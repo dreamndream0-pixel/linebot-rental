@@ -157,6 +157,7 @@ router.get('/admin/api/data', async (req, res) => {
     landlords: safeLandlords, selfLandlord,
     account: auth.label, role: auth.role,
     landlordId: auth.landlordId || null,
+    impersonating: auth.imp === true,   // 總管理員切換成仲介視角時為 true
     siteUrl: process.env.SITE_URL || 'https://xiaowo-rental.vercel.app'
   })
 })

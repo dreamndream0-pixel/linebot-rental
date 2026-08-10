@@ -626,6 +626,7 @@
             <span style="font-size:10px;color:#6B7280;">▾</span>
           </div>
           <div class="mobile-account-menu" id="mobileAccountMenu">
+            <div id="mobileSwitchItem"></div>
             <button type="button" onclick="logout()">登出</button>
           </div>
         </div>
@@ -662,19 +663,6 @@
               </div>
               <span class="um-chip-caret">▾</span>
             </div>
-            <div class="role-flipcard" id="roleFlipCard" onclick="flipRoleCard()" title="點擊切換身份視角">
-              <div class="role-flip-inner" id="roleFlipInner">
-                <div class="role-face role-face--super">
-                  <span class="role-face-icon">🏛️</span>
-                  <div><div class="role-face-name">總管理員</div><div class="role-face-hint">切換仲介視角 →</div></div>
-                </div>
-                <div class="role-face role-face--broker">
-                  <span class="role-face-icon">🏘️</span>
-                  <div><div class="role-face-name">仲介 · 黃震宇</div><div class="role-face-hint">← 返回總管理員</div></div>
-                </div>
-              </div>
-              <div class="um-flip-caret" onclick="toggleAcctMenu(event)">▾</div>
-            </div>
             <button class="mobile-logout-btn" type="button" onclick="logout()">登出</button>
           </div>
           <div class="um-dropdown" id="umDropdown">
@@ -685,6 +673,7 @@
                 <div id="umDropRole" style="font-size:11px;color:#aaa;">帳號</div>
               </div>
             </div>
+            <div id="umSwitchItem"></div>
             <div class="um-item um-danger" onclick="logout()">🚪 登出</div>
           </div>
         </div>
@@ -820,7 +809,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 var DATA = null
 var KEY = ''
-var SUPER_KEY = ''  // 切換至仲介視角時暫存總管理員金鑰
 
 // 後台金鑰改走 HTTP header：自動把 /admin/api/ 請求網址上的 ?key= 拿掉，改放 X-Admin-Key
 // header，金鑰就不會出現在網址與伺服器日誌。包一層 fetch，呼叫端不必逐一修改。
@@ -928,10 +916,11 @@ function enterAdmin() {
     document.getElementById('loginView').style.display = 'none'
     document.getElementById('loadingView').style.display = 'none'
     document.getElementById('mainView').style.display = 'block'
+    var impersonating = DATA.impersonating === true
     if (DATA.account) {
       document.getElementById('accountLabel').textContent = DATA.account
       var initial = (DATA.account || '?')[0]
-      var roleLabel = DATA.role === 'super' ? '總管理員' : '房東帳號'
+      var roleLabel = impersonating ? '仲介視角' : (DATA.role === 'super' ? '總管理員' : '房東帳號')
       var ucAvatar = document.getElementById('ucAvatar')
       var ucRoleLabel = document.getElementById('ucRoleLabel')
       var umAvatar = document.getElementById('umAvatar')
@@ -949,19 +938,24 @@ function enterAdmin() {
       if (mobileAccountName) mobileAccountName.textContent = DATA.account
       if (mobileAccountRole) mobileAccountRole.textContent = roleLabel
     }
-    // 身份翻頁卡片 vs. 一般帳號 chip
-    var flipCard  = document.getElementById('roleFlipCard')
-    var flipInner = document.getElementById('roleFlipInner')
-    var userChip  = document.getElementById('userChip')
-    var showFlip  = (DATA.role === 'super' && !SUPER_KEY) || !!SUPER_KEY
-    if (flipCard) flipCard.style.display = showFlip ? 'block' : 'none'
-    if (userChip) userChip.style.display = showFlip ? 'none'  : 'flex'
-    if (flipInner) {
-      flipInner.style.transition = 'none'
-      flipInner.classList.toggle('is-flipped', !!SUPER_KEY)
-      flipInner.offsetHeight
-      flipInner.style.transition = ''
+    // 身份切換選項（整合在右上角帳號選單；只有總管理員／仲介視角才有）
+    var userChip = document.getElementById('userChip')
+    if (userChip) userChip.style.display = 'flex'
+    var switchDesktop = '', switchMobile = ''
+    if (impersonating) {
+      switchDesktop = '<div class="um-item" onclick="switchToSuper()">🏛️ 返回總管理員</div>'
+      switchMobile = '<button type="button" style="color:#26362D;border-bottom:1px solid var(--line);" onclick="switchToSuper()">🏛️ 返回總管理員</button>'
+    } else if (DATA.role === 'super') {
+      switchDesktop = '<div class="um-item" onclick="switchToBroker()">🏘️ 切換仲介視角</div>'
+      switchMobile = '<button type="button" style="color:#26362D;border-bottom:1px solid var(--line);" onclick="switchToBroker()">🏘️ 切換仲介視角</button>'
     }
+    var umSwitchItem = document.getElementById('umSwitchItem')
+    var mobileSwitchItem = document.getElementById('mobileSwitchItem')
+    if (umSwitchItem) umSwitchItem.innerHTML = switchDesktop
+    if (mobileSwitchItem) mobileSwitchItem.innerHTML = switchMobile
+    // 關閉可能開著的選單
+    var umDd = document.getElementById('umDropdown'); if (umDd) umDd.classList.remove('open')
+    var mDd = document.getElementById('mobileAccountMenu'); if (mDd) mDd.classList.remove('open')
     refreshOwnFeatures()
     if (DATA.siteUrl) {
       var brandLink = document.getElementById('brandHomeLink')
@@ -998,59 +992,32 @@ document.addEventListener('click', function() {
   if (mobileDd) mobileDd.classList.remove('open')
 })
 
-function flipRoleCard() {
-  var card  = document.getElementById('roleFlipCard')
-  var inner = document.getElementById('roleFlipInner')
-  if (!card || !inner || card.classList.contains('switching')) return
-  var goingToBroker = !inner.classList.contains('is-flipped')
-  card.classList.add('switching', 'do-sheen')
-  inner.classList.toggle('is-flipped')
-  // 執行實際切換（在動畫過半時發出請求，視覺上不感延遲）
-  setTimeout(async function() {
-    if (goingToBroker) {
-      await switchToBroker()
-    } else {
-      await switchToSuper()
-    }
-    card.classList.remove('switching')
-  }, 290)
-  // sheen 動畫結束後移除 class，以便下次可再觸發
-  setTimeout(function() { card.classList.remove('do-sheen') }, 560)
-}
-
+// 總管理員 → 仲介視角（建立 imp:true 模擬 session，畫面等同仲介本人登入）
 async function switchToBroker() {
-  var res = await fetch('/admin/api/broker-key')
-  var data = await res.json()
-  if (!res.ok) {
-    showToast('❌ ' + (data.error || '無法取得仲介金鑰'))
-    var inner = document.getElementById('roleFlipInner')
-    if (inner) { inner.style.transition='none'; inner.classList.remove('is-flipped'); inner.offsetHeight; inner.style.transition='' }
-    return
-  }
-  // 用 '__BROKER__' sentinel 標記「目前在仲介模式」；不存真實金鑰（login() 會清空 KEY）
-  SUPER_KEY = '__BROKER__'
-  showToast('🔄 切換至仲介視角：' + data.name)
-  await login(data.key)
+  try {
+    var res = await fetch('/admin/api/switch-to-broker', { method: 'POST' })
+    var d = await res.json().catch(function(){ return {} })
+    if (!res.ok) { showToast('❌ ' + (d.error || '無法切換仲介視角')); return }
+    var dataRes = await fetch('/admin/api/data')
+    if (!dataRes.ok) { showToast('❌ 資料載入失敗'); return }
+    DATA = await dataRes.json()
+    showToast('🔄 已切換至仲介視角：' + (d.name || ''))
+    enterAdmin()
+  } catch (e) { showToast('❌ 連線失敗') }
 }
 
+// 仲介視角 → 返回總管理員（僅 imp:true 的 session 可用；真正房東無法藉此提權）
 async function switchToSuper() {
-  // 呼叫後端 switch-to-super：以現有仲介 session 換回總管理員 session，不需再輸入金鑰
-  var res = await fetch('/admin/api/switch-to-super', { method: 'POST' })
-  if (!res.ok) {
+  try {
+    var res = await fetch('/admin/api/switch-to-super', { method: 'POST' })
     var d = await res.json().catch(function(){ return {} })
-    showToast('❌ ' + (d.error || '無法返回總管理員'))
-    var inner = document.getElementById('roleFlipInner')
-    if (inner) { inner.style.transition='none'; inner.classList.add('is-flipped'); inner.offsetHeight; inner.style.transition='' }
-    return
-  }
-  SUPER_KEY = ''
-  KEY = ''
-  sessionStorage.removeItem('adminKey')
-  var dataRes = await fetch('/admin/api/data')
-  if (!dataRes.ok) { showToast('❌ 資料載入失敗'); return }
-  DATA = await dataRes.json()
-  showToast('↩ 返回總管理員模式')
-  enterAdmin()
+    if (!res.ok) { showToast('❌ ' + (d.error || '無法返回總管理員')); return }
+    var dataRes = await fetch('/admin/api/data')
+    if (!dataRes.ok) { showToast('❌ 資料載入失敗'); return }
+    DATA = await dataRes.json()
+    showToast('↩ 已返回總管理員')
+    enterAdmin()
+  } catch (e) { showToast('❌ 連線失敗') }
 }
 
 async function logout() {

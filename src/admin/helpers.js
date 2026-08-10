@@ -30,6 +30,7 @@ function makeSessionToken(auth) {
     landlordId: auth.landlordId || null,
     label: auth.label || '',
     source: auth.source || null,
+    imp: auth.imp === true,   // 總管理員切換成仲介視角時為 true（僅此類 session 可返回總管理員）
     exp: Date.now() + SESSION_MAX_AGE_MS,
     nonce: crypto.randomBytes(12).toString('base64url'),
   }))
@@ -52,7 +53,7 @@ async function verifySessionToken(token) {
     try {
       const landlord = await prisma.landlord.findUnique({ where: { id: data.landlordId } })
       if (landlord && landlord.isActive) {
-        return { role: 'landlord', landlordId: landlord.id, label: landlord.name, source: landlord.source }
+        return { role: 'landlord', landlordId: landlord.id, label: landlord.name, source: landlord.source, imp: data.imp === true }
       }
     } catch (e) {
       console.error('verifySessionToken 查詢房東失敗:', e.message)
@@ -65,6 +66,17 @@ async function createAdminSession(key) {
   const auth = await resolveRole(key)
   if (!auth) return null
   return { auth, token: makeSessionToken(auth), maxAgeMs: SESSION_MAX_AGE_MS }
+}
+
+// 建立「總管理員 → 仲介視角」的模擬 session（帶 imp:true，僅此類 session 可返回總管理員）
+async function createImpersonationSession(landlordId) {
+  let landlord = null
+  try {
+    landlord = await prisma.landlord.findUnique({ where: { id: landlordId } })
+  } catch (e) { console.error('createImpersonationSession 查詢房東失敗:', e.message); return null }
+  if (!landlord || !landlord.isActive) return null
+  const auth = { role: 'landlord', landlordId: landlord.id, label: landlord.name, source: landlord.source, imp: true }
+  return { auth, token: makeSessionToken(auth), name: landlord.name, maxAgeMs: SESSION_MAX_AGE_MS }
 }
 
 // ── 權限解析（含 60 秒記憶體快取，避免每個 API 請求都打 DB）────────
@@ -211,6 +223,7 @@ module.exports = {
   deleteCloudinaryImages,
   notifyBookingTenant,
   createAdminSession,
+  createImpersonationSession,
   hashAdminKey,
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_MS,
