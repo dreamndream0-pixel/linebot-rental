@@ -4,6 +4,7 @@ const path = require('path')
 const router = express.Router()
 const {
   createAdminSession,
+  createImpersonationSession,
   resolveRole,
   hashAdminKey,
   SESSION_COOKIE_NAME,
@@ -113,12 +114,23 @@ router.use((req, _res, next) => {
   next()
 })
 
-// POST /admin/api/switch-to-super — 指定仲介房東切換回總管理員（憑現有 session，不需再輸入金鑰）
+// POST /admin/api/switch-to-broker — 僅總管理員：切換成仲介視角（建立 imp:true 的模擬 session）
 // 此路由必須在 session-key 中介層之後，才能從 cookie 取得 req.query.key
+router.post('/admin/api/switch-to-broker', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth || auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  const BROKER_ID = process.env.BROKER_LANDLORD_ID || 'cmqbys4qr0004keruq1niq5xz'
+  const session = await createImpersonationSession(BROKER_ID)
+  if (!session) return res.status(404).json({ error: '找不到仲介房東或已停用' })
+  setSessionCookie(res, session.token)
+  res.json({ ok: true, name: session.name })
+})
+
+// POST /admin/api/switch-to-super — 從「仲介視角」返回總管理員
+// 只允許由總管理員切換而來的模擬 session（imp:true）返回；真正的房東登入無法藉此提權。
 router.post('/admin/api/switch-to-super', async (req, res) => {
   const auth = await resolveRole(req.query.key)
-  const BROKER_ID = process.env.BROKER_LANDLORD_ID || 'cmqbys4qr0004keruq1niq5xz'
-  if (!auth || auth.role !== 'landlord' || auth.landlordId !== BROKER_ID) {
+  if (!auth || auth.imp !== true) {
     return res.status(403).json({ error: 'forbidden' })
   }
   const session = await createAdminSession(process.env.ADMIN_KEY)
