@@ -5803,6 +5803,7 @@ function lmToolbar() {
       '<button class="btn" style="width:auto;padding:7px 12px;font-size:12px;background:#5A7D8C;" onclick="lmSeed(this)">📥 匯入內建預設</button>' +
       '<button class="btn" style="width:auto;padding:7px 12px;font-size:12px;background:#8A8A8A;" onclick="lmShowLocks(this)">📋 查 TTLock 門鎖</button>' +
       '<button class="btn" style="width:auto;padding:7px 12px;font-size:12px;background:#8B6A42;" onclick="lmShowUsage(this)">💰 用量／帳款</button>' +
+      '<button class="btn" style="width:auto;padding:7px 12px;font-size:12px;background:#4A7A6A;" onclick="lmSyncFromLease(this)">🔗 從合約同步 UID</button>' +
     '</div>' +
     '<div id="lmLockList" style="font-size:12px;color:#666;margin-top:8px;"></div>' +
   '</div>'
@@ -5874,6 +5875,23 @@ function lmSettle(userId) {
       } catch (e) { showInfoModal('結清失敗', esc(e.message || String(e))) }
     }
   })
+}
+
+async function lmSyncFromLease() {
+  lmSetMsg('從合約比對中…')
+  try {
+    var res = await fetch('/admin/api/smartlock/sync-from-lease?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ landlordId: LOCKMGR.landlordId || undefined }),
+    })
+    var d = await res.json()
+    if (!res.ok) { showInfoModal('同步失敗', esc(d.error || '')); return }
+    await lmLoadRooms(); lmRender()
+    var msg = '已依合約房號比對，更新 ' + (d.updated ? d.updated.length : 0) + ' 間房間的房客 UID（以合約為準）。'
+    if (d.ambiguous && d.ambiguous.length) msg += '\n\n有 ' + d.ambiguous.length + ' 間房號對到多筆合約、無法自動判斷，已略過，請手動確認：\n' + d.ambiguous.join('、')
+    if (!d.mappedBuildings) msg += '\n\n（找不到可對應的代管物件，請確認門鎖建物名稱與代管物件名稱相符）'
+    showInfoModal('🔗 從合約同步完成', esc(msg), false)
+  } catch (e) { showInfoModal('同步失敗', esc(e.message || String(e))) }
 }
 
 async function lmImportLive() {
