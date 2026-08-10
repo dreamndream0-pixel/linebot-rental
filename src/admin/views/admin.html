@@ -5688,7 +5688,7 @@ function managedCard(m) {
 // 智慧門鎖（TTLock）— 包租代管門鎖管理（移植自 rubyclean）
 // 房間清單 + 每間可設 type / Lock ID / 房客 LINE User ID
 // ══════════════════════════════════════════════
-var LOCKMGR = { landlordId: null, buildings: [], rooms: {}, hasCreds: false, username: '', curBldg: null }
+var LOCKMGR = { landlordId: null, buildings: [], rooms: {}, leases: [], hasCreds: false, username: '', curBldg: null }
 
 function lmEmoji(type) { return type === 'ttlock' ? '🔐' : type === 'traditional' ? '🗝️' : '🔢' }
 
@@ -5713,6 +5713,7 @@ async function lmLoadRooms() {
     var d = await fetch('/admin/api/smartlock/rooms' + q).then(function(r){ return r.json() })
     LOCKMGR.rooms = (d && d.rooms && typeof d.rooms === 'object') ? d.rooms : {}
     if (d && d.buildings) LOCKMGR.buildings = d.buildings
+    LOCKMGR.leases = (d && Array.isArray(d.leases)) ? d.leases : []
   } catch (e) { LOCKMGR.rooms = {} }
 }
 
@@ -5887,9 +5888,10 @@ async function lmSyncFromLease() {
     var d = await res.json()
     if (!res.ok) { showInfoModal('同步失敗', esc(d.error || '')); return }
     await lmLoadRooms(); lmRender()
-    var msg = '已依合約房號比對，更新 ' + (d.updated ? d.updated.length : 0) + ' 間房間的房客 UID（以合約為準）。'
-    if (d.ambiguous && d.ambiguous.length) msg += '\n\n有 ' + d.ambiguous.length + ' 間房號對到多筆合約、無法自動判斷，已略過，請手動確認：\n' + d.ambiguous.join('、')
-    if (!d.mappedBuildings) msg += '\n\n（找不到可對應的代管物件，請確認門鎖建物名稱與代管物件名稱相符）'
+    var n = d.updated ? d.updated.length : 0
+    var msg = n > 0
+      ? '已依綁定的合約更新 ' + n + ' 間房間的房客 UID（以合約為準）。'
+      : '沒有需要更新的房間。（請先在各房間的「綁定合約」下拉選好合約，且合約已填 LINE UID）'
     showInfoModal('🔗 從合約同步完成', esc(msg), false)
   } catch (e) { showInfoModal('同步失敗', esc(e.message || String(e))) }
 }
@@ -5915,6 +5917,7 @@ async function lmImportLive() {
       var entry = { type: type }
       if (type === 'ttlock') entry.ids = Array.isArray(v.ids) ? v.ids.map(Number).filter(function (x) { return !isNaN(x) && x > 0 }) : []
       if (cur.userId) entry.userId = cur.userId  // 保留已填的房客 User ID
+      if (cur.leaseId) entry.leaseId = cur.leaseId  // 保留已綁定的合約
       LOCKMGR.rooms[key] = entry; n++
     })
     var save = await fetch('/admin/api/smartlock/rooms?key=' + encodeURIComponent(KEY), {
@@ -5964,11 +5967,31 @@ function lmRenderRooms() {
           (isLock ? '' : 'disabled') + ' style="flex:1;min-width:120px;padding:7px 9px;border:1px solid #DDD;border-radius:8px;font-size:13px;' + (isLock ? '' : 'opacity:.4;') + '">' +
       '</div>' +
       '<div style="margin-top:8px;">' +
-        '<input id="lmUser-' + key + '" value="' + esc(userVal) + '" placeholder="房客 LINE User ID（填入即綁定，形如 U....）" oninput="lmOnUser(\'' + key + '\', this.value)" ' +
+        '<label style="display:block;font-size:11px;color:#888;margin-bottom:3px;">綁定合約（選了以合約 UID 為準）</label>' +
+        '<select id="lmLease-' + key + '" onchange="lmOnLease(\'' + key + '\', this.value)" style="width:100%;padding:8px 10px;border:1px solid #DDD;border-radius:8px;font-size:13px;margin-bottom:6px;">' +
+          '<option value="">—（不綁合約，手動填 UID）—</option>' +
+          (LOCKMGR.leases || []).map(function(L){
+            return '<option value="' + esc(L.id) + '"' + (lock.leaseId === L.id ? ' selected' : '') + '>' + esc(L.label) + (L.lineUserId ? '' : '（未填UID）') + '</option>'
+          }).join('') +
+        '</select>' +
+        '<input id="lmUser-' + key + '" value="' + esc(userVal) + '" placeholder="房客 LINE User ID（形如 U....）" oninput="lmOnUser(\'' + key + '\', this.value)" ' +
           'style="width:100%;padding:8px 10px;border:1px solid #DDD;border-radius:8px;font-size:13px;font-family:monospace;">' +
       '</div>' +
     '</div>'
   }).join('')
+}
+
+function lmOnLease(key, leaseId) {
+  var e = lmEnsure(key)
+  if (!leaseId) { delete e.leaseId; return }
+  e.leaseId = leaseId
+  var lease = (LOCKMGR.leases || []).find(function(x){ return x.id === leaseId })
+  if (lease) {
+    e.userId = (lease.lineUserId || '').trim()
+    var input = document.getElementById('lmUser-' + key)
+    if (input) input.value = e.userId
+    if (!e.userId) showToast('此合約尚未填 LINE UID，請先到合約租約填入')
+  }
 }
 
 function lmEnsure(key) { if (!LOCKMGR.rooms[key]) LOCKMGR.rooms[key] = { type: 'keypad' }; return LOCKMGR.rooms[key] }

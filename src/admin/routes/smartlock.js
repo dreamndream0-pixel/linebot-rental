@@ -5,7 +5,7 @@ const express = require('express')
 const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
-const { listLocks, parseCreds, BUILDINGS, DEFAULT_LOCK_DB, parseUsage, unpaidTotal, FREE_QUOTA, CHARGE_AMOUNT, syncLockRoomsFromLeases } = require('../../smartlock')
+const { listLocks, parseCreds, BUILDINGS, DEFAULT_LOCK_DB, parseUsage, unpaidTotal, FREE_QUOTA, CHARGE_AMOUNT, syncLockRoomsFromLeases, listLandlordLeases } = require('../../smartlock')
 
 // smartlock 功能授權：super 一律可用；房東需被授權 features.smartlock
 async function hasSmartlock(auth) {
@@ -96,7 +96,8 @@ router.get('/admin/api/smartlock/rooms', async (req, res) => {
       where: { id: ctx.landlordId },
       select: { lockRooms: true },
     })
-    res.json({ buildings: BUILDINGS, rooms: parseRoomsJson(landlord && landlord.lockRooms) })
+    const leases = await listLandlordLeases(ctx.landlordId)
+    res.json({ buildings: BUILDINGS, rooms: parseRoomsJson(landlord && landlord.lockRooms), leases })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -123,6 +124,8 @@ router.post('/admin/api/smartlock/rooms', express.json(), async (req, res) => {
     }
     const userId = (v.userId == null ? '' : String(v.userId)).trim()
     if (userId) entry.userId = userId
+    const leaseId = (v.leaseId == null ? '' : String(v.leaseId)).trim()
+    if (leaseId) entry.leaseId = leaseId
     clean[key] = entry
   }
 
@@ -149,8 +152,9 @@ router.post('/admin/api/smartlock/seed', express.json(), async (req, res) => {
       const def = DEFAULT_LOCK_DB[key]
       const entry = { type: def.type }
       if (def.type === 'ttlock' && Array.isArray(def.ids)) entry.ids = def.ids.slice()
-      // 保留原本已填的房客 User ID（不覆蓋）
+      // 保留原本已填的房客 User ID 與綁定的合約（不覆蓋）
       if (cur[key] && cur[key].userId) entry.userId = cur[key].userId
+      if (cur[key] && cur[key].leaseId) entry.leaseId = cur[key].leaseId
       merged[key] = entry
     }
     await prisma.landlord.update({
