@@ -19,10 +19,33 @@ async function getLandlordConfig(landlordId) {
 
   const landlord = await prisma.landlord.findUnique({
     where: { id: landlordId },
-    select: { id: true, name: true, lineChannelSecret: true, lineChannelToken: true, isActive: true, botEnabled: true, features: true }
+    select: {
+      id: true, name: true, lineChannelSecret: true, lineChannelToken: true, isActive: true, botEnabled: true, features: true,
+      botScope: true, supportChannelSecret: true, supportChannelToken: true, supportBotName: true, supportBotEnabled: true,
+    }
   })
   configCache.set(landlordId, { at: Date.now(), data: landlord })
   return landlord
+}
+
+// 依 kind 取出對應 Bot 的憑證與功能範圍
+function pickBot(landlord, kind) {
+  if (kind === 'support') {
+    return {
+      secret: landlord.supportChannelSecret,
+      token: landlord.supportChannelToken,
+      name: landlord.supportBotName || (landlord.name + ' 客服'),
+      enabled: landlord.supportBotEnabled !== false,
+      scope: 'support',
+    }
+  }
+  return {
+    secret: landlord.lineChannelSecret,
+    token: landlord.lineChannelToken,
+    name: landlord.name,
+    enabled: true,
+    scope: landlord.botScope || 'all',
+  }
 }
 
 function isLandlordBotEnabled(landlord) {
@@ -48,75 +71,77 @@ function validateSignature(body, channelSecret, signature) {
   return hash === signature
 }
 
+function makeWebhookHandler(kind) {
+  return async (req, res) => {
+    const { landlordId } = req.params
+
+    let landlord
+    try {
+      landlord = await getLandlordConfig(landlordId)
+    } catch (e) {
+      console.error('查詢房東設定失敗:', e.message)
+      return res.sendStatus(500)
+    }
+
+    if (!landlord || !landlord.isActive) {
+      console.log(`⚠️ 房東 ${landlordId} 不存在或已停用`)
+      return res.sendStatus(404)
+    }
+
+    const bot = pickBot(landlord, kind)
+    if (!bot.secret || !bot.token) {
+      console.log(`⚠️ 房東 ${landlordId} 的 ${kind} Bot 未設定`)
+      return res.sendStatus(404)
+    }
+
+    // 驗證簽章（用該 Bot 自己的 secret）
+    const signature = req.headers['x-line-signature']
+    const bodyStr = req.body.toString('utf-8')
+    if (!validateSignature(bodyStr, bot.secret, signature)) {
+      console.log(`⚠️ ${bot.name} 簽章驗證失敗`)
+      return res.sendStatus(401)
+    }
+
+    res.json({ status: 'ok' })
+
+    const client = new Client({ channelAccessToken: bot.token, channelSecret: bot.secret })
+
+    const botActive = isLandlordBotEnabled(landlord) && bot.enabled
+    const autoReply = botActive && isAutoReplyEnabled(landlord)
+    if (!botActive) console.log(`ℹ️ ${bot.name} Bot 已關閉，僅記錄用戶資料`)
+    else if (!autoReply) console.log(`ℹ️ ${bot.name} 自動回覆已關閉，僅記錄用戶資料`)
+
+    const body = JSON.parse(bodyStr)
+    const events = body.events || []
+    events.forEach(async (event) => {
+      try {
+        await recordIncomingMessage(event, client, landlord.id)
+        if (!autoReply) return
+
+        if (event.type === 'message' && event.message.type === 'text') {
+          await handleMessage(event, client, landlord.id, bot.scope)
+        } else if (event.type === 'postback') {
+          await handlePostback(event, client, landlord.id, bot.scope)
+        } else if (event.type === 'follow') {
+          const { getBotText } = require('./botText')
+          const t = await getBotText(landlord.id)
+          const base = bot.scope === 'support'
+            ? '👋 歡迎加入客服帳號！\n\n有維修、繳費或門鎖密碼需求，輸入「選單」開始。'
+            : (t.welcome || '👋 歡迎加入！\n\n輸入「選單」開始使用服務。').replace('歡迎加入！', `歡迎加入${landlord.name}！`)
+          await client.replyMessage(event.replyToken, { type: 'text', text: base })
+        }
+      } catch (err) {
+        console.error(`[${bot.name}] 事件處理錯誤:`, err.message)
+      }
+    })
+  }
+}
+
 function registerLandlordWebhooks(app) {
   // 用 raw body 才能驗證簽章
-  app.post('/webhook/landlord/:landlordId',
-    express.raw({ type: '*/*' }),
-    async (req, res) => {
-      const { landlordId } = req.params
-
-      let landlord
-      try {
-        landlord = await getLandlordConfig(landlordId)
-      } catch (e) {
-        console.error('查詢房東設定失敗:', e.message)
-        return res.sendStatus(500)
-      }
-
-      if (!landlord || !landlord.isActive || !landlord.lineChannelSecret || !landlord.lineChannelToken) {
-        console.log(`⚠️ 房東 ${landlordId} 未設定 Bot 或已停用`)
-        return res.sendStatus(404)
-      }
-
-      // 驗證簽章
-      const signature = req.headers['x-line-signature']
-      const bodyStr = req.body.toString('utf-8')
-      if (!validateSignature(bodyStr, landlord.lineChannelSecret, signature)) {
-        console.log(`⚠️ 房東 ${landlord.name} 簽章驗證失敗`)
-        return res.sendStatus(401)
-      }
-
-      res.json({ status: 'ok' })
-
-      // 建立該房東專屬的 client（無論自動回覆是否開啟，都需要 client 取得用戶資料）
-      const client = new Client({
-        channelAccessToken: landlord.lineChannelToken,
-        channelSecret: landlord.lineChannelSecret,
-      })
-
-      const botActive = isLandlordBotEnabled(landlord)
-      const autoReply = botActive && isAutoReplyEnabled(landlord)
-      if (!botActive) console.log(`ℹ️ 房東 ${landlord.name} Bot 已關閉，僅記錄用戶資料`)
-      else if (!autoReply) console.log(`ℹ️ 房東 ${landlord.name} 自動回覆已關閉，僅記錄用戶資料`)
-
-      const body = JSON.parse(bodyStr)
-      const events = body.events || []
-      events.forEach(async (event) => {
-        try {
-          // 無論 Bot 狀態或自動回覆是否開啟，永遠記錄 LINE 用戶資料＋最後一句留言
-          await recordIncomingMessage(event, client, landlord.id)
-
-          if (!autoReply) return
-
-          if (event.type === 'message' && event.message.type === 'text') {
-            await handleMessage(event, client, landlord.id)
-          } else if (event.type === 'postback') {
-            await handlePostback(event, client, landlord.id)
-          } else if (event.type === 'follow') {
-            const { getBotText } = require('./botText')
-            const t = await getBotText(landlord.id)
-            const welcomeText = (t.welcome || '👋 歡迎加入！\n\n輸入「選單」開始使用服務。')
-              .replace('歡迎加入！', `歡迎加入${landlord.name}！`)
-            await client.replyMessage(event.replyToken, { type: 'text', text: welcomeText })
-          }
-        } catch (err) {
-          console.error(`[${landlord.name}] 事件處理錯誤:`, err.message)
-        }
-      })
-    }
-  )
-
-  console.log('✅ 房東動態 Webhook 已啟動：/webhook/landlord/:landlordId')
+  app.post('/webhook/landlord/:landlordId', express.raw({ type: '*/*' }), makeWebhookHandler('primary'))
+  app.post('/webhook/landlord/:landlordId/support', express.raw({ type: '*/*' }), makeWebhookHandler('support'))
+  console.log('✅ 房東動態 Webhook 已啟動：/webhook/landlord/:landlordId（+/support）')
 }
 
 // 清除某房東的設定快取（後台更新 Bot 設定後呼叫）
