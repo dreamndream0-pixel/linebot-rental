@@ -5949,6 +5949,8 @@ function lmRenderRooms() {
   var box = document.getElementById('lmRoomList'); if (!box) return
   var b = LOCKMGR.buildings.find(function(x){ return x.id === LOCKMGR.curBldg })
   if (!b) { box.innerHTML = ''; return }
+  // 只顯示「目前棟別」的合約（對不到棟別的合約仍保留，避免遺漏）
+  var bldgLeases = (LOCKMGR.leases || []).filter(function(L){ return L.buildingId === b.id || !L.buildingId })
   box.innerHTML = b.rooms.map(function(r){
     var key = b.id + '_' + r
     var lock = LOCKMGR.rooms[key] || { type: 'keypad' }
@@ -5970,7 +5972,7 @@ function lmRenderRooms() {
         '<label style="display:block;font-size:11px;color:#888;margin-bottom:3px;">綁定合約（選了以合約 UID 為準）</label>' +
         '<select id="lmLease-' + key + '" onchange="lmOnLease(\'' + key + '\', this.value)" style="width:100%;padding:8px 10px;border:1px solid #DDD;border-radius:8px;font-size:13px;margin-bottom:6px;">' +
           '<option value="">—（不綁合約，手動填 UID）—</option>' +
-          (LOCKMGR.leases || []).map(function(L){
+          bldgLeases.map(function(L){
             return '<option value="' + esc(L.id) + '"' + (lock.leaseId === L.id ? ' selected' : '') + '>' + esc(L.label) + (L.lineUserId ? '' : '（未填UID）') + '</option>'
           }).join('') +
         '</select>' +

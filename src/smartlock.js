@@ -112,20 +112,38 @@ const DEFAULT_LOCK_DB = {
   'QY_402':{ type:'keypad' },
 }
 
-// 列出房東所有 ACTIVE 合約（供門鎖管理下拉選擇）
+// 名稱正規化（比對代管物件 title 與門鎖建物 label 用）
+function _normName(s) {
+  return String(s || '').replace(/\s|　|號|棟|樓/g, '').toLowerCase()
+}
+// 代管物件 title → 對應的門鎖建物 id（唯一比對，否則 null）
+function _buildingIdForTitle(title) {
+  const mn = _normName(title)
+  if (!mn) return null
+  const matches = BUILDINGS.filter(b => { const bn = _normName(b.label); return bn && (mn === bn || mn.includes(bn) || bn.includes(mn)) })
+  return matches.length === 1 ? matches[0].id : null
+}
+
+// 列出房東「承租中」合約（供門鎖管理下拉選擇）——排除已逾期、已終止
 async function listLandlordLeases(landlordId) {
+  const now = new Date()
   const mps = await prisma.managedProperty.findMany({
     where: { landlordId },
-    select: { title: true, leases: { where: { status: 'ACTIVE' }, select: { id: true, tenantName: true, roomLabel: true, lineUserId: true } } },
+    select: { title: true, leases: { where: { status: 'ACTIVE' }, select: { id: true, tenantName: true, roomLabel: true, lineUserId: true, leaseEnd: true } } },
   })
   const out = []
-  mps.forEach(mp => (mp.leases || []).forEach(l => {
-    out.push({
-      id: l.id,
-      label: (mp.title ? mp.title + ' ' : '') + (l.roomLabel ? l.roomLabel + ' ' : '') + (l.tenantName || ''),
-      lineUserId: l.lineUserId || '',
+  mps.forEach(mp => {
+    const bid = _buildingIdForTitle(mp.title)
+    ;(mp.leases || []).forEach(l => {
+      if (l.leaseEnd && new Date(l.leaseEnd) < now) return  // 已逾期 → 隱藏
+      out.push({
+        id: l.id,
+        buildingId: bid,   // 對應門鎖棟別（可能為 null）
+        label: (mp.title ? mp.title + ' ' : '') + (l.roomLabel ? l.roomLabel + ' ' : '') + (l.tenantName || ''),
+        lineUserId: l.lineUserId || '',
+      })
     })
-  }))
+  })
   return out
 }
 
