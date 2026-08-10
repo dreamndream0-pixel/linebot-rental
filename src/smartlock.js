@@ -112,6 +112,56 @@ const DEFAULT_LOCK_DB = {
   'QY_402':{ type:'keypad' },
 }
 
+// 名稱正規化（比對建物 label 與代管物件 title 用）
+function _normName(s) {
+  return String(s || '').replace(/\s|　|號|棟|樓/g, '').toLowerCase()
+}
+
+// 以「合約租約」為準同步門鎖房間的 userId：
+//   建物名稱 → 代管物件（唯一比對）；房號數字 → 該物件內 ACTIVE 合約（唯一比對）。
+//   只在「唯一對應」時才寫入，避免綁錯人開錯門。回傳異動清單。
+async function syncLockRoomsFromLeases(landlordId) {
+  const landlord = await prisma.landlord.findUnique({ where: { id: landlordId }, select: { lockRooms: true } })
+  let rooms = {}
+  try { const r = JSON.parse((landlord && landlord.lockRooms) || '{}'); rooms = (r && typeof r === 'object') ? r : {} } catch { rooms = {} }
+  if (!Object.keys(rooms).length) return { updated: [], ambiguous: [], mappedBuildings: 0 }
+
+  const mps = await prisma.managedProperty.findMany({
+    where: { landlordId },
+    select: { id: true, title: true, leases: { where: { status: 'ACTIVE' }, select: { roomLabel: true, lineUserId: true } } },
+  })
+  // 建物 → 代管物件（正規化名稱唯一比對）
+  const buildingToMp = {}
+  for (const b of BUILDINGS) {
+    const bn = _normName(b.label)
+    const matches = mps.filter(mp => { const mn = _normName(mp.title); return mn && (mn === bn || mn.includes(bn) || bn.includes(mn)) })
+    if (matches.length === 1) buildingToMp[b.id] = matches[0]
+  }
+
+  const updated = [], ambiguous = []
+  for (const key of Object.keys(rooms)) {
+    const bid = key.split('_')[0]
+    const roomDigits = key.split('_').slice(1).join('_').replace(/\D/g, '')
+    if (!roomDigits) continue
+    const mp = buildingToMp[bid]
+    if (!mp) continue
+    const cand = (mp.leases || []).filter(l => l.lineUserId && String(l.roomLabel || '').replace(/\D/g, '') === roomDigits)
+    if (cand.length === 1) {
+      const uid = String(cand[0].lineUserId).trim()
+      if (uid && rooms[key].userId !== uid) {
+        rooms[key].userId = uid
+        updated.push({ roomKey: key, userId: uid })
+      }
+    } else if (cand.length > 1) {
+      ambiguous.push(key)
+    }
+  }
+  if (updated.length) {
+    await prisma.landlord.update({ where: { id: landlordId }, data: { lockRooms: JSON.stringify(rooms) } })
+  }
+  return { updated, ambiguous, mappedBuildings: Object.keys(buildingToMp).length }
+}
+
 // roomKey（HB11_101）→ 建物 label（紅寶石 11號）
 function buildingLabelOf(roomKey) {
   const bid = String(roomKey || '').split('_')[0]
@@ -577,6 +627,7 @@ module.exports = {
   isPasscodeRequest,
   isPasscodeConfirm,
   isSmartlockEnabled,
+  syncLockRoomsFromLeases,
   handleTenantPasscodePrompt,
   handleTenantPasscode,
   BUILDINGS,

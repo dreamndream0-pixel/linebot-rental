@@ -670,6 +670,8 @@ router.post('/admin/api/managed/:id/lease', express.json(), async (req, res) => 
     } else {
       lease = await prisma.lease.create({ data: { ...data, managedPropertyId: req.params.id } })
     }
+    // 以合約為準，同步門鎖房間的 userId（房號比對；無對應則不動）
+    try { await require('../../smartlock').syncLockRoomsFromLeases(mp.landlordId) } catch (e) { console.error('門鎖同步失敗:', e.message) }
     res.json(lease)
   } catch (e) {
     console.error('租約儲存失敗:', e.message)

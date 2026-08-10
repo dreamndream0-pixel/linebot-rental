@@ -5,7 +5,7 @@ const express = require('express')
 const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
-const { listLocks, parseCreds, BUILDINGS, DEFAULT_LOCK_DB, parseUsage, unpaidTotal, FREE_QUOTA, CHARGE_AMOUNT } = require('../../smartlock')
+const { listLocks, parseCreds, BUILDINGS, DEFAULT_LOCK_DB, parseUsage, unpaidTotal, FREE_QUOTA, CHARGE_AMOUNT, syncLockRoomsFromLeases } = require('../../smartlock')
 
 // smartlock 功能授權：super 一律可用；房東需被授權 features.smartlock
 async function hasSmartlock(auth) {
@@ -209,6 +209,15 @@ router.post('/admin/api/smartlock/usage/settle', express.json(), async (req, res
     usage[userId].charges = charges
     await prisma.landlord.update({ where: { id: ctx.landlordId }, data: { lockUsage: JSON.stringify(usage) } })
     res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── 以合約租約為準，同步門鎖房間的 userId（房號比對）──
+router.post('/admin/api/smartlock/sync-from-lease', express.json(), async (req, res) => {
+  const ctx = await authLandlord(req, res); if (!ctx) return
+  try {
+    const result = await syncLockRoomsFromLeases(ctx.landlordId)
+    res.json({ ok: true, ...result })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
