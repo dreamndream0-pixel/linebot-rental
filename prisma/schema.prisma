@@ -88,6 +88,13 @@ model Landlord {
   siteLogo               String?   // 房東官網 LOGO 圖片網址
   botTextConfig          String?   @db.Text   // Bot 自訂文字（JSON）
   botEnabled             Boolean   @default(true)   // Bot 是否啟用
+  botScope               String?   // 主要 Bot 功能範圍：null/all=全部、rental=出租、support=客服
+  // 第二個「客服」Bot（已承租房客用）——與主要 Bot 分開的 LINE 官方帳號
+  supportChannelSecret   String?
+  supportChannelToken    String?   @db.Text
+  supportBotName         String?
+  supportNotifyLineUserId String?
+  supportBotEnabled      Boolean   @default(true)
   features               String?   @db.Text   // 功能模組開關（JSON）
   socialConfig           String?   @db.Text   // 社群媒體串接設定（JSON：instagram/facebook/threads 帳號與權杖）
   ttlockConfig           String?   @db.Text   // TTLock 智慧門鎖帳密（JSON：clientId/clientSecret/username/password）

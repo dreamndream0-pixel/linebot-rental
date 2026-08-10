@@ -108,7 +108,7 @@ router.get('/admin/api/data', async (req, res) => {
     auth.role === 'super'
       ? prisma.landlord.findMany({
           orderBy: { createdAt: 'desc' },
-          select: { id: true, name: true, email: true, phone: true, adminKeyHash: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, lineOfficialId: true, notifyLineUserId: true, richMenuConfig: true, richMenuId: true, richMenuEnabled: true, siteName: true, siteLogo: true, botTextConfig: true, botEnabled: true, features: true }
+          select: { id: true, name: true, email: true, phone: true, adminKeyHash: true, isActive: true, createdAt: true, lineBotName: true, lineChannelSecret: true, lineChannelToken: true, lineOfficialId: true, notifyLineUserId: true, richMenuConfig: true, richMenuId: true, richMenuEnabled: true, siteName: true, siteLogo: true, botTextConfig: true, botEnabled: true, features: true, botScope: true, supportChannelSecret: true, supportChannelToken: true, supportBotName: true, supportNotifyLineUserId: true, supportBotEnabled: true }
         })
       : Promise.resolve([]),
     fetchCommunityMap(),
@@ -129,6 +129,11 @@ router.get('/admin/api/data', async (req, res) => {
     lineOfficialId: l.lineOfficialId || null,
     notifyLineUserId: l.notifyLineUserId || null,
     botConfigured: !!(l.lineChannelSecret && l.lineChannelToken),
+    botScope: l.botScope || 'all',
+    supportBotName: l.supportBotName || null,
+    supportNotifyLineUserId: l.supportNotifyLineUserId || null,
+    supportBotConfigured: !!(l.supportChannelSecret && l.supportChannelToken),
+    supportBotEnabled: l.supportBotEnabled !== false,
     richMenuConfig: l.richMenuConfig || null,
     hasRichMenu: !!l.richMenuId,
     richMenuEnabled: !!l.richMenuEnabled,

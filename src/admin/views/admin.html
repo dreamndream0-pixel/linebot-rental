@@ -2780,7 +2780,8 @@ function renderLandlords() {
       '<div class="landlord-tools">' +
       '<button class="action-btn" onclick="event.stopPropagation();editLandlord(\'' + l.id + '\')">✏️ 編輯</button>' +
       '<button class="action-btn" onclick="viewLandlordSite(\'' + l.id + '\')">🌐 官網預覽</button>' +
-      '<button class="action-btn" onclick="event.stopPropagation();setupBot(\'' + l.id + '\', \'' + esc(l.name).replace(/'/g, '') + '\', \'' + webhookUrl + '\')">🤖 Bot 設定</button>' +
+      '<button class="action-btn" onclick="event.stopPropagation();setupBot(\'' + l.id + '\', \'' + esc(l.name).replace(/'/g, '') + '\', \'' + webhookUrl + '\')">🤖 出租 Bot</button>' +
+      '<button class="action-btn" onclick="event.stopPropagation();setupSupportBot(\'' + l.id + '\', \'' + esc(l.name).replace(/'/g, '') + '\')">🎧 客服 Bot' + (l.supportBotConfigured ? ' ✅' : '') + '</button>' +
       '<button class="action-btn" onclick="event.stopPropagation();btnLoad(this, function(){ return checkBotStatus(\'' + l.id + '\') })">🔍 檢查啟用</button>' +
       '<button class="action-btn" onclick="openFeaturesEditor(\'' + l.id + '\')">⚙️ 權限設定</button>' +
       '<button class="action-btn" onclick="openLineRichMenuPanel(\'' + l.id + '\')">📱 LINE 圖文</button>' +
@@ -2884,6 +2885,11 @@ async function setupBot(id, name, webhookUrl) {
     '<div class="modal-field"><label>Channel Access Token</label><input id="' + formId + '_token" placeholder="' + (l.botConfigured ? '已設定；需要更換時再貼上' : '貼上 Channel Access Token') + '"></div>' +
     '<div class="modal-field"><label>Bot 名稱</label><input id="' + formId + '_name" value="' + esc(l.lineBotName || name || '') + '"></div>' +
     '<div class="modal-field"><label>通知 LINE User ID</label><input id="' + formId + '_notify" value="' + esc(l.notifyLineUserId || '') + '" placeholder="可留空"></div>' +
+    '<div class="modal-field"><label>功能範圍</label><select id="' + formId + '_scope" style="width:100%;padding:9px 11px;border:1px solid #DDD;border-radius:8px;font-size:14px;">' +
+      '<option value="all"' + ((l.botScope || 'all') === 'all' ? ' selected' : '') + '>全部功能</option>' +
+      '<option value="rental"' + (l.botScope === 'rental' ? ' selected' : '') + '>出租（找房／預約）</option>' +
+      '<option value="support"' + (l.botScope === 'support' ? ' selected' : '') + '>客服（維修／收租／門鎖）</option>' +
+    '</select></div>' +
     '<div class="modal-field full"><label>Webhook URL</label><input value="' + esc(webhookUrl) + '" readonly onclick="this.select();copyText(this.value)"></div>' +
     '</div>' +
     '<div class="modal-toggle-row" style="margin-top:14px;">' +
@@ -2920,9 +2926,11 @@ async function saveBotSettingsModal(id, formId, webhookUrl, wasEnabled, botConfi
   if ((secret || token) && (!secret || !token)) { showToast('❌ Secret 和 Token 需要一起填寫'); return }
   if (!botConfigured && (!secret || !token)) { showToast('❌ Channel Secret 和 Access Token 為必填'); return }
 
+  var scopeEl = document.getElementById(formId + '_scope')
+  var botScope = scopeEl ? scopeEl.value : 'all'
   var res = await fetch('/admin/api/landlord/' + id + '/bot?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ lineChannelSecret: secret, lineChannelToken: token, lineBotName: botName, notifyLineUserId: notifyId })
+    body: JSON.stringify({ lineChannelSecret: secret, lineChannelToken: token, lineBotName: botName, notifyLineUserId: notifyId, botScope: botScope })
   })
   if (!res.ok) { showToast('❌ 設定失敗'); return }
 
@@ -2943,8 +2951,51 @@ async function saveBotSettingsModal(id, formId, webhookUrl, wasEnabled, botConfi
   }
 
   // 顯示要填到 LINE 後台的 Webhook URL
-  if (secret && token) alert('✅ Bot 設定完成！\\n\\n最後一步：到這個房東的 LINE Developers Console → Messaging API → Webhook URL，填入：\\n\\n' + webhookUrl + '\\n\\n並開啟「Use webhook」。\\n\\n（這串網址已幫你準備好，也會顯示在房東卡片上）')
+  if (secret && token) showInfoModal('✅ Bot 設定完成', esc('最後一步：到 LINE Developers Console → Messaging API → Webhook URL 填入：\n\n' + webhookUrl + '\n\n並開啟 Use webhook。'))
   closeAdminModal('landlordBotModal')
+  reload()
+}
+
+// ── 第二個「客服」Bot 設定 ──────────────────────────────────────
+function setupSupportBot(id, name) {
+  var l = (DATA.landlords || []).find(function(x){ return x.id === id }) || {}
+  var webhookUrl = location.origin + '/webhook/landlord/' + id + '/support'
+  var modalId = 'supportBotModal'
+  var formId = 'supportBotForm'
+  var body =
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6;">客服 Bot 給「已承租房客」使用（維修／收租／門鎖密碼）。請用<strong>另一個</strong> LINE 官方帳號，填入它的憑證。</div>' +
+    '<div class="modal-form-grid">' +
+    '<div class="modal-field"><label>Channel Secret</label><input id="' + formId + '_secret" placeholder="' + (l.supportBotConfigured ? '已設定；需要更換時再貼上' : '貼上客服帳號 Channel Secret') + '"></div>' +
+    '<div class="modal-field"><label>Channel Access Token</label><input id="' + formId + '_token" placeholder="' + (l.supportBotConfigured ? '已設定；需要更換時再貼上' : '貼上客服帳號 Access Token') + '"></div>' +
+    '<div class="modal-field"><label>Bot 名稱</label><input id="' + formId + '_name" value="' + esc(l.supportBotName || (name ? name + ' 客服' : '')) + '"></div>' +
+    '<div class="modal-field"><label>通知 LINE User ID</label><input id="' + formId + '_notify" value="' + esc(l.supportNotifyLineUserId || '') + '" placeholder="可留空"></div>' +
+    '<div class="modal-field full"><label>Webhook URL</label><input value="' + esc(webhookUrl) + '" readonly onclick="this.select();copyText(this.value)"></div>' +
+    '</div>' +
+    '<div class="modal-toggle-row" style="margin-top:14px;">' +
+    '<div><strong>客服 Bot 狀態</strong></div>' +
+    '<label style="display:flex;align-items:center;gap:8px;font-weight:800;cursor:pointer;"><input id="' + formId + '_enabled" type="checkbox"' + (l.supportBotEnabled !== false ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:var(--sage);"> 啟用</label>' +
+    '</div>'
+  var foot =
+    '<button class="action-btn" onclick="closeAdminModal(\'' + modalId + '\')">取消</button>' +
+    '<button class="action-btn admin-primary" onclick="saveSupportBot(\'' + id + '\', \'' + formId + '\', \'' + webhookUrl + '\', ' + (!!l.supportBotConfigured) + ')">儲存</button>'
+  openAdminModal(modalId, '🎧 客服 Bot 設定', esc(l.name || name || ''), body, foot)
+}
+
+async function saveSupportBot(id, formId, webhookUrl, configured) {
+  var secret = (document.getElementById(formId + '_secret').value || '').trim()
+  var token = (document.getElementById(formId + '_token').value || '').trim()
+  var botName = (document.getElementById(formId + '_name').value || '').trim()
+  var notifyId = (document.getElementById(formId + '_notify').value || '').trim()
+  var enabled = document.getElementById(formId + '_enabled').checked
+  if ((secret || token) && (!secret || !token)) { showToast('❌ Secret 和 Token 需要一起填寫'); return }
+  if (!configured && (!secret || !token)) { showToast('❌ Channel Secret 和 Access Token 為必填'); return }
+  var res = await fetch('/admin/api/landlord/' + id + '/support-bot?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ supportChannelSecret: secret, supportChannelToken: token, supportBotName: botName, supportNotifyLineUserId: notifyId, supportBotEnabled: enabled })
+  })
+  if (!res.ok) { showToast('❌ 設定失敗'); return }
+  if (secret && token) showInfoModal('✅ 客服 Bot 設定完成', esc('到客服官方帳號的 LINE Developers Console → Messaging API → Webhook URL 填入：\n\n' + webhookUrl + '\n\n並開啟 Use webhook。'))
+  closeAdminModal('supportBotModal')
   reload()
 }
 

@@ -91,7 +91,7 @@ router.post('/admin/api/landlord/:id/bot', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
 
-  const { lineChannelSecret, lineChannelToken, lineBotName, notifyLineUserId } = req.body
+  const { lineChannelSecret, lineChannelToken, lineBotName, notifyLineUserId, botScope } = req.body
   let lineOfficialId = null
   if (lineChannelToken) {
     try {
@@ -114,6 +114,7 @@ router.post('/admin/api/landlord/:id/bot', express.json(), async (req, res) => {
   if (lineChannelSecret) data.lineChannelSecret = lineChannelSecret
   if (lineChannelToken) data.lineChannelToken = lineChannelToken
   if (lineOfficialId) data.lineOfficialId = lineOfficialId
+  if (typeof botScope === 'string') data.botScope = ['rental', 'support', 'all'].includes(botScope) ? (botScope === 'all' ? null : botScope) : null
 
   const landlord = await prisma.landlord.update({
     where: { id: req.params.id },
@@ -126,6 +127,25 @@ router.post('/admin/api/landlord/:id/bot', express.json(), async (req, res) => {
   } catch (e) {}
 
   res.json({ ok: true, id: landlord.id })
+})
+
+// 設定第二個「客服」Bot（support）
+router.post('/admin/api/landlord/:id/support-bot', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+  const { supportChannelSecret, supportChannelToken, supportBotName, supportNotifyLineUserId, supportBotEnabled } = req.body || {}
+  const data = {
+    supportBotName: supportBotName || null,
+    supportNotifyLineUserId: supportNotifyLineUserId || null,
+  }
+  if (typeof supportBotEnabled === 'boolean') data.supportBotEnabled = supportBotEnabled
+  if (supportChannelSecret) data.supportChannelSecret = supportChannelSecret
+  if (supportChannelToken) data.supportChannelToken = supportChannelToken
+  try {
+    const landlord = await prisma.landlord.update({ where: { id: req.params.id }, data })
+    try { require('../../landlordWebhook').clearConfigCache(req.params.id) } catch (e) {}
+    res.json({ ok: true, id: landlord.id })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // 檢查某房東的 LINE Bot 是否正確啟用（DB 設定 + 向 LINE 驗證 token / webhook / 回應模式）

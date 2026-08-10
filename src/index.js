@@ -110,6 +110,18 @@ prisma.$connect()
       console.error('⚠️ 智慧門鎖欄位確認失敗:', e.message)
     }
     try {
+      // 第二個「客服」Bot 欄位 + 主要 Bot 功能範圍
+      await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "botScope" TEXT`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "supportChannelSecret" TEXT`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "supportChannelToken" TEXT`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "supportBotName" TEXT`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "supportNotifyLineUserId" TEXT`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "supportBotEnabled" BOOLEAN NOT NULL DEFAULT true`)
+      console.log('✅ 客服 Bot 欄位已確認')
+    } catch (e) {
+      console.error('⚠️ 智慧門鎖欄位確認失敗:', e.message)
+    }
+    try {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "lastMessage" TEXT`)
       await prisma.$executeRawUnsafe(`ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "lastMessageAt" TIMESTAMPTZ`)
       console.log('✅ 租客最後留言欄位已確認')

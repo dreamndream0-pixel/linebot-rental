@@ -58,7 +58,23 @@ async function notifyLandlord(landlordId, message, fallbackClient) {
 }
 
 // ── 主選單 Flex Message ──────────────────────────────────────────
-function mainMenu(t = {}) {
+function mainMenu(t = {}, scope = 'all') {
+  const allowRental = scope !== 'support'
+  const allowSupport = scope !== 'rental'
+  const body = [
+    allowRental && t.showListRooms !== false ? menuButton(t.btnListRooms || '🏠 查詢空房', '查詢空房') : null,
+    allowRental && t.showBookVisit !== false ? menuButton(t.btnBookVisit || '📅 預約看房', '預約看房') : null,
+    allowRental && t.showMyBookings !== false ? menuButton(t.btnMyBookings || '📋 我的預約', '我的預約') : null,
+    allowSupport && t.showReportRepair !== false ? menuButton(t.btnReportRepair || '🔧 維修回報', '維修回報') : null,
+    allowSupport ? menuButton('🔐 索取門鎖密碼', '索取密碼') : null,
+    allowRental && t.showMoreRooms !== false && t._siteUrl ? menuUriButton(t.btnMoreRooms || '🔗 更多房源', t._siteUrl) : null,
+  ].filter(Boolean)
+  if (allowRental) {
+    body.push({ type: 'separator', margin: 'md' })
+    body.push({ type: 'text', text: t.searchHint || '💡 也可直接輸入條件搜尋', size: 'xs', color: '#888888', margin: 'md', wrap: true })
+    body.push({ type: 'text', text: t.searchExample || '例如：台中市 沙鹿區 5000-8000', size: 'xs', color: '#aaaaaa', wrap: true })
+  }
+  const subtitle = scope === 'support' ? '客服服務項目' : (scope === 'rental' ? '租屋服務項目' : (t.menuSubtitle || '請選擇服務項目'))
   return {
     type: 'flex',
     altText: '小蝸出租 - 主選單',
@@ -70,26 +86,12 @@ function mainMenu(t = {}) {
         layout: 'vertical',
         contents: [
           { type: 'text', text: t.menuTitle || '🐌 小蝸出租', weight: 'bold', size: 'xl', color: '#ffffff' },
-          { type: 'text', text: t.menuSubtitle || '請選擇服務項目', size: 'sm', color: '#ffffff99' }
+          { type: 'text', text: subtitle, size: 'sm', color: '#ffffff99' }
         ],
-        backgroundColor: '#7A9E7E',
+        backgroundColor: scope === 'support' ? '#6B5A9A' : '#7A9E7E',
         paddingAll: '20px'
       },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        spacing: 'sm',
-        contents: [
-          t.showListRooms !== false ? menuButton(t.btnListRooms || '🏠 查詢空房', '查詢空房') : null,
-          t.showBookVisit !== false ? menuButton(t.btnBookVisit || '📅 預約看房', '預約看房') : null,
-          t.showReportRepair !== false ? menuButton(t.btnReportRepair || '🔧 維修回報', '維修回報') : null,
-          t.showMyBookings !== false ? menuButton(t.btnMyBookings || '📋 我的預約', '我的預約') : null,
-          t.showMoreRooms !== false && t._siteUrl ? menuUriButton(t.btnMoreRooms || '🔗 更多房源', t._siteUrl) : null,
-          { type: 'separator', margin: 'md' },
-          { type: 'text', text: t.searchHint || '💡 也可直接輸入條件搜尋', size: 'xs', color: '#888888', margin: 'md', wrap: true },
-          { type: 'text', text: t.searchExample || '例如：台中市 沙鹿區 5000-8000', size: 'xs', color: '#aaaaaa', wrap: true },
-        ].filter(Boolean)
-      }
+      body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: body }
     }
   }
 }
@@ -462,7 +464,7 @@ async function myBookings(lineUserId, landlordId = null, t = {}) {
 // ── 用戶狀態（多步驟流程） ──────────────────────────────────────
 const userState = new Map()
 
-async function handlePostback(event, client, landlordId = null) {
+async function handlePostback(event, client, landlordId = null, scope = 'all') {
   const userId = event.source.userId
   if (isRateLimited(userId)) return
   const data = event.postback?.data || ''
@@ -624,11 +626,14 @@ async function recordIncomingMessage(event, client, landlordId = null) {
   return tenantRow
 }
 
-async function handleMessage(event, client, landlordId = null) {
+async function handleMessage(event, client, landlordId = null, scope = 'all') {
   const userId = event.source.userId
   if (isRateLimited(userId)) return
   const text = event.message?.text?.trim() || ''
   const state = userState.get(userId) || {}
+  // Bot 功能範圍：rental=出租(找房/預約)、support=客服(維修/收租/門鎖)、all=全部
+  const allowRental = scope !== 'support'
+  const allowSupport = scope !== 'rental'
 
   // 確保用戶存在 DB＋記錄最後一句留言（放最前面，Bot 關閉也要記錄）
   await recordIncomingMessage(event, client, landlordId)
@@ -661,22 +666,22 @@ async function handleMessage(event, client, landlordId = null) {
   }
 
   // ── 多步驟流程中 ──
-  if (!isExitKeyword && state.flow === 'repair') {
-    if (t.showReportRepair === false) { userState.delete(userId); reply = mainMenu(t) }
+  if (!isExitKeyword && allowSupport && state.flow === 'repair') {
+    if (t.showReportRepair === false) { userState.delete(userId); reply = mainMenu(t, scope) }
     else { reply = await handleRepairFlow(userId, text, state, client, landlordId, t) }
   }
   // ── 主要指令 ──
-  else if (text === 'ACTION_LIST_ROOMS' || text === '查詢空房') {
-    reply = t.showListRooms !== false ? await listAvailableRooms(landlordId, t) : mainMenu(t)
-  } else if (text === 'ACTION_BOOK_VISIT' || text === '預約看房') {
-    reply = t.showBookVisit !== false ? await listAvailableRooms(landlordId, t) : mainMenu(t)
-  } else if (text === 'ACTION_REPORT_REPAIR' || text === '維修回報') {
-    reply = t.showReportRepair !== false ? repairMenu(t) : mainMenu(t)
-  } else if (text === 'ACTION_MY_BOOKINGS' || text === '我的預約') {
-    reply = t.showMyBookings !== false ? await myBookings(userId, landlordId, t) : mainMenu(t)
+  else if (allowRental && (text === 'ACTION_LIST_ROOMS' || text === '查詢空房')) {
+    reply = t.showListRooms !== false ? await listAvailableRooms(landlordId, t) : mainMenu(t, scope)
+  } else if (allowRental && (text === 'ACTION_BOOK_VISIT' || text === '預約看房')) {
+    reply = t.showBookVisit !== false ? await listAvailableRooms(landlordId, t) : mainMenu(t, scope)
+  } else if (allowSupport && (text === 'ACTION_REPORT_REPAIR' || text === '維修回報')) {
+    reply = t.showReportRepair !== false ? repairMenu(t) : mainMenu(t, scope)
+  } else if (allowRental && (text === 'ACTION_MY_BOOKINGS' || text === '我的預約')) {
+    reply = t.showMyBookings !== false ? await myBookings(userId, landlordId, t) : mainMenu(t, scope)
   }
-  else if (['漏水問題','電氣問題','衛浴設備','門鎖問題','冷氣問題','其他問題'].includes(text)) {
-    if (t.showReportRepair === false) { reply = mainMenu(t) }
+  else if (allowSupport && ['漏水問題','電氣問題','衛浴設備','門鎖問題','冷氣問題','其他問題'].includes(text)) {
+    if (t.showReportRepair === false) { reply = mainMenu(t, scope) }
     else {
       const category = text
       userState.set(userId, { flow: 'repair', step: 'describe', category })
@@ -685,7 +690,7 @@ async function handleMessage(event, client, landlordId = null) {
   }
   // ── 智慧門鎖：房客索取門鎖密碼（兩步：先確認、再出密碼）──
   // 回傳 null 代表該房東未授權 smartlock → reply 保持 null，不回應（不干擾其他房東）
-  else if (require('./smartlock').isPasscodeConfirm(text)) {
+  else if (allowSupport && require('./smartlock').isPasscodeConfirm(text)) {
     const sl = require('./smartlock')
     if (await sl.isSmartlockEnabled(landlordId)) {
       // 先立即回覆「處理中」，再用 push 送出密碼卡，避免產碼等待時無回饋
@@ -702,14 +707,14 @@ async function handleMessage(event, client, landlordId = null) {
       reply = null  // 已自行回覆，避免下方再次 replyMessage
     }
   }
-  else if (require('./smartlock').isPasscodeRequest(text)) {
+  else if (allowSupport && require('./smartlock').isPasscodeRequest(text)) {
     reply = await require('./smartlock').handleTenantPasscodePrompt(landlordId, userId)
   }
   // ── 明確呼叫選單 ──
   else if (['選單', '主選單', 'menu'].includes(text.toLowerCase())) {
-    reply = mainMenu(t)
+    reply = mainMenu(t, scope)
   }
-  else {
+  else if (allowRental) {
     const cmdMatch = text.match(SEARCH_CMD_RE)
     if (cmdMatch) {
       // 明確搜尋指令（/s …）：即使只有單一條件或設備關鍵字也搜尋
