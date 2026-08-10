@@ -400,7 +400,8 @@
     .tabs { display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin:0 -4px;scroll-snap-type:x proximity; }
     .tab { flex:0 0 auto;padding:10px 12px;font-size:13px;scroll-snap-align:start; }
     .main-panel { padding:18px 12px 32px;max-width:100%;overflow-x:hidden;overflow-y:visible; }
-    header { position:relative;gap:12px;margin-bottom:18px;padding-top:54px; }
+    /* 手機版標題與上方分頁重複、帳號已移至右上角，整個 header 隱藏 */
+    header { display:none !important; }
     .page-title h1 { font-size:24px; }
     .top-actions-wrap { position:absolute;top:0;right:0;z-index:40; }
     .top-actions { position:static;width:auto;max-width:220px;justify-content:flex-end;align-content:flex-start;gap:6px;flex-wrap:nowrap;z-index:5; }
