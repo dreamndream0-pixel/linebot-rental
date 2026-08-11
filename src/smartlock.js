@@ -364,6 +364,37 @@ function isPasscodeRequest(text) {
   return /密碼|密码|門鎖密碼|门锁密码|開門|开门|開鎖|开锁/.test(text || '')
 }
 
+// 找出綁定此 UID 的房間；若對到多間（換房）→ 以「最新且生效中的合約」為主，避免發舊房
+// 回傳：[{ key, type, ids, leaseId }]
+async function matchedRoomsForUser(landlord, lineUserId) {
+  const rooms = parseRooms(landlord)
+  let matched = Object.keys(rooms)
+    .filter(k => rooms[k] && rooms[k].userId && String(rooms[k].userId).trim() === String(lineUserId).trim())
+    .map(k => ({ key: k, type: rooms[k].type, ids: rooms[k].ids, leaseId: rooms[k].leaseId }))
+  if (matched.length > 1) {
+    const leaseIds = [...new Set(matched.map(r => r.leaseId).filter(Boolean))]
+    if (leaseIds.length) {
+      try {
+        const leases = await prisma.lease.findMany({ where: { id: { in: leaseIds } }, select: { id: true, status: true, leaseStart: true, leaseEnd: true } })
+        const byId = {}; leases.forEach(l => { byId[l.id] = l })
+        const nowD = new Date()
+        const isActive = l => l && l.status === 'ACTIVE' && !(l.leaseEnd && new Date(l.leaseEnd) < nowD)
+        const activeMatched = matched.filter(r => r.leaseId && isActive(byId[r.leaseId]))
+        if (activeMatched.length) {
+          let latestTime = -1, latestLeaseId = null
+          activeMatched.forEach(r => {
+            const l = byId[r.leaseId]
+            const tt = l.leaseStart ? new Date(l.leaseStart).getTime() : 0
+            if (tt > latestTime) { latestTime = tt; latestLeaseId = r.leaseId }
+          })
+          matched = activeMatched.filter(r => r.leaseId === latestLeaseId)
+        }
+      } catch (e) { console.error('多房合約判斷失敗:', e.message) }
+    }
+  }
+  return matched
+}
+
 // 第一步：房客索取密碼 → 回傳「確認索取」卡片（顯示次數，不產生密碼、不計次）
 // 回傳：LINE message 物件；房東未授權 → null
 async function handleTenantPasscodePrompt(landlordId, lineUserId) {
@@ -381,14 +412,13 @@ async function handleTenantPasscodePrompt(landlordId, lineUserId) {
   try { const t = await findLineTenant(lineUserId, landlordId); if (t) tenantName = t.customName || t.name || '' } catch (e) {}
   const who = tenantName || '房客'
 
-  const rooms = parseRooms(landlord)
-  const matched = Object.keys(rooms).filter(k => rooms[k] && rooms[k].userId && String(rooms[k].userId).trim() === String(lineUserId).trim())
+  const matched = await matchedRoomsForUser(landlord, lineUserId)
   if (matched.length === 0) {
     return { type: 'text', text: `${who} 您好，您尚未綁定門鎖，請聯絡房東為您設定後即可自助取當日密碼。` }
   }
-  const roomLabels = matched.map(k => {
-    const roomNo = k.split('_').slice(1).join('_')
-    const bl = buildingLabelOf(k)
+  const roomLabels = matched.map(r => {
+    const roomNo = r.key.split('_').slice(1).join('_')
+    const bl = buildingLabelOf(r.key)
     return (bl ? bl + ' ' : '') + roomNo
   }).join('、')
 
@@ -481,37 +511,10 @@ async function handleTenantPasscode(landlordId, lineUserId) {
   } catch (e) {}
   const who = tenantName || '房客'
 
-  const rooms = parseRooms(landlord)
-  // 找出所有綁定此 User ID 的房間
-  let matched = Object.keys(rooms)
-    .filter(k => rooms[k] && rooms[k].userId && String(rooms[k].userId).trim() === String(lineUserId).trim())
-    .map(k => ({ key: k, type: rooms[k].type, ids: rooms[k].ids, leaseId: rooms[k].leaseId }))
-
+  // 找出綁定此 UID 的房間（換房時以最新生效合約為主，不發舊房）
+  const matched = await matchedRoomsForUser(landlord, lineUserId)
   if (matched.length === 0) {
     return { type: 'text', text: `${who} 您好，您尚未綁定門鎖，請聯絡房東為您設定後即可自助取當日密碼。` }
-  }
-
-  // 換房情況：同一 UID 對到多間房 → 以「最新且生效中的合約」為主，不發舊房密碼
-  if (matched.length > 1) {
-    const leaseIds = [...new Set(matched.map(r => r.leaseId).filter(Boolean))]
-    if (leaseIds.length) {
-      try {
-        const leases = await prisma.lease.findMany({ where: { id: { in: leaseIds } }, select: { id: true, status: true, leaseStart: true, leaseEnd: true } })
-        const byId = {}; leases.forEach(l => { byId[l.id] = l })
-        const nowD = new Date()
-        const isActive = l => l && l.status === 'ACTIVE' && !(l.leaseEnd && new Date(l.leaseEnd) < nowD)
-        const activeMatched = matched.filter(r => r.leaseId && isActive(byId[r.leaseId]))
-        if (activeMatched.length) {
-          let latestTime = -1, latestLeaseId = null
-          activeMatched.forEach(r => {
-            const l = byId[r.leaseId]
-            const tt = l.leaseStart ? new Date(l.leaseStart).getTime() : 0
-            if (tt > latestTime) { latestTime = tt; latestLeaseId = r.leaseId }
-          })
-          matched = activeMatched.filter(r => r.leaseId === latestLeaseId)
-        }
-      } catch (e) { console.error('多房合約判斷失敗:', e.message) }
-    }
   }
 
   const today = taipeiDateStr()
