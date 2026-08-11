@@ -221,9 +221,9 @@ function roomsToCarousel(rooms, altText, t = {}) {
 async function listAvailableRooms(landlordId = null, t = {}) {
   const where = { status: 'AVAILABLE', deletedAt: null }
   if (landlordId) where.ownerId = landlordId
-  // 只顯示精選房源（房東可在 Bot 設定開啟）——精選 = 官網精選或主站精選
+  // 只顯示精選房源（房東可在 Bot 設定開啟）——用房東自己的「官網精選」siteFeatured
   if (t.listFeaturedOnly === true) {
-    where.OR = [{ siteFeatured: true }, { featured: true }]
+    where.siteFeatured = true
   }
   const rooms = await prisma.property.findMany({
     where,
@@ -676,9 +676,9 @@ async function handleMessage(event, client, landlordId = null, scope = 'all') {
   }
   // ── 主要指令 ──
   else if (allowRental && (text === 'ACTION_LIST_ROOMS' || text === '查詢空房')) {
-    reply = t.showListRooms !== false ? await listAvailableRooms(landlordId, t) : mainMenu(t, scope)
+    reply = await listAvailableRooms(landlordId, t)   // 一律回房源清單／無房訊息，不跳選單
   } else if (allowRental && (text === 'ACTION_BOOK_VISIT' || text === '預約看房')) {
-    reply = t.showBookVisit !== false ? await listAvailableRooms(landlordId, t) : mainMenu(t, scope)
+    reply = await listAvailableRooms(landlordId, t)
   } else if (allowSupport && (text === 'ACTION_REPORT_REPAIR' || text === '維修回報')) {
     reply = t.showReportRepair !== false ? repairMenu(t) : mainMenu(t, scope)
   } else if (allowRental && (text === 'ACTION_MY_BOOKINGS' || text === '我的預約')) {

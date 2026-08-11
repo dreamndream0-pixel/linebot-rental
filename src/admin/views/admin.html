@@ -3383,7 +3383,7 @@ var SHOW_TOGGLES = [
   { key: 'showReportRepair', label: '顯示「維修回報」按鈕' },
   { key: 'showMyBookings', label: '顯示「我的預約」按鈕' },
   { key: 'showMoreRooms', label: '顯示「更多房源」按鈕（連結至官網）' },
-  { key: 'listFeaturedOnly', label: '「查詢空房」只顯示精選房源（預設關＝顯示全部空房）' },
+  { key: 'listFeaturedOnly', label: '「查詢空房」只顯示精選房源（預設關＝顯示全部空房）', def: false },
 ]
 
 var BOT_TEXT_GROUPS = [
@@ -3451,7 +3451,8 @@ function openBotTextEditor(id) {
 function buildBotFormContent(values) {
   var togglesSection = '<details class="acc" open><summary>📱 主選單按鈕顯示</summary><div class="acc-body">' +
     SHOW_TOGGLES.map(function(s) {
-      var checked = values[s.key] !== false
+      // 預設開的（show*）：未設定視為勾選；預設關的（def:false，如 listFeaturedOnly）：須明確為 true 才勾選
+      var checked = (s.def === false) ? (values[s.key] === true) : (values[s.key] !== false)
       return '<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;">' +
         '<input type="checkbox" id="bt_' + s.key + '"' + (checked ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer;accent-color:var(--sage);">' +
         '<span style="font-size:14px;">' + s.label + '</span></label>'
