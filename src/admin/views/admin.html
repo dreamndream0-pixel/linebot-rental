@@ -7063,13 +7063,16 @@ function renderLeaseList() {
   function sortTh(key, label) {
     var active = LEASE_SORT === key
     var arrow = active ? (LEASE_SORT_DIR === 'asc' ? '↑' : '↓') : '↕'
-    return '<th style="padding:8px;text-align:left;font-size:12px;white-space:nowrap;">' +
+    // 承租人為固定欄（橫向捲動時不動）
+    var sticky = key === 'tenant' ? 'position:sticky;left:0;z-index:3;background:#FAF8F4;box-shadow:2px 0 4px rgba(0,0,0,0.06);' : ''
+    return '<th style="padding:8px;text-align:left;font-size:12px;white-space:nowrap;' + sticky + '">' +
       '<button onclick="setLeaseSort(\'' + key + '\')" style="border:none;background:none;padding:0;color:' + (active ? '#4A6741' : '#222') + ';font-size:12px;font-weight:700;cursor:pointer;">' +
         label + ' <span style="font-size:11px;color:' + (active ? '#4A6741' : '#aaa') + ';">' + arrow + '</span>' +
       '</button></th>'
   }
 
-  function leaseRow(l) {
+  function leaseRow(l, _i) {
+    var rowBg = (_i % 2 === 0) ? '#FFFFFF' : '#F5F2EC'
     var endInfo = fmt(l.leaseEnd)
     if (l.daysToEnd != null && l.status === 'EXPIRING') endInfo += ' <span style="color:#E5A33C;font-size:11px;">即將釋出·' + l.daysToEnd + '天</span>'
     if (l.status === 'EXPIRED') endInfo += ' <span style="color:#C0524A;font-size:11px;">已過期</span>'
@@ -7092,8 +7095,8 @@ function renderLeaseList() {
       : (hasLineId
         ? '<span onclick="copyText(' + jsArg(l.lineUserId || '') + ')" title="Ragic 已匯入 userID，但尚未找到同一個後台租客資料" style="color:#2E9B57;font-size:12px;cursor:pointer;">● LINE ID 已匯入</span>'
         : '<span style="color:#ccc;font-size:12px;">○ LINE 未綁</span>')
-    return '<tr>' +
-      '<td style="padding:8px;font-size:13px;white-space:nowrap;"><span style="display:inline-flex;align-items:center;gap:5px;">' + esc(l.tenantName) + '<button title="編輯房客合約" class="spin-btn" onclick="btnLoad(this, function(){ return editLeaseFromList(\'' + l.id + '\') })" style="border:none;background:none;color:#4A6741;cursor:pointer;font-size:13px;padding:0;">✎</button></span></td>' +
+    return '<tr style="background:' + rowBg + ';">' +
+      '<td style="padding:8px;font-size:13px;white-space:nowrap;position:sticky;left:0;z-index:2;background:' + rowBg + ';box-shadow:2px 0 4px rgba(0,0,0,0.06);"><span style="display:inline-flex;align-items:center;gap:5px;">' + esc(l.tenantName) + '<button title="編輯房客合約" class="spin-btn" onclick="btnLoad(this, function(){ return editLeaseFromList(\'' + l.id + '\') })" style="border:none;background:none;color:#4A6741;cursor:pointer;font-size:13px;padding:0;">✎</button></span></td>' +
       '<td style="padding:8px;font-size:13px;color:#555;white-space:nowrap;">' + esc(l.roomLabel || '—') + '</td>' +
       '<td style="padding:8px;font-size:13px;white-space:nowrap;">' + esc(l.managedTitle) + '</td>' +
       '<td style="padding:8px;font-size:12px;white-space:nowrap;">' + fmt(l.leaseStart) + '<br>~ ' + endInfo + '</td>' +
@@ -7492,20 +7495,20 @@ function renderRentBillingRows(rows, leaseId) {
     // ── 鎖定列（唯讀）──
     if (isLocked) {
       return '<tr style="background:#F9FBF9;">' +
-        '<td style="padding:8px;font-size:12px;">' + r.index + '</td>' +
-        '<td style="padding:8px;font-size:12px;min-width:150px;">' + esc(r.label || '') + '<br><span style="font-size:11px;color:#4A8A4A;">已繳鎖定</span></td>' +
-        '<td style="padding:8px;font-size:12px;text-align:right;">' + leaseMoney(r.amount) + '</td>' +
-        '<td style="padding:8px;font-size:12px;">' + leaseDate(r.dueDate) + '</td>' +
-        '<td style="padding:8px;font-size:12px;text-align:right;color:#2E7D32;">' + leaseMoney(unpaid) + '</td>' +
-        '<td style="padding:8px;font-size:12px;text-align:center;"><span style="color:#2E7D32;font-weight:700;">已收款</span></td>' +
-        '<td style="padding:8px;font-size:12px;font-weight:600;">' + Number(r.paidAmount||0).toLocaleString() + '</td>' +
-        '<td style="padding:8px;font-size:12px;">' + leaseDate(r.paidDate) + '</td>' +
-        '<td style="padding:8px;font-size:12px;">' + esc(r.payMethod || '—') + '</td>' +
-        '<td style="padding:8px;font-size:12px;">' + receipt + '</td>' +
-        '<td style="padding:8px;text-align:center;">' +
+        '<td style="padding:4px 6px;font-size:12px;">' + r.index + '</td>' +
+        '<td style="padding:4px 6px;font-size:12px;min-width:130px;white-space:nowrap;">' + esc(r.label || '') + '<br><span style="font-size:11px;color:#4A8A4A;">已繳鎖定</span></td>' +
+        '<td style="padding:4px 6px;font-size:12px;text-align:right;white-space:nowrap;">' + leaseMoney(r.amount) + '</td>' +
+        '<td style="padding:4px 6px;font-size:12px;white-space:nowrap;">' + leaseDate(r.dueDate) + '</td>' +
+        '<td style="padding:4px 6px;font-size:12px;text-align:right;color:#2E7D32;white-space:nowrap;">' + leaseMoney(unpaid) + '</td>' +
+        '<td style="padding:4px 6px;font-size:12px;text-align:center;"><span style="color:#2E7D32;font-weight:700;">已收款</span></td>' +
+        '<td style="padding:4px 6px;font-size:12px;font-weight:600;">' + Number(r.paidAmount||0).toLocaleString() + '</td>' +
+        '<td style="padding:4px 6px;font-size:12px;white-space:nowrap;">' + leaseDate(r.paidDate) + '</td>' +
+        '<td style="padding:4px 6px;font-size:12px;">' + esc(r.payMethod || '—') + '</td>' +
+        '<td style="padding:4px 6px;font-size:12px;">' + receipt + '</td>' +
+        '<td style="padding:4px 6px;text-align:center;">' +
           '<button class="btn" style="width:auto;padding:6px 12px;font-size:12px;background:#7A6A52;" onclick="unlockRow(\'' + key + '\',\'' + leaseId + '\',\'rent\')">🔓 解除鎖定</button>' +
         '</td>' +
-        '<td style="padding:8px;text-align:center;"><button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'RENT\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate) + '\')})">LINE提醒</button></td>' +
+        '<td style="padding:4px 6px;text-align:center;"><button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'RENT\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate) + '\')})">LINE提醒</button></td>' +
       '</tr>'
     }
 
@@ -7514,21 +7517,21 @@ function renderRentBillingRows(rows, leaseId) {
       '<td style="padding:8px;font-size:12px;text-align:center;">' + (paid ? '<span style="color:#2E7D32;font-weight:700;">已收款</span>' : '<span style="color:#C0524A;font-weight:700;">未繳</span>') + '</td>'
     var unlockLabel = r.locked ? '<br><span style="font-size:11px;color:#E07B39;">已解鎖</span>' : ''
     return '<tr>' +
-      '<td style="padding:8px;font-size:12px;">' + r.index + '</td>' +
-      '<td style="padding:6px;min-width:180px;">' +
+      '<td style="padding:4px 6px;font-size:12px;">' + r.index + '</td>' +
+      '<td style="padding:4px;min-width:150px;">' +
         '<div style="display:flex;gap:3px;align-items:center;">' +
-          '<input id="' + key + '_start" type="date" value="' + leaseDateInput(r.periodStart) + '" style="' + inp + 'width:115px;" title="期間開始">' +
+          '<input id="' + key + '_start" type="date" value="' + leaseDateInput(r.periodStart) + '" style="' + inp + 'width:100px;" title="期間開始">' +
           '<span style="font-size:11px;">~</span>' +
-          '<input id="' + key + '_end" type="date" value="' + leaseDateInput(r.periodEnd) + '" style="' + inp + 'width:115px;" title="期間結束">' +
+          '<input id="' + key + '_end" type="date" value="' + leaseDateInput(r.periodEnd) + '" style="' + inp + 'width:100px;" title="期間結束">' +
         '</div>' + unlockLabel +
       '</td>' +
-      '<td style="padding:6px;"><input id="' + key + '_amount" type="number" value="' + Number(r.amount || 0) + '" style="' + inp + 'width:90px;text-align:right;" title="應繳租金"></td>' +
-      '<td style="padding:6px;"><input id="' + key + '_duedate" type="date" value="' + leaseDateInput(r.dueDate) + '" style="' + inp + 'width:120px;" title="應繳日期"></td>' +
+      '<td style="padding:4px;"><input id="' + key + '_amount" type="number" value="' + Number(r.amount || 0) + '" style="' + inp + 'width:76px;text-align:right;" title="應繳租金"></td>' +
+      '<td style="padding:4px;"><input id="' + key + '_duedate" type="date" value="' + leaseDateInput(r.dueDate) + '" style="' + inp + 'width:104px;" title="應繳日期"></td>' +
       statusCell +
-      '<td style="padding:6px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳金額" style="' + inp + 'width:90px;"></td>' +
-      '<td style="padding:6px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="' + inp + 'width:120px;"></td>' +
-      '<td style="padding:6px;"><select id="' + key + '_method" style="' + inp + 'width:85px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
-      '<td style="padding:6px;font-size:12px;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="width:88px;font-size:11px;"><br>' + receipt + '</td>' +
+      '<td style="padding:4px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳" style="' + inp + 'width:76px;"></td>' +
+      '<td style="padding:4px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="' + inp + 'width:104px;"></td>' +
+      '<td style="padding:4px;"><select id="' + key + '_method" style="' + inp + 'width:78px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
+      '<td style="padding:4px;font-size:12px;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="width:80px;font-size:11px;"><br>' + receipt + '</td>' +
       '<td style="padding:6px;text-align:center;white-space:nowrap;">' +
         '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;" onclick="btnLoad(this,function(){return saveRentPayment(\'' + leaseId + '\',\'' + key + '\',\'' + (r.id || '') + '\')})">💾 儲存</button>' +
         (r.id ? ' <button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#C0524A;" onclick="btnLoad(this,function(){return deleteRentPayment(\'' + leaseId + '\',\'' + r.id + '\')})">×</button>' : '') +
@@ -7641,7 +7644,7 @@ async function openLeaseLedger(leaseId) {
     '</div>' +
     '<div style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:14px;">' +
       '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">＋ 新增收支</div>' +
-      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
+      '<div class="hscroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
         '<div style="display:flex;gap:8px;min-width:max-content;">' +
           (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
             '<div style="' + c(100) + '"><label style="' + lb + '">類型</label><select id="lease_rec_type" style="' + iw + '"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select></div>' +
@@ -7655,7 +7658,7 @@ async function openLeaseLedger(leaseId) {
       '<button class="btn spin-btn" style="width:100%;padding:10px;font-size:14px;" onclick="btnLoad(this,function(){return addLeaseRecord(\'' + l.managedId + '\',\'' + l.id + '\')})">新增</button>' +
     '</div>' +
     '<h4 style="margin:14px 0 10px;font-size:15px;">租金繳納明細</h4>' +
-    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:1320px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="12" style="padding:8px;text-align:center;font-size:13px;">租金明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:8px;text-align:left;font-size:12px;">期別</th><th style="padding:8px;text-align:left;font-size:12px;">說明(起訖)</th><th style="padding:8px;text-align:right;font-size:12px;">應繳租金</th><th style="padding:8px;text-align:left;font-size:12px;">應繳日期</th><th style="padding:8px;text-align:right;font-size:12px;">未繳差額</th><th style="padding:8px;text-align:center;font-size:12px;">狀態</th><th style="padding:8px;text-align:left;font-size:12px;">已繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">繳款日期</th><th style="padding:8px;text-align:left;font-size:12px;">方式</th><th style="padding:8px;text-align:left;font-size:12px;">匯款圖</th><th style="padding:8px;text-align:center;font-size:12px;">儲存</th><th style="padding:8px;text-align:center;font-size:12px;">提醒</th></tr></thead><tbody id="rentTbody_' + l.id + '">' + renderRentBillingRows(billing.rentSchedule || [], l.id) + '</tbody></table></div>' +
+    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:960px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="12" style="padding:6px;text-align:center;font-size:13px;">租金明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">期別</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">說明(起訖)</th><th style="padding:5px 6px;text-align:right;font-size:12px;white-space:nowrap;">應繳租金</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">應繳日期</th><th style="padding:5px 6px;text-align:right;font-size:12px;white-space:nowrap;">未繳差額</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">狀態</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">已繳金額</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">繳款日期</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">方式</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">匯款圖</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">儲存</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">提醒</th></tr></thead><tbody id="rentTbody_' + l.id + '">' + renderRentBillingRows(billing.rentSchedule || [], l.id) + '</tbody></table></div>' +
     '<h4 style="margin:14px 0 10px;font-size:15px;">水電明細表</h4>'
  +
     '<div id="util_add_form" style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:12px;">' +
@@ -7664,7 +7667,7 @@ async function openLeaseLedger(leaseId) {
         '<button id="util_cancel_btn" onclick="cancelEditUtilityReading(\'' + l.id + '\')" style="display:none;border:none;background:none;color:#C0524A;font-size:13px;cursor:pointer;padding:0;">✕ 取消</button>' +
       '</div>' +
       '<input type="hidden" id="util_edit_id" value="">' +
-      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
+      '<div class="hscroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
         '<div style="display:flex;gap:8px;min-width:max-content;">' +
           (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
             '<div style="' + c(148) + '"><label style="' + lb + '">起算日期</label><input id="util_start_date" type="date" value="' + readingStartDate + '" style="' + iw + '"></div>' +
@@ -7686,6 +7689,9 @@ async function openLeaseLedger(leaseId) {
     '</div></div>'
   var ex = document.getElementById('leaseLedgerModal'); if (ex) ex.remove()
   document.body.insertAdjacentHTML('beforeend', html)
+  // 水平滑動的表單開啟時捲到最左（顯示第一個欄位）
+  var lm = document.getElementById('leaseLedgerModal')
+  if (lm) lm.querySelectorAll('.hscroll').forEach(function(el){ el.scrollLeft = 0 })
 }
 
 async function addUtilityReading(leaseId) {
@@ -7843,9 +7849,10 @@ function sendLeasePaymentReminder(leaseId, kind, amount, dueDate) {
           })
           if (!res.ok) {
             var data = {}; try { data = await res.json() } catch(e) {}
-            showToast('❌ 發送失敗：' + (data.error || res.status))
+            showInfoModal('❌ LINE 提醒發送失敗', (data.error || ('HTTP ' + res.status)) + '\n\n若顯示 invalid（無效的 to），代表此房客尚未加入該 LINE Bot，或合約內的 LINE userID 有誤。')
           } else {
-            showToast('✅ 已發送 LINE 提醒')
+            var okd = {}; try { okd = await res.json() } catch(e) {}
+            showToast('✅ 已發送 LINE 提醒' + (okd.via ? '（' + okd.via + '）' : ''))
           }
         } catch (e) { showToast('❌ 發送失敗') }
         resolve()

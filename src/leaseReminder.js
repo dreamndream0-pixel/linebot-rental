@@ -35,6 +35,61 @@ async function getClientForLease(lease) {
   return null
 }
 
+// 取得某租約可用的 LINE Client 清單（依序嘗試）：
+// 已承租房客多在「客服 Bot」→ 優先客服 Bot，再退主 Bot，最後才用環境變數主 Bot。
+async function getLeaseClients(lease) {
+  const clients = []
+  try {
+    const mp = await prisma.managedProperty.findUnique({
+      where: { id: lease.managedPropertyId },
+      select: { landlordId: true },
+    })
+    if (mp?.landlordId) {
+      const landlord = await prisma.landlord.findUnique({
+        where: { id: mp.landlordId },
+        select: {
+          lineChannelToken: true, lineChannelSecret: true,
+          supportChannelToken: true, supportChannelSecret: true, supportBotEnabled: true,
+        },
+      })
+      if (landlord) {
+        if (landlord.supportChannelToken && landlord.supportBotEnabled !== false) {
+          clients.push({ name: '客服Bot', client: new Client({ channelAccessToken: landlord.supportChannelToken, channelSecret: landlord.supportChannelSecret || '' }) })
+        }
+        if (landlord.lineChannelToken) {
+          clients.push({ name: '主Bot', client: new Client({ channelAccessToken: landlord.lineChannelToken, channelSecret: landlord.lineChannelSecret || '' }) })
+        }
+      }
+    }
+  } catch (e) {
+    console.error('取得租約 Bot 失敗:', e.message)
+  }
+  if (process.env.LINE_CHANNEL_ACCESS_TOKEN) {
+    clients.push({ name: '系統Bot', client: new Client({ channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN, channelSecret: process.env.LINE_CHANNEL_SECRET || '' }) })
+  }
+  return clients
+}
+
+// 推播給租約綁定的房客：依序嘗試各 Bot，任一成功即回傳；全部失敗則丟出含 LINE 詳細訊息的錯誤。
+async function pushToLeaseTenant(lease, message) {
+  if (!lease.lineUserId) throw new Error('此租約尚未綁定 LINE 租客（LINE userID 為空）')
+  const clients = await getLeaseClients(lease)
+  if (!clients.length) throw new Error('此房東尚未設定任何 LINE Bot')
+  let lastErr = null
+  for (const c of clients) {
+    try {
+      await c.client.pushMessage(lease.lineUserId, message)
+      return { ok: true, via: c.name }
+    } catch (e) {
+      const data = e && e.originalError && e.originalError.response && e.originalError.response.data
+      const msg = (data && (data.message || (data.details && JSON.stringify(data.details)))) || e.message
+      lastErr = new Error(`[${c.name}] ${msg}`)
+      console.error(`推播失敗（${c.name} / ${lease.tenantName}）:`, msg)
+    }
+  }
+  throw lastErr || new Error('推播失敗')
+}
+
 // 是否同月已推過（避免重複）
 function alreadyRemindedThisMonth(lastDate) {
   if (!lastDate) return false
@@ -141,15 +196,12 @@ async function checkLeaseReminders() {
     if (lease.rentRemindOn && lease.rentPayDay) {
       const remindDay = ((lease.rentPayDay - REMIND_BEFORE - 1 + 31) % 31) + 1
       if (today === remindDay && !alreadyRemindedThisMonth(lease.lastRentRemind)) {
-        const client = await getClientForLease(lease)
-        if (client) {
-          try {
-            await client.pushMessage(lease.lineUserId, rentReminderFlex(data))
-            await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date() } })
-            console.log(`✅ 已推租金提醒：${lease.tenantName}`)
-          } catch (e) {
-            console.error(`租金提醒推播失敗（${lease.tenantName}）:`, e.message)
-          }
+        try {
+          await pushToLeaseTenant(lease, rentReminderFlex(data))
+          await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date() } })
+          console.log(`✅ 已推租金提醒：${lease.tenantName}`)
+        } catch (e) {
+          console.error(`租金提醒推播失敗（${lease.tenantName}）:`, e.message)
         }
       }
     }
@@ -158,15 +210,12 @@ async function checkLeaseReminders() {
     if (lease.utilRemindOn && lease.utilPayDay) {
       const remindDay = ((lease.utilPayDay - REMIND_BEFORE - 1 + 31) % 31) + 1
       if (today === remindDay && !alreadyRemindedThisMonth(lease.lastUtilRemind)) {
-        const client = await getClientForLease(lease)
-        if (client) {
-          try {
-            await client.pushMessage(lease.lineUserId, utilReminderFlex(data))
-            await prisma.lease.update({ where: { id: lease.id }, data: { lastUtilRemind: new Date() } })
-            console.log(`✅ 已推水電提醒：${lease.tenantName}`)
-          } catch (e) {
-            console.error(`水電提醒推播失敗（${lease.tenantName}）:`, e.message)
-          }
+        try {
+          await pushToLeaseTenant(lease, utilReminderFlex(data))
+          await prisma.lease.update({ where: { id: lease.id }, data: { lastUtilRemind: new Date() } })
+          console.log(`✅ 已推水電提醒：${lease.tenantName}`)
+        } catch (e) {
+          console.error(`水電提醒推播失敗（${lease.tenantName}）:`, e.message)
         }
       }
     }
@@ -182,4 +231,4 @@ function startLeaseReminders() {
   console.log('✅ 租約繳費提醒排程已啟動（每日 9:00 檢查）')
 }
 
-module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, rentReminderFlex, utilReminderFlex }
+module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex }
