@@ -844,9 +844,29 @@ var KEY = ''
         input = u.pathname + (u.search || '') + (u.hash || '')
       }
     } catch (e) {}
-    return _origFetch.call(this, input, init)
+    var isAdminApi = typeof input === 'string' && input.indexOf('/admin/api/') !== -1 && input.indexOf('/admin/api/login') === -1
+    return _origFetch.call(this, input, init).then(function (res) {
+      // 登入過期（8 小時）或 session 失效 → 統一導回登入，避免只顯示 unauthorized
+      // 只在「已登入狀態」(DATA 已載入) 觸發，避免初次登入畫面誤報
+      if (res && res.status === 401 && isAdminApi && typeof DATA !== 'undefined' && DATA) { try { handleSessionExpired() } catch (e) {} }
+      return res
+    })
   }
 })()
+
+var _sessionExpiredShown = false
+function handleSessionExpired() {
+  if (_sessionExpiredShown) return
+  _sessionExpiredShown = true
+  try { showToast('⚠️ 登入已過期，請重新登入') } catch (e) {}
+  KEY = ''
+  try { sessionStorage.removeItem('adminKey') } catch (e) {}
+  setTimeout(function () {
+    var mv = document.getElementById('mainView'); if (mv) mv.style.display = 'none'
+    var lv = document.getElementById('loadingView'); if (lv) lv.style.display = 'none'
+    var login = document.getElementById('loginView'); if (login) login.style.display = 'flex'
+  }, 900)
+}
 
 var currentTab = 'overview'
 var tenantUserTab = 'line'
