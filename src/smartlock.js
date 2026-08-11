@@ -184,6 +184,23 @@ async function syncLockRoomsFromLeases(landlordId) {
   return { updated }
 }
 
+// 續約：把綁定舊合約的門鎖房間改指向新合約，讓房客延續門鎖權限（不會被解除綁定）
+async function repointLockLease(landlordId, oldLeaseId, newLeaseId) {
+  if (!oldLeaseId || !newLeaseId) return { updated: 0 }
+  const landlord = await prisma.landlord.findUnique({ where: { id: landlordId }, select: { lockRooms: true } })
+  let rooms = {}
+  try { const r = JSON.parse((landlord && landlord.lockRooms) || '{}'); rooms = (r && typeof r === 'object') ? r : {} } catch { rooms = {} }
+  let updated = 0
+  for (const key of Object.keys(rooms)) {
+    const r = rooms[key]
+    if (r && r.leaseId === oldLeaseId) { r.leaseId = newLeaseId; updated++ }
+  }
+  if (updated) {
+    await prisma.landlord.update({ where: { id: landlordId }, data: { lockRooms: JSON.stringify(rooms) } })
+  }
+  return { updated }
+}
+
 // roomKey（HB11_101）→ 建物 label（紅寶石 11號）
 function buildingLabelOf(roomKey) {
   const bid = String(roomKey || '').split('_')[0]
@@ -687,6 +704,7 @@ module.exports = {
   isPasscodeConfirm,
   isSmartlockEnabled,
   syncLockRoomsFromLeases,
+  repointLockLease,
   listLandlordLeases,
   handleTenantPasscodePrompt,
   handleTenantPasscode,

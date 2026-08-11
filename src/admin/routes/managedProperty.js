@@ -950,12 +950,22 @@ router.get('/admin/api/managed/lease/:leaseId/settle-preview', async (req, res) 
     const suggestedDeductions = []
     if (unpaidUtility > 0) suggestedDeductions.push({ name: '未收電費', amount: unpaidUtility })
     if (unpaidRent > 0) suggestedDeductions.push({ name: '未收租金', amount: unpaidRent })
+    // 續約用：最新電表度數（延續上期）＝ 最近一期抄表的迄止度數；無抄表則用合約設定
+    const latestReading = utilityReadings
+      .filter(r => r.endDate)
+      .sort((a, b) => new Date(b.endDate) - new Date(a.endDate))[0]
+    const lastMeterDegree = latestReading ? (latestReading.endDegree || 0)
+      : (lease.meterNext || lease.meterCurrent || lease.meterInitial || 0)
     res.json({
       deposit: lease.deposit || 0,
       prepaidUtility: lease.prepaidUtility || 0,
       unpaidUtility,
       unpaidRent,
       suggestedDeductions,
+      // 合約日期（結束日預設用原合約迄日；續約起訖預設）
+      leaseStart: lease.leaseStart,
+      leaseEnd: lease.leaseEnd,
+      lastMeterDegree,
       // 若已結算，回傳既有結算資料供編輯
       settled: !!lease.settledAt,
       settledAt: lease.settledAt,
@@ -1011,6 +1021,89 @@ router.post('/admin/api/managed/lease/:leaseId/settle', express.json(), async (r
     res.json({ ...lease2, refund, deductTotal })
   } catch (e) {
     console.error('合約結算失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── 合約續約：結束舊約並開一份延續的新約（不計退款、電表度數延續） ──
+router.post('/admin/api/managed/lease/:leaseId/renew', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    const b = req.body
+    const newStart = b.newStart ? new Date(b.newStart) : (lease.leaseEnd ? new Date(new Date(lease.leaseEnd).getTime() + 86400000) : new Date())
+    const newEnd = b.newEnd ? new Date(b.newEnd) : null
+    // 電表度數延續上期：以最新抄表迄止度數為新約初值
+    const readings = await prisma.utilityReading.findMany({ where: { leaseId: lease.id }, orderBy: { endDate: 'desc' }, take: 1 })
+    const carryDegree = readings.length ? (readings[0].endDegree || 0) : (lease.meterNext || lease.meterCurrent || lease.meterInitial || 0)
+
+    // 1) 建立新約：沿用舊約各項費用設定，日期延續、電表度數延續、結算欄位清空
+    const newLease = await prisma.lease.create({
+      data: {
+        managedPropertyId: lease.managedPropertyId,
+        tenantName: lease.tenantName,
+        tenantPhone: lease.tenantPhone,
+        tenantIdNo: lease.tenantIdNo,
+        roomLabel: lease.roomLabel,
+        rent: lease.rent,
+        discountType: lease.discountType,
+        discountValue: lease.discountValue,
+        deposit: lease.deposit,
+        prepaidUtility: lease.prepaidUtility,
+        payDay: lease.payDay,
+        payMethod: lease.payMethod,
+        paymentCycle: lease.paymentCycle,
+        paymentDueMode: lease.paymentDueMode,
+        leaseStart: newStart,
+        leaseEnd: newEnd,
+        contractFile: lease.contractFile,
+        status: 'ACTIVE',
+        note: lease.note,
+        propertyId: lease.propertyId,
+        lineTenantId: lease.lineTenantId,
+        lineUserId: lease.lineUserId,
+        rentPayDay: lease.rentPayDay,
+        rentRemindOn: lease.rentRemindOn,
+        utilPayDay: lease.utilPayDay,
+        utilRemindOn: lease.utilRemindOn,
+        utilAmount: lease.utilAmount,
+        utilMode: lease.utilMode,
+        meterRate: lease.meterRate,
+        // 電表度數延續：新約初值＝上期迄止度數
+        meterInitial: carryDegree,
+        meterCurrent: carryDegree,
+        meterNext: carryDegree,
+        parkingSpotId: lease.parkingSpotId,
+        parkingSpace: lease.parkingSpace,
+        parkingFee: lease.parkingFee,
+        vehiclePlate: lease.vehiclePlate,
+      },
+    })
+
+    // 2) 結束舊約（續約，不計退款）；結束日以原合約迄日為主
+    await prisma.lease.update({
+      where: { id: lease.id },
+      data: {
+        status: 'ENDED',
+        settledAt: new Date(),
+        endedAt: lease.leaseEnd ? new Date(lease.leaseEnd) : newStart,
+        earlyTerminated: false,
+        settleNote: (b.note ? (b.note + ' ') : '') + '續約（轉入新約 ' + newLease.id + '）',
+      },
+    })
+
+    // 3) 門鎖：把綁定舊約的房間改指向新約 → 房客延續門鎖權限
+    try {
+      const sl = require('../../smartlock')
+      await sl.repointLockLease(lease.managedProperty.landlordId, lease.id, newLease.id)
+      await sl.syncLockRoomsFromLeases(lease.managedProperty.landlordId)
+    } catch (e) { console.error('門鎖續約轉移失敗:', e.message) }
+
+    res.json({ ok: true, oldLeaseId: lease.id, newLease })
+  } catch (e) {
+    console.error('合約續約失敗:', e.message)
     res.status(500).json({ error: e.message })
   }
 })
