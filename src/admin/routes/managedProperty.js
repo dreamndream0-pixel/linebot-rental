@@ -592,8 +592,9 @@ router.get('/admin/api/managed/:id/leases', async (req, res) => {
     }
     const leases = await prisma.lease.findMany({
       where: { managedPropertyId: req.params.id },
-      orderBy: { createdAt: 'desc' },
     })
+    // 依房號文字升冪排序（數字自然排序：21-2 在 21-10 之前）
+    leases.sort((a, b) => String(a.roomLabel || '').localeCompare(String(b.roomLabel || ''), 'zh-Hant', { numeric: true }))
     res.json(leases)
   } catch (e) {
     res.status(500).json({ error: e.message })

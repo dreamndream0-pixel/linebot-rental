@@ -159,15 +159,21 @@ async function syncLockRoomsFromLeases(landlordId) {
   const leaseIds = [...new Set(Object.values(rooms).map(r => r && r.leaseId).filter(Boolean))]
   if (!leaseIds.length) return { updated: [] }
 
-  const leases = await prisma.lease.findMany({ where: { id: { in: leaseIds } }, select: { id: true, lineUserId: true, status: true } })
+  const leases = await prisma.lease.findMany({ where: { id: { in: leaseIds } }, select: { id: true, lineUserId: true, status: true, leaseEnd: true } })
   const byId = {}; leases.forEach(l => { byId[l.id] = l })
+  const now = new Date()
 
   const updated = []
   for (const key of Object.keys(rooms)) {
     const r = rooms[key]
     if (!r || !r.leaseId) continue
     const l = byId[r.leaseId]
-    if (l && l.lineUserId) {
+    if (!l) continue  // 合約可能被刪 → 保留現況
+    const ended = l.status !== 'ACTIVE' || (l.leaseEnd && new Date(l.leaseEnd) < now)
+    if (ended) {
+      // 合約已終止／逾期（換房、退租）→ 清掉此房綁定，避免仍發舊房密碼
+      if (r.userId || r.leaseId) { delete r.userId; delete r.leaseId; updated.push({ roomKey: key, cleared: true }) }
+    } else if (l.lineUserId) {
       const uid = String(l.lineUserId).trim()
       if (uid && r.userId !== uid) { r.userId = uid; updated.push({ roomKey: key, userId: uid }) }
     }
@@ -477,12 +483,35 @@ async function handleTenantPasscode(landlordId, lineUserId) {
 
   const rooms = parseRooms(landlord)
   // 找出所有綁定此 User ID 的房間
-  const matched = Object.keys(rooms)
+  let matched = Object.keys(rooms)
     .filter(k => rooms[k] && rooms[k].userId && String(rooms[k].userId).trim() === String(lineUserId).trim())
-    .map(k => ({ key: k, type: rooms[k].type, ids: rooms[k].ids }))
+    .map(k => ({ key: k, type: rooms[k].type, ids: rooms[k].ids, leaseId: rooms[k].leaseId }))
 
   if (matched.length === 0) {
     return { type: 'text', text: `${who} 您好，您尚未綁定門鎖，請聯絡房東為您設定後即可自助取當日密碼。` }
+  }
+
+  // 換房情況：同一 UID 對到多間房 → 以「最新且生效中的合約」為主，不發舊房密碼
+  if (matched.length > 1) {
+    const leaseIds = [...new Set(matched.map(r => r.leaseId).filter(Boolean))]
+    if (leaseIds.length) {
+      try {
+        const leases = await prisma.lease.findMany({ where: { id: { in: leaseIds } }, select: { id: true, status: true, leaseStart: true, leaseEnd: true } })
+        const byId = {}; leases.forEach(l => { byId[l.id] = l })
+        const nowD = new Date()
+        const isActive = l => l && l.status === 'ACTIVE' && !(l.leaseEnd && new Date(l.leaseEnd) < nowD)
+        const activeMatched = matched.filter(r => r.leaseId && isActive(byId[r.leaseId]))
+        if (activeMatched.length) {
+          let latestTime = -1, latestLeaseId = null
+          activeMatched.forEach(r => {
+            const l = byId[r.leaseId]
+            const tt = l.leaseStart ? new Date(l.leaseStart).getTime() : 0
+            if (tt > latestTime) { latestTime = tt; latestLeaseId = r.leaseId }
+          })
+          matched = activeMatched.filter(r => r.leaseId === latestLeaseId)
+        }
+      } catch (e) { console.error('多房合約判斷失敗:', e.message) }
+    }
   }
 
   const today = taipeiDateStr()
