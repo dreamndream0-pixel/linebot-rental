@@ -950,12 +950,15 @@ router.get('/admin/api/managed/lease/:leaseId/settle-preview', async (req, res) 
     const suggestedDeductions = []
     if (unpaidUtility > 0) suggestedDeductions.push({ name: '未收電費', amount: unpaidUtility })
     if (unpaidRent > 0) suggestedDeductions.push({ name: '未收租金', amount: unpaidRent })
-    // 續約用：最新電表度數（延續上期）＝ 最近一期抄表的迄止度數；無抄表則用合約設定
+    // 最新一期抄表（結算最終抄表的起點；續約新約電表初值）
     const latestReading = utilityReadings
       .filter(r => r.endDate)
       .sort((a, b) => new Date(b.endDate) - new Date(a.endDate))[0]
     const lastMeterDegree = latestReading ? (latestReading.endDegree || 0)
       : (lease.meterNext || lease.meterCurrent || lease.meterInitial || 0)
+    // 上期抄表日期（作為本期起算日）：最近抄表迄日 → 合約抄表日 → 合約起日
+    const lastMeterDate = latestReading ? latestReading.endDate
+      : (lease.meterReadDate || lease.leaseStart || null)
     res.json({
       deposit: lease.deposit || 0,
       prepaidUtility: lease.prepaidUtility || 0,
@@ -965,7 +968,11 @@ router.get('/admin/api/managed/lease/:leaseId/settle-preview', async (req, res) 
       // 合約日期（結束日預設用原合約迄日；續約起訖預設）
       leaseStart: lease.leaseStart,
       leaseEnd: lease.leaseEnd,
+      // 電費抄表計算用
       lastMeterDegree,
+      lastMeterDate,
+      meterRate: lease.meterRate || 0,
+      meterMode: lease.utilMode || 'FIXED',
       // 若已結算，回傳既有結算資料供編輯
       settled: !!lease.settledAt,
       settledAt: lease.settledAt,
@@ -1016,6 +1023,32 @@ router.post('/admin/api/managed/lease/:leaseId/settle', express.json(), async (r
         settleNote: b.note || null,
       },
     })
+    // 若在結算頁直接抄表 → 記錄一筆電費明細（已從押金扣抵，標記為已繳避免後續列為未收）
+    try {
+      const mr = b.meterReading
+      if (mr && mr.endDegree != null && String(mr.endDegree) !== '') {
+        const startDegree = parseInt(mr.startDegree) || 0
+        const endDegree = parseInt(mr.endDegree) || 0
+        const usedDegree = Math.max(0, endDegree - startDegree)
+        const rate = parseFloat(mr.rate) || lease.meterRate || 0
+        const amount = Math.round(usedDegree * rate)
+        await prisma.utilityReading.create({
+          data: {
+            leaseId: lease.id,
+            startDate: mr.startDate ? new Date(mr.startDate) : null,
+            startDegree,
+            endDate: mr.readDate ? new Date(mr.readDate) : settledAt,
+            endDegree,
+            usedDegree,
+            rate,
+            amount,
+            paidAmount: amount,
+            paidDate: settledAt,
+            note: '結算抄表（押金扣抵）',
+          },
+        })
+      }
+    } catch (e) { console.error('結算抄表記錄失敗:', e.message) }
     // 合約結束→門鎖自動解除綁定（清除該房間 userId）
     try { await require('../../smartlock').syncLockRoomsFromLeases(lease.managedProperty.landlordId) } catch (e) { console.error('門鎖同步失敗:', e.message) }
     res.json({ ...lease2, refund, deductTotal })
