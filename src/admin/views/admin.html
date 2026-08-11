@@ -6704,6 +6704,10 @@ async function openLeaseForm(leaseId) {
       '<div style="flex:1;">' + mInput('押金', 'l_deposit', l.deposit, 'number') + '</div>' +
     '</div>' +
     '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;">' + mInput('預收電費', 'l_prepaidUtility', l.prepaidUtility, 'number') + '</div>' +
+      '<div style="flex:1;"></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:10px;">' +
       '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">折扣方式</label><select id="l_discountType" onchange="toggleDiscountField()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:4px;">' +
         '<option value="NONE"' + ((l.discountType||'NONE')==='NONE'?' selected':'') + '>不折扣</option>' +
         '<option value="FIXED"' + (l.discountType==='FIXED'?' selected':'') + '>折固定金額</option>' +
@@ -6881,6 +6885,7 @@ async function saveLease(leaseId) {
     discountType: document.getElementById('l_discountType') ? document.getElementById('l_discountType').value : 'NONE',
     discountValue: val('l_discountValue'),
     deposit: val('l_deposit'),
+    prepaidUtility: val('l_prepaidUtility'),
     leaseStart: val('l_leaseStart'), leaseEnd: val('l_leaseEnd'),
     status: document.getElementById('l_status').value,
     propertyId: document.getElementById('l_propertyId').value,
@@ -7068,6 +7073,10 @@ function renderLeaseList() {
     var endInfo = fmt(l.leaseEnd)
     if (l.daysToEnd != null && l.status === 'EXPIRING') endInfo += ' <span style="color:#E5A33C;font-size:11px;">即將釋出·' + l.daysToEnd + '天</span>'
     if (l.status === 'EXPIRED') endInfo += ' <span style="color:#C0524A;font-size:11px;">已過期</span>'
+    if (l.settledAt) {
+      endInfo += '<br><span style="color:#888;font-size:11px;">已結算 ' + fmt(l.endedAt || l.settledAt) + '</span>'
+      if (l.earlyTerminated) endInfo += ' <span style="color:#C0524A;font-size:10px;">·提前終止</span>'
+    }
     var nextRent = l.nextRentDate ? new Date(l.nextRentDate).toLocaleDateString('zh-TW') : '—'
     var rentHint = ''
     if (l.daysToRent != null) {
@@ -7090,7 +7099,8 @@ function renderLeaseList() {
       '<td style="padding:8px;font-size:12px;">' + fmt(l.leaseStart) + '<br>~ ' + endInfo + '</td>' +
       '<td style="padding:8px;font-size:13px;">NT$ ' + Number(displayRent).toLocaleString() + '<br><span style="font-size:11px;color:#999;">下期 ' + nextRent + rentHint + '</span></td>' +
       '<td style="padding:8px;">' + propLink + '<br>' + lineBadge + '</td>' +
-      '<td style="padding:8px;"><button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;" onclick="btnLoad(this, function(){ return openLeaseLedger(\'' + l.id + '\') })">對帳</button></td>' +
+      '<td style="padding:8px;white-space:nowrap;"><button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;" onclick="btnLoad(this, function(){ return openLeaseLedger(\'' + l.id + '\') })">對帳</button> ' +
+        '<button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;background:' + (l.settledAt ? '#888' : '#B07A2E') + ';" onclick="btnLoad(this, function(){ return openSettleModal(\'' + l.id + '\') })">' + (l.settledAt ? '結算✓' : '結算') + '</button></td>' +
     '</tr>'
   }
 
@@ -7149,6 +7159,124 @@ function renderLeaseList() {
 function leaseMoney(n) { return 'NT$ ' + Number(n || 0).toLocaleString() }
 function leaseDate(d) { return d ? new Date(d).toLocaleDateString('zh-TW') : '—' }
 function leaseDateInput(d) { return d ? new Date(d).toISOString().slice(0, 10) : '' }
+
+// ── 合約結算 ──────────────────────────────────────────────
+function settleDedRow(name, amount) {
+  var inp = 'padding:8px;border:1px solid #E5E0D5;border-radius:8px;font-size:13px;box-sizing:border-box;'
+  return '<div class="settle-ded-row" style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">' +
+    '<input class="settle-ded-name" value="' + esc(name || '') + '" placeholder="項目（例：清潔費）" style="flex:2;' + inp + '">' +
+    '<input class="settle-ded-amt" type="number" value="' + esc(amount == null ? '' : amount) + '" placeholder="金額" oninput="settleRecalc()" style="flex:1;' + inp + '">' +
+    '<button onclick="this.parentNode.remove();settleRecalc()" style="border:none;background:#F0E4E2;color:#C0524A;border-radius:8px;width:30px;height:34px;cursor:pointer;font-size:16px;flex:none;">×</button>' +
+  '</div>'
+}
+function settleAddDeduction() {
+  var box = document.getElementById('settleDeductions')
+  if (box) { box.insertAdjacentHTML('beforeend', settleDedRow('', '')); settleRecalc() }
+}
+function settleRecalc() {
+  var deposit = Number((document.getElementById('settle_deposit') || {}).value || 0)
+  var prepaid = Number((document.getElementById('settle_prepaid') || {}).value || 0)
+  var total = 0
+  document.querySelectorAll('#settleDeductions .settle-ded-amt').forEach(function(el) { total += Number(el.value || 0) })
+  var refund = deposit + prepaid - total
+  var box = document.getElementById('settleResult')
+  if (!box) return
+  if (refund >= 0) {
+    box.innerHTML = '<div style="font-size:13px;color:#888;">押金 ' + leaseMoney(deposit) + ' ＋ 預收 ' + leaseMoney(prepaid) + ' － 應扣 ' + leaseMoney(total) + '</div>' +
+      '<div style="font-size:20px;font-weight:800;color:#2E7D46;margin-top:4px;">應退還房客 ' + leaseMoney(refund) + '</div>'
+  } else {
+    box.innerHTML = '<div style="font-size:13px;color:#888;">押金 ' + leaseMoney(deposit) + ' ＋ 預收 ' + leaseMoney(prepaid) + ' － 應扣 ' + leaseMoney(total) + '</div>' +
+      '<div style="font-size:20px;font-weight:800;color:#C0524A;margin-top:4px;">應補繳 ' + leaseMoney(-refund) + '</div>'
+  }
+}
+async function openSettleModal(leaseId) {
+  var res = await fetch('/admin/api/managed/lease/' + leaseId + '/settle-preview?key=' + encodeURIComponent(KEY))
+  if (!res.ok) { showToast('❌ 載入結算資料失敗'); return }
+  var p = await res.json()
+  var alreadySettled = !!p.settled
+  var deposit = alreadySettled ? (p.settleDeposit != null ? p.settleDeposit : p.deposit) : p.deposit
+  var prepaid = alreadySettled ? (p.settlePrepaid != null ? p.settlePrepaid : p.prepaidUtility) : p.prepaidUtility
+  var deductions = alreadySettled && Array.isArray(p.settleDeductions) ? p.settleDeductions : (p.suggestedDeductions || [])
+  var settleDate = leaseDateInput(alreadySettled ? p.settledAt : new Date())
+  var endDate = leaseDateInput(alreadySettled ? p.endedAt : new Date())
+  var earlyChecked = alreadySettled ? !!p.earlyTerminated : false
+  var note = alreadySettled ? (p.settleNote || '') : ''
+  var inp = 'width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;box-sizing:border-box;font-size:13px;'
+  var dedRows = (deductions.length ? deductions : []).map(function(d){ return settleDedRow(d.name, d.amount) }).join('')
+
+  var html = '<div id="settleModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:360;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:460px;width:100%;margin:auto;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+      '<h3 style="margin:0;">🧾 合約結算</h3>' +
+      '<button onclick="var m=document.getElementById(\'settleModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+    '</div>' +
+    (alreadySettled ? '<div style="font-size:12px;color:#B07A2E;margin-bottom:12px;">此合約已結算，修改後將更新結算內容。</div>' : '<div style="font-size:12px;color:#888;margin-bottom:12px;">結算後合約將結束，門鎖綁定自動解除。</div>') +
+    '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">結算日期</label><input id="settle_settledAt" type="date" value="' + settleDate + '" style="' + inp + 'margin-bottom:10px;"></div>' +
+      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">合約結束日</label><input id="settle_endedAt" type="date" value="' + endDate + '" style="' + inp + 'margin-bottom:10px;"></div>' +
+    '</div>' +
+    '<label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:12px;"><input type="checkbox" id="settle_early"' + (earlyChecked ? ' checked' : '') + '> 提前終止合約</label>' +
+    '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">押金</label><input id="settle_deposit" type="number" value="' + esc(deposit || 0) + '" oninput="settleRecalc()" style="' + inp + 'margin-bottom:10px;"></div>' +
+      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">預收電費</label><input id="settle_prepaid" type="number" value="' + esc(prepaid || 0) + '" oninput="settleRecalc()" style="' + inp + 'margin-bottom:10px;"></div>' +
+    '</div>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+      '<label style="font-size:12px;color:#888;">應扣費用（建議值，可修改）</label>' +
+      '<button onclick="settleAddDeduction()" style="border:1px solid #E5E0D5;background:#FAF8F4;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;">＋ 新增項目</button>' +
+    '</div>' +
+    '<div id="settleDeductions">' + dedRows + '</div>' +
+    '<div id="settleResult" style="background:#F0F7F1;border-radius:12px;padding:14px;margin:10px 0;text-align:center;"></div>' +
+    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">結算備註</label>' +
+    '<textarea id="settle_note" rows="2" style="' + inp + 'margin-bottom:14px;resize:vertical;">' + esc(note) + '</textarea>' +
+    '<button class="btn spin-btn" style="width:100%;background:var(--deep-sage,#4A6741);padding:13px;font-size:15px;font-weight:700;" onclick="btnLoad(this,function(){return saveSettle(\'' + leaseId + '\',' + (alreadySettled ? 'true' : 'false') + ')})">' + (alreadySettled ? '更新結算' : '確認結算') + '</button>' +
+    '</div></div>'
+
+  var ex = document.getElementById('settleModal'); if (ex) ex.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+  settleRecalc()
+}
+function saveSettle(leaseId, alreadySettled) {
+  return new Promise(function(resolve) {
+    var deductions = []
+    document.querySelectorAll('#settleDeductions .settle-ded-row').forEach(function(row) {
+      var name = (row.querySelector('.settle-ded-name') || {}).value || ''
+      var amt = Number((row.querySelector('.settle-ded-amt') || {}).value || 0)
+      if (name.trim() || amt) deductions.push({ name: name.trim(), amount: amt })
+    })
+    var body = {
+      settledAt: (document.getElementById('settle_settledAt') || {}).value || null,
+      endedAt: (document.getElementById('settle_endedAt') || {}).value || null,
+      earlyTerminated: (document.getElementById('settle_early') || {}).checked || false,
+      deposit: Number((document.getElementById('settle_deposit') || {}).value || 0),
+      prepaid: Number((document.getElementById('settle_prepaid') || {}).value || 0),
+      deductions: deductions,
+      note: (document.getElementById('settle_note') || {}).value || '',
+    }
+    var total = deductions.reduce(function(s, d){ return s + (d.amount || 0) }, 0)
+    var refund = body.deposit + body.prepaid - total
+    var refundMsg = refund >= 0 ? ('應退還房客 ' + leaseMoney(refund)) : ('房客應補繳 ' + leaseMoney(-refund))
+    showConfirm({
+      icon: '🧾',
+      title: alreadySettled ? '確定修改結算？' : '確定結算並結束合約？',
+      msg: refundMsg + (alreadySettled ? '' : '\n結算後合約將結束，門鎖綁定自動解除。'),
+      okLabel: alreadySettled ? '確定修改' : '確認結算',
+      danger: alreadySettled,
+      onCancel: function() { resolve() },
+      onOk: async function() {
+        try {
+          var res = await fetch('/admin/api/managed/lease/' + leaseId + '/settle?key=' + encodeURIComponent(KEY), {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+          })
+          if (!res.ok) { showToast('❌ 結算失敗'); resolve(); return }
+          showToast('✅ 已結算')
+          var m = document.getElementById('settleModal'); if (m) m.remove()
+          await showLeaseList()
+        } catch (e) { showToast('❌ 結算失敗') }
+        resolve()
+      }
+    })
+  })
+}
 function paymentCycleLabel(v) {
   return { MONTHLY:'月繳', BIMONTHLY:'雙月繳', QUARTERLY:'季繳', SEMIANNUAL:'半年繳', YEARLY:'年繳' }[v] || '月繳'
 }

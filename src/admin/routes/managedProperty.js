@@ -58,6 +58,10 @@ function startOfDay(d) {
   return x
 }
 
+function safeParse(s) {
+  try { return JSON.parse(s) } catch { return null }
+}
+
 async function getOwnedLease(auth, leaseId) {
   const lease = await prisma.lease.findUnique({
     where: { id: leaseId },
@@ -632,6 +636,7 @@ router.post('/admin/api/managed/:id/lease', express.json(), async (req, res) => 
       discountType: ['NONE', 'FIXED', 'PERCENT'].includes(b.discountType) ? b.discountType : 'NONE',
       discountValue: parseFloat(b.discountValue) || 0,
       deposit: parseInt(b.deposit) || 0,
+      prepaidUtility: parseInt(b.prepaidUtility) || 0,
       payDay: b.payDay ? parseInt(b.payDay) : null,
       payMethod: b.payMethod || null,
       leaseStart: b.leaseStart ? new Date(b.leaseStart) : null,
@@ -859,6 +864,11 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         managedTitle: l.managedProperty ? l.managedProperty.title : '未連結物業',
         managedId: l.managedProperty ? l.managedProperty.id : '',
         ownerName: l.managedProperty ? l.managedProperty.ownerName : '（未填房東）',
+        // 結算資訊
+        settledAt: l.settledAt,
+        earlyTerminated: !!l.earlyTerminated,
+        endedAt: l.endedAt,
+        settleRefund: l.settleRefund,
       }
     })
 
@@ -891,6 +901,94 @@ router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
     res.json({ lease, rentSchedule, utilityReadings, records })
   } catch (e) {
     console.error('租約帳務載入失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── 合約結算：預覽（押金、預收電費、建議扣除項目） ──────────────
+router.get('/admin/api/managed/lease/:leaseId/settle-preview', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    const [utilityReadings, rentPayments] = await Promise.all([
+      prisma.utilityReading.findMany({ where: { leaseId: lease.id } }),
+      prisma.rentPayment.findMany({ where: { leaseId: lease.id } }),
+    ])
+    // 結算基準日：以送出的日期或今天為準
+    const settleDate = req.query.date ? startOfDay(req.query.date) : startOfDay(new Date())
+    // 未收電費：所有抄表未繳部分
+    const unpaidUtility = utilityReadings.reduce((s, r) => s + Math.max(0, (r.amount || 0) - (r.paidAmount || 0)), 0)
+    // 未收租金：已開始（期別起日 <= 結算日）的期別，應繳−已繳
+    const rentSchedule = buildRentSchedule(lease, rentPayments)
+    const unpaidRent = rentSchedule
+      .filter(r => r.periodStart && startOfDay(r.periodStart) <= settleDate)
+      .reduce((s, r) => s + Math.max(0, r.unpaid || 0), 0)
+    const suggestedDeductions = []
+    if (unpaidUtility > 0) suggestedDeductions.push({ name: '未收電費', amount: unpaidUtility })
+    if (unpaidRent > 0) suggestedDeductions.push({ name: '未收租金', amount: unpaidRent })
+    res.json({
+      deposit: lease.deposit || 0,
+      prepaidUtility: lease.prepaidUtility || 0,
+      unpaidUtility,
+      unpaidRent,
+      suggestedDeductions,
+      // 若已結算，回傳既有結算資料供編輯
+      settled: !!lease.settledAt,
+      settledAt: lease.settledAt,
+      earlyTerminated: !!lease.earlyTerminated,
+      endedAt: lease.endedAt,
+      settleDeposit: lease.settleDeposit,
+      settlePrepaid: lease.settlePrepaid,
+      settleDeductions: lease.settleDeductions ? safeParse(lease.settleDeductions) : null,
+      settleRefund: lease.settleRefund,
+      settleNote: lease.settleNote,
+    })
+  } catch (e) {
+    console.error('結算預覽失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── 合約結算：儲存（結清並結束合約） ──────────────────────────
+router.post('/admin/api/managed/lease/:leaseId/settle', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    const b = req.body
+    const deposit = parseInt(b.deposit) || 0
+    const prepaid = parseInt(b.prepaid) || 0
+    const deductions = Array.isArray(b.deductions)
+      ? b.deductions
+          .map(d => ({ name: String(d.name || '').trim(), amount: parseInt(d.amount) || 0 }))
+          .filter(d => d.name || d.amount)
+      : []
+    const deductTotal = deductions.reduce((s, d) => s + (d.amount || 0), 0)
+    // 退還房客金額 ＝ 押金 ＋ 預收費用 − 應扣費用（可為負，負值＝房客應補繳）
+    const refund = deposit + prepaid - deductTotal
+    const settledAt = b.settledAt ? new Date(b.settledAt) : new Date()
+    const lease2 = await prisma.lease.update({
+      where: { id: lease.id },
+      data: {
+        status: 'ENDED',
+        settledAt,
+        endedAt: b.endedAt ? new Date(b.endedAt) : settledAt,
+        earlyTerminated: b.earlyTerminated === true || b.earlyTerminated === 'true',
+        settleDeposit: deposit,
+        settlePrepaid: prepaid,
+        settleDeductions: JSON.stringify(deductions),
+        settleRefund: refund,
+        settleNote: b.note || null,
+      },
+    })
+    // 合約結束→門鎖自動解除綁定（清除該房間 userId）
+    try { await require('../../smartlock').syncLockRoomsFromLeases(lease.managedProperty.landlordId) } catch (e) { console.error('門鎖同步失敗:', e.message) }
+    res.json({ ...lease2, refund, deductTotal })
+  } catch (e) {
+    console.error('合約結算失敗:', e.message)
     res.status(500).json({ error: e.message })
   }
 })

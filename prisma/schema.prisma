@@ -638,6 +638,7 @@ model Lease {
   discountType  String    @default("NONE")  // NONE / FIXED(折固定金額) / PERCENT(折%數)
   discountValue Float     @default(0)        // FIXED=折扣金額；PERCENT=折扣百分比
   deposit       Int       @default(0)    // 押金
+  prepaidUtility Int      @default(0)    // 預收電費（合約欄位，結算時退還基準之一）
   payDay        Int?      // 每月付款日（1-31）
   payMethod     String?   // 付款方式
   paymentCycle  String    @default("MONTHLY") // MONTHLY / BIMONTHLY / QUARTERLY / SEMIANNUAL / YEARLY
@@ -648,6 +649,16 @@ model Lease {
   contractFile  String?   // 租約文件 URL（Cloudinary）
   status        String    @default("ACTIVE")  // ACTIVE(生效) / ENDED(已終止) / EXPIRED(已到期)
   note          String?   @db.Text
+
+  // 合約結算（退租/終止時一次性結清）
+  settledAt        DateTime?          // 結算日期（有值＝已結算）
+  earlyTerminated  Boolean  @default(false)  // 是否提前終止
+  endedAt          DateTime?          // 合約實際結束日
+  settleDeposit    Int?               // 結算時押金
+  settlePrepaid    Int?               // 結算時預收電費
+  settleDeductions String?  @db.Text  // 扣除明細 JSON：[{ name, amount }]
+  settleRefund     Int?               // 退還房客金額（負值＝房客應補繳）
+  settleNote       String?  @db.Text  // 結算備註
 
   // 租客 LINE 綁定（推播提醒用）
   lineTenantId  String?   // 對應 Tenant.id（已加 Bot 的租客）

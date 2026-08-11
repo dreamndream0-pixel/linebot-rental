@@ -141,6 +141,16 @@ prisma.$connect()
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "management_records_payoutId_idx" ON management_records ("payoutId")`)
       await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "paymentCycle" TEXT NOT NULL DEFAULT 'MONTHLY'`)
       await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "paymentDueMode" TEXT NOT NULL DEFAULT 'FIXED_DAY'`)
+      // 合約結算（退租/終止時一次性結清）
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "prepaidUtility" INTEGER NOT NULL DEFAULT 0`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "settledAt" TIMESTAMPTZ`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "earlyTerminated" BOOLEAN NOT NULL DEFAULT false`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "endedAt" TIMESTAMPTZ`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "settleDeposit" INTEGER`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "settlePrepaid" INTEGER`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "settleDeductions" TEXT`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "settleRefund" INTEGER`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "settleNote" TEXT`)
       await prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS utility_readings (
           id TEXT PRIMARY KEY,
