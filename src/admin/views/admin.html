@@ -6869,7 +6869,8 @@ async function saveLease(leaseId) {
   var tenantSel = document.getElementById('l_lineTenantId')
   var lineTenantId = tenantSel ? tenantSel.value : ''
   var lineUserId = val('l_lineUserId')
-  if (lineTenantId && MANAGED_OPTS.tenants) {
+  // 以「手動輸入的 UID」為準（可覆蓋）；只有欄位留空時，才用下拉選的租客 UID 帶入
+  if (!lineUserId && lineTenantId && MANAGED_OPTS.tenants) {
     var t = MANAGED_OPTS.tenants.find(function(x){ return x.id === lineTenantId })
     if (t) lineUserId = t.lineUserId || ''
   }
