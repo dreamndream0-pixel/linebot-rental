@@ -7662,14 +7662,14 @@ async function openLeaseLedger(leaseId) {
       '<input type="hidden" id="util_edit_id" value="">' +
       '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
         '<div style="display:flex;gap:8px;min-width:max-content;">' +
-          (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var col="flex:none;width:130px;"; return '' +
-            '<div style="' + col + '"><label style="' + lb + '">起算日期</label><input id="util_start_date" type="date" value="' + readingStartDate + '" style="' + iw + '"></div>' +
-            '<div style="' + col + '"><label style="' + lb + '">起算度數</label><input id="util_start_degree" type="number" value="' + readingStartDegree + '" placeholder="起算度數" style="' + iw + '"></div>' +
-            '<div style="' + col + '"><label style="' + lb + '">結算日期</label><input id="util_end_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
-            '<div style="' + col + '"><label style="' + lb + '">本期度數</label><input id="util_end_degree" type="number" placeholder="本期度數" style="' + iw + '"></div>' +
-            '<div style="' + col + '"><label style="' + lb + '">每度金額</label><input id="util_rate" type="number" value="' + defaultRate + '" placeholder="每度金額" style="' + iw + '"></div>' +
-            '<div style="' + col + '"><label style="' + lb + '">應繳日期</label><input id="util_due_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
-            '<div style="flex:none;width:160px;"><label style="' + lb + '">備註</label><input id="util_note" placeholder="備註" style="' + iw + '"></div>' +
+          (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
+            '<div style="' + c(148) + '"><label style="' + lb + '">起算日期</label><input id="util_start_date" type="date" value="' + readingStartDate + '" style="' + iw + '"></div>' +
+            '<div style="' + c(96) + '"><label style="' + lb + '">起算度數</label><input id="util_start_degree" type="number" value="' + readingStartDegree + '" placeholder="度數" style="' + iw + '"></div>' +
+            '<div style="' + c(148) + '"><label style="' + lb + '">結算日期</label><input id="util_end_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
+            '<div style="' + c(96) + '"><label style="' + lb + '">本期度數</label><input id="util_end_degree" type="number" placeholder="度數" style="' + iw + '"></div>' +
+            '<div style="' + c(90) + '"><label style="' + lb + '">每度金額</label><input id="util_rate" type="number" value="' + defaultRate + '" placeholder="元" style="' + iw + '"></div>' +
+            '<div style="' + c(148) + '"><label style="' + lb + '">應繳日期</label><input id="util_due_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
+            '<div style="' + c(130) + '"><label style="' + lb + '">備註</label><input id="util_note" placeholder="備註" style="' + iw + '"></div>' +
           '' })() +
         '</div>' +
       '</div>' +
