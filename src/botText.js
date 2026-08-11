@@ -11,6 +11,7 @@ const DEFAULT_TEXT = {
   showReportRepair: true,
   showMyBookings: true,
   showMoreRooms: true,
+  listFeaturedOnly: false,   // 「查詢空房」是否只顯示精選房源（預設否＝顯示全部空房）
 
   // 主選單
   menuTitle: '🐌 小蝸出租',
