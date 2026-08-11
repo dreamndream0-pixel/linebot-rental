@@ -7660,14 +7660,18 @@ async function openLeaseLedger(leaseId) {
         '<button id="util_cancel_btn" onclick="cancelEditUtilityReading(\'' + l.id + '\')" style="display:none;border:none;background:none;color:#C0524A;font-size:13px;cursor:pointer;padding:0;">✕ 取消</button>' +
       '</div>' +
       '<input type="hidden" id="util_edit_id" value="">' +
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:10px;">' +
-        '<input id="util_start_date" type="date" value="' + readingStartDate + '" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;" placeholder="起算日期">' +
-        '<input id="util_start_degree" type="number" value="' + readingStartDegree + '" placeholder="起算度數" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
-        '<input id="util_end_date" type="date" value="' + today + '" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;" placeholder="結算日期">' +
-        '<input id="util_end_degree" type="number" placeholder="本期度數" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
-        '<input id="util_rate" type="number" value="' + defaultRate + '" placeholder="每度金額" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
-        '<input id="util_due_date" type="date" value="' + today + '" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;" placeholder="應繳日期">' +
-        '<input id="util_note" placeholder="備註" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;min-width:0;">' +
+      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
+        '<div style="display:flex;gap:8px;min-width:max-content;">' +
+          (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var col="flex:none;width:130px;"; return '' +
+            '<div style="' + col + '"><label style="' + lb + '">起算日期</label><input id="util_start_date" type="date" value="' + readingStartDate + '" style="' + iw + '"></div>' +
+            '<div style="' + col + '"><label style="' + lb + '">起算度數</label><input id="util_start_degree" type="number" value="' + readingStartDegree + '" placeholder="起算度數" style="' + iw + '"></div>' +
+            '<div style="' + col + '"><label style="' + lb + '">結算日期</label><input id="util_end_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
+            '<div style="' + col + '"><label style="' + lb + '">本期度數</label><input id="util_end_degree" type="number" placeholder="本期度數" style="' + iw + '"></div>' +
+            '<div style="' + col + '"><label style="' + lb + '">每度金額</label><input id="util_rate" type="number" value="' + defaultRate + '" placeholder="每度金額" style="' + iw + '"></div>' +
+            '<div style="' + col + '"><label style="' + lb + '">應繳日期</label><input id="util_due_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
+            '<div style="flex:none;width:160px;"><label style="' + lb + '">備註</label><input id="util_note" placeholder="備註" style="' + iw + '"></div>' +
+          '' })() +
+        '</div>' +
       '</div>' +
       '<button id="util_submit_btn" class="btn spin-btn" style="width:100%;padding:10px;font-size:14px;" onclick="btnLoad(this,function(){return addUtilityReading(\'' + l.id + '\')})">新增抄表</button>' +
     '</div>' +
