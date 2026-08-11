@@ -7093,12 +7093,12 @@ function renderLeaseList() {
         ? '<span onclick="copyText(' + jsArg(l.lineUserId || '') + ')" title="Ragic 已匯入 userID，但尚未找到同一個後台租客資料" style="color:#2E9B57;font-size:12px;cursor:pointer;">● LINE ID 已匯入</span>'
         : '<span style="color:#ccc;font-size:12px;">○ LINE 未綁</span>')
     return '<tr>' +
-      '<td style="padding:8px;font-size:13px;"><span style="display:inline-flex;align-items:center;gap:5px;">' + esc(l.tenantName) + '<button title="編輯房客合約" class="spin-btn" onclick="btnLoad(this, function(){ return editLeaseFromList(\'' + l.id + '\') })" style="border:none;background:none;color:#4A6741;cursor:pointer;font-size:13px;padding:0;">✎</button></span></td>' +
-      '<td style="padding:8px;font-size:13px;color:#555;">' + esc(l.roomLabel || '—') + '</td>' +
-      '<td style="padding:8px;font-size:13px;">' + esc(l.managedTitle) + '</td>' +
-      '<td style="padding:8px;font-size:12px;">' + fmt(l.leaseStart) + '<br>~ ' + endInfo + '</td>' +
-      '<td style="padding:8px;font-size:13px;">NT$ ' + Number(displayRent).toLocaleString() + '<br><span style="font-size:11px;color:#999;">下期 ' + nextRent + rentHint + '</span></td>' +
-      '<td style="padding:8px;">' + propLink + '<br>' + lineBadge + '</td>' +
+      '<td style="padding:8px;font-size:13px;white-space:nowrap;"><span style="display:inline-flex;align-items:center;gap:5px;">' + esc(l.tenantName) + '<button title="編輯房客合約" class="spin-btn" onclick="btnLoad(this, function(){ return editLeaseFromList(\'' + l.id + '\') })" style="border:none;background:none;color:#4A6741;cursor:pointer;font-size:13px;padding:0;">✎</button></span></td>' +
+      '<td style="padding:8px;font-size:13px;color:#555;white-space:nowrap;">' + esc(l.roomLabel || '—') + '</td>' +
+      '<td style="padding:8px;font-size:13px;white-space:nowrap;">' + esc(l.managedTitle) + '</td>' +
+      '<td style="padding:8px;font-size:12px;white-space:nowrap;">' + fmt(l.leaseStart) + '<br>~ ' + endInfo + '</td>' +
+      '<td style="padding:8px;font-size:13px;white-space:nowrap;">NT$ ' + Number(displayRent).toLocaleString() + '<br><span style="font-size:11px;color:#999;">下期 ' + nextRent + rentHint + '</span></td>' +
+      '<td style="padding:8px;white-space:nowrap;">' + propLink + '<br>' + lineBadge + '</td>' +
       '<td style="padding:8px;white-space:nowrap;"><button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;" onclick="btnLoad(this, function(){ return openLeaseLedger(\'' + l.id + '\') })">對帳</button> ' +
         '<button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;background:' + (l.settledAt ? '#888' : '#B07A2E') + ';" onclick="btnLoad(this, function(){ return openSettleModal(\'' + l.id + '\') })">' + (l.settledAt ? '結算✓' : '結算') + '</button></td>' +
     '</tr>'
@@ -7116,7 +7116,7 @@ function renderLeaseList() {
     sortTh('title', '社區') +
     sortTh('end', '租期') +
     sortTh('rent', '租金/下期') +
-    '<th style="padding:8px;text-align:left;font-size:12px;">連結</th><th style="padding:8px;text-align:left;font-size:12px;">對帳</th></tr>'
+    '<th style="padding:8px;text-align:left;font-size:12px;white-space:nowrap;">連結</th><th style="padding:8px;text-align:left;font-size:12px;white-space:nowrap;">對帳</th></tr>'
 
   var groupsHtml = order.map(function(owner, gi) {
     var items = groups[owner]
@@ -7641,12 +7641,16 @@ async function openLeaseLedger(leaseId) {
     '</div>' +
     '<div style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:14px;">' +
       '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">＋ 新增收支</div>' +
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px;">' +
-        '<select id="lease_rec_type" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select>' +
-        '<select id="lease_rec_category" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;"><option value="RENT">租金</option><option value="UTILITY">水電</option><option value="REPAIR">維修</option><option value="PARKING">汽車位</option><option value="OTHER">其他</option></select>' +
-        '<input id="lease_rec_amount" type="number" placeholder="金額" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
-        '<input id="lease_rec_date" type="date" value="' + today + '" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;">' +
-        '<input id="lease_rec_desc" placeholder="說明" style="padding:9px;border:1px solid #E5E0D5;border-radius:8px;min-width:0;">' +
+      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
+        '<div style="display:flex;gap:8px;min-width:max-content;">' +
+          (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
+            '<div style="' + c(100) + '"><label style="' + lb + '">類型</label><select id="lease_rec_type" style="' + iw + '"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select></div>' +
+            '<div style="' + c(110) + '"><label style="' + lb + '">項目</label><select id="lease_rec_category" style="' + iw + '"><option value="RENT">租金</option><option value="UTILITY">水電</option><option value="REPAIR">維修</option><option value="PARKING">汽車位</option><option value="OTHER">其他</option></select></div>' +
+            '<div style="' + c(100) + '"><label style="' + lb + '">金額</label><input id="lease_rec_amount" type="number" placeholder="金額" style="' + iw + '"></div>' +
+            '<div style="' + c(148) + '"><label style="' + lb + '">日期</label><input id="lease_rec_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
+            '<div style="' + c(150) + '"><label style="' + lb + '">說明</label><input id="lease_rec_desc" placeholder="說明" style="' + iw + '"></div>' +
+          '' })() +
+        '</div>' +
       '</div>' +
       '<button class="btn spin-btn" style="width:100%;padding:10px;font-size:14px;" onclick="btnLoad(this,function(){return addLeaseRecord(\'' + l.managedId + '\',\'' + l.id + '\')})">新增</button>' +
     '</div>' +
@@ -7823,18 +7827,31 @@ async function saveUtilityPayment(leaseId, readingId, key) {
   openLeaseLedger(leaseId)
 }
 
-async function sendLeasePaymentReminder(leaseId, kind, amount, dueDate) {
+function sendLeasePaymentReminder(leaseId, kind, amount, dueDate) {
   var label = kind === 'UTILITY' ? '水電' : '租金'
-  if (!confirm('確定要發送 ' + label + ' LINE 繳費提醒？')) return
-  var res = await fetch('/admin/api/managed/lease/' + leaseId + '/remind?key=' + encodeURIComponent(KEY), {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ kind: kind, amount: amount, dueDate: dueDate })
+  // 用頁內 modal（LINE / 手機瀏覽器的原生 confirm() 有時被封鎖 → 按了沒反應）
+  return new Promise(function(resolve) {
+    showConfirm({
+      icon: '📲', title: '發送 ' + label + ' LINE 提醒？',
+      msg: '將推播「' + label + '繳費提醒」給此租約綁定的 LINE 租客。' + (amount ? '\n金額 NT$ ' + Number(amount).toLocaleString() : ''),
+      okLabel: '確定發送',
+      onCancel: function() { resolve() },
+      onOk: async function() {
+        try {
+          var res = await fetch('/admin/api/managed/lease/' + leaseId + '/remind?key=' + encodeURIComponent(KEY), {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ kind: kind, amount: amount, dueDate: dueDate })
+          })
+          if (!res.ok) {
+            var data = {}; try { data = await res.json() } catch(e) {}
+            showToast('❌ 發送失敗：' + (data.error || res.status))
+          } else {
+            showToast('✅ 已發送 LINE 提醒')
+          }
+        } catch (e) { showToast('❌ 發送失敗') }
+        resolve()
+      }
+    })
   })
-  if (!res.ok) {
-    var data = {}; try { data = await res.json() } catch(e) {}
-    showToast('❌ 發送失敗：' + (data.error || res.status))
-    return
-  }
-  showToast('✅ 已發送 LINE 提醒')
 }
 
 async function addLeaseRecord(managedId, leaseId) {
