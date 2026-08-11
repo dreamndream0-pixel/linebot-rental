@@ -3,7 +3,7 @@ const express = require('express')
 const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
-const { getClientForLease, rentReminderFlex, utilReminderFlex } = require('../../leaseReminder')
+const { getClientForLease, pushToLeaseTenant, rentReminderFlex, utilReminderFlex } = require('../../leaseReminder')
 const { findLineTenant } = require('../../tenantStore')
 
 // 權限過濾：super 看全部，房東只看自己的
@@ -1362,21 +1362,22 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
   try {
     const lease = await getOwnedLease(auth, req.params.leaseId)
     if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
-    if (!lease.lineUserId) return res.status(400).json({ error: '此租約尚未綁定 LINE 租客' })
-    const client = await getClientForLease(lease)
-    if (!client) return res.status(400).json({ error: 'LINE Bot 尚未設定' })
+    if (!lease.lineUserId) return res.status(400).json({ error: '此租約尚未綁定 LINE 租客（合約內 LINE userID 為空）' })
     const data = { ...lease, managedTitle: lease.managedProperty.title }
     const kind = req.body.kind === 'UTILITY' ? 'UTILITY' : 'RENT'
+    let message
     if (kind === 'UTILITY') {
       data.utilAmount = parseInt(req.body.amount) || lease.utilAmount || 0
-      data.utilPayDay = req.body.dueDate ? new Date(req.body.dueDate).getDate() : lease.utilPayDay
-      await client.pushMessage(lease.lineUserId, utilReminderFlex(data))
+      data.utilPayDay = (req.body.dueDate ? new Date(req.body.dueDate).getDate() : lease.utilPayDay) || '—'
+      message = utilReminderFlex(data)
     } else {
       data.rent = parseInt(req.body.amount) || lease.rent || 0
-      data.rentPayDay = req.body.dueDate ? new Date(req.body.dueDate).getDate() : lease.rentPayDay
-      await client.pushMessage(lease.lineUserId, rentReminderFlex(data))
+      data.rentPayDay = (req.body.dueDate ? new Date(req.body.dueDate).getDate() : lease.rentPayDay) || '—'
+      message = rentReminderFlex(data)
     }
-    res.json({ ok: true })
+    // 依序嘗試客服Bot→主Bot→系統Bot，任一成功即可（房客可能在客服 Bot 而非出租 Bot）
+    const result = await pushToLeaseTenant(lease, message)
+    res.json({ ok: true, via: result.via })
   } catch (e) {
     console.error('手動繳費提醒失敗:', e.message)
     res.status(500).json({ error: e.message })
