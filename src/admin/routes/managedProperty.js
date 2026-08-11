@@ -885,6 +885,28 @@ router.get('/admin/api/managed-leases', async (req, res) => {
   }
 })
 
+// ── 批次設定所有合約的預收電費 ────────────────────────────────
+router.post('/admin/api/managed/leases/bulk-prepaid', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const amount = parseInt(req.body.amount)
+    if (isNaN(amount) || amount < 0) return res.status(400).json({ error: '金額不正確' })
+    const where = {}
+    if (auth.role !== 'super') {
+      const props = await prisma.managedProperty.findMany({ where: { landlordId: auth.landlordId }, select: { id: true } })
+      where.managedPropertyId = { in: props.map(p => p.id) }
+    }
+    // 只覆蓋尚未設定（=0）的合約，避免蓋掉已手動填過的
+    if (req.body.onlyEmpty === true || req.body.onlyEmpty === 'true') where.prepaidUtility = 0
+    const r = await prisma.lease.updateMany({ where, data: { prepaidUtility: amount } })
+    res.json({ count: r.count, amount })
+  } catch (e) {
+    console.error('批次設定預收電費失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })

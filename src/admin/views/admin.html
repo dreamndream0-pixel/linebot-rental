@@ -7151,9 +7151,45 @@ function renderLeaseList() {
       '</select>' +
       '<span style="font-size:12px;color:#888;white-space:nowrap;">點表頭箭頭可排序</span>' +
       '<span style="font-size:12px;color:#888;white-space:nowrap;">共 ' + shownCount + ' 筆</span>' +
+      '<button class="spin-btn" onclick="btnLoad(this,function(){return bulkSetPrepaid()})" style="padding:8px 12px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:#B07A2E;color:#fff;white-space:nowrap;">批次設定預收電費</button>' +
     '</div>' +
     groupsHtml +
     '</div>'
+}
+function bulkSetPrepaid() {
+  return new Promise(function(resolve) {
+    var old = document.getElementById('bulkPrepaidModal'); if (old) old.remove()
+    var inp = 'width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;box-sizing:border-box;font-size:14px;'
+    var html = '<div id="bulkPrepaidModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+      '<div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:100%;">' +
+        '<div style="font-size:16px;font-weight:700;margin-bottom:12px;">批次設定預收電費</div>' +
+        '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">金額（將套用到清單中所有合約）</label>' +
+        '<input id="bulkPrepaidAmt" type="number" value="5000" style="' + inp + 'margin-bottom:10px;">' +
+        '<label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:16px;"><input type="checkbox" id="bulkPrepaidOnlyEmpty"> 只套用尚未設定（目前為 0）的合約</label>' +
+        '<div style="display:flex;gap:10px;">' +
+          '<button id="bulkPrepaidCancel" style="flex:1;padding:11px;border:1.5px solid #DDD;background:#fff;border-radius:10px;font-size:14px;cursor:pointer;">取消</button>' +
+          '<button id="bulkPrepaidOk" style="flex:1;padding:11px;border:none;background:var(--deep-sage,#4A6741);color:#fff;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">確定套用</button>' +
+        '</div>' +
+      '</div></div>'
+    document.body.insertAdjacentHTML('beforeend', html)
+    function close() { var el = document.getElementById('bulkPrepaidModal'); if (el) el.remove() }
+    document.getElementById('bulkPrepaidCancel').onclick = function() { close(); resolve() }
+    document.getElementById('bulkPrepaidOk').onclick = async function() {
+      var amount = Number((document.getElementById('bulkPrepaidAmt') || {}).value || 0)
+      var onlyEmpty = (document.getElementById('bulkPrepaidOnlyEmpty') || {}).checked || false
+      try {
+        var res = await fetch('/admin/api/managed/leases/bulk-prepaid?key=' + encodeURIComponent(KEY), {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ amount: amount, onlyEmpty: onlyEmpty })
+        })
+        if (!res.ok) { showToast('❌ 設定失敗'); close(); resolve(); return }
+        var d = await res.json()
+        close()
+        showToast('✅ 已將 ' + d.count + ' 筆合約預收電費設為 ' + leaseMoney(d.amount))
+        await showLeaseList()
+      } catch (e) { showToast('❌ 設定失敗'); close() }
+      resolve()
+    }
+  })
 }
 
 function leaseMoney(n) { return 'NT$ ' + Number(n || 0).toLocaleString() }
