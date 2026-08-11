@@ -7225,6 +7225,41 @@ function settleRecalc() {
       '<div style="font-size:20px;font-weight:800;color:#C0524A;margin-top:4px;">應補繳 ' + leaseMoney(-refund) + '</div>'
   }
 }
+function settleToggleEarly() {
+  var cb = document.getElementById('settle_early')
+  var end = document.getElementById('settle_endedAt')
+  var ctx = window.__settleCtx || {}
+  if (!cb || !end) return
+  // 合約結束日：預設按原合約迄日；勾選提前終止 → 改為結算日（可再自行修改）
+  if (cb.checked) {
+    var sd = (document.getElementById('settle_settledAt') || {}).value
+    end.value = sd || ctx.today || ''
+  } else {
+    end.value = ctx.leaseEnd || ctx.today || ''
+  }
+}
+function settleSetMode(mode) {
+  var ctx = window.__settleCtx || {}
+  ctx.mode = mode; window.__settleCtx = ctx
+  var s = document.getElementById('settleModeSettle')
+  var r = document.getElementById('settleModeRenew')
+  var bs = document.getElementById('settleBtnSettle')
+  var br = document.getElementById('settleBtnRenew')
+  var tS = document.getElementById('settleTabSettle')
+  var tR = document.getElementById('settleTabRenew')
+  var on = 'var(--deep-sage,#4A6741)', off = '#EEE'
+  if (mode === 'renew') {
+    if (s) s.style.display = 'none'; if (r) r.style.display = 'block'
+    if (bs) bs.style.display = 'none'; if (br) br.style.display = 'block'
+    if (tR) { tR.style.background = on; tR.style.color = '#fff' }
+    if (tS) { tS.style.background = off; tS.style.color = '#888' }
+  } else {
+    if (s) s.style.display = 'block'; if (r) r.style.display = 'none'
+    if (bs) bs.style.display = 'block'; if (br) br.style.display = 'none'
+    if (tS) { tS.style.background = on; tS.style.color = '#fff' }
+    if (tR) { tR.style.background = off; tR.style.color = '#888' }
+  }
+}
 async function openSettleModal(leaseId) {
   var res = await fetch('/admin/api/managed/lease/' + leaseId + '/settle-preview?key=' + encodeURIComponent(KEY))
   if (!res.ok) { showToast('❌ 載入結算資料失敗'); return }
@@ -7233,25 +7268,37 @@ async function openSettleModal(leaseId) {
   var deposit = alreadySettled ? (p.settleDeposit != null ? p.settleDeposit : p.deposit) : p.deposit
   var prepaid = alreadySettled ? (p.settlePrepaid != null ? p.settlePrepaid : p.prepaidUtility) : p.prepaidUtility
   var deductions = alreadySettled && Array.isArray(p.settleDeductions) ? p.settleDeductions : (p.suggestedDeductions || [])
+  var today = leaseDateInput(new Date())
+  var leaseEndStr = leaseDateInput(p.leaseEnd)
   var settleDate = leaseDateInput(alreadySettled ? p.settledAt : new Date())
-  var endDate = leaseDateInput(alreadySettled ? p.endedAt : new Date())
   var earlyChecked = alreadySettled ? !!p.earlyTerminated : false
+  // 合約結束日：按原合約迄日為主；已結算沿用既有結束日；提前終止則用結算日
+  var endDate = alreadySettled ? leaseDateInput(p.endedAt) : (earlyChecked ? settleDate : (leaseEndStr || today))
   var note = alreadySettled ? (p.settleNote || '') : ''
+  // 續約預設：新約起日＝原合約迄日 + 1 天；新約迄日＝起日 + 原合約長度（無則 +1 年）
+  var renewStart = p.leaseEnd ? leaseDateInput(new Date(new Date(p.leaseEnd).getTime() + 86400000)) : today
+  var durMs = (p.leaseStart && p.leaseEnd) ? (new Date(p.leaseEnd) - new Date(p.leaseStart)) : (365 * 86400000)
+  var renewEnd = leaseDateInput(new Date(new Date(renewStart).getTime() + durMs))
+  var lastMeter = p.lastMeterDegree || 0
+  window.__settleCtx = { leaseEnd: leaseEndStr, today: today, mode: 'settle' }
   var inp = 'width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;box-sizing:border-box;font-size:13px;'
   var dedRows = (deductions.length ? deductions : []).map(function(d){ return settleDedRow(d.name, d.amount) }).join('')
+  var tabBtnStyle = 'flex:1;padding:9px;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;'
 
-  var html = '<div id="settleModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:360;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
-    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:460px;width:100%;margin:auto;">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
-      '<h3 style="margin:0;">🧾 合約結算</h3>' +
-      '<button onclick="var m=document.getElementById(\'settleModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
-    '</div>' +
+  var modeTabs = alreadySettled ? '' :
+    '<div style="display:flex;gap:8px;margin-bottom:14px;">' +
+      '<button id="settleTabSettle" style="' + tabBtnStyle + 'background:var(--deep-sage,#4A6741);color:#fff;" onclick="settleSetMode(\'settle\')">退租結算</button>' +
+      '<button id="settleTabRenew" style="' + tabBtnStyle + 'background:#EEE;color:#888;" onclick="settleSetMode(\'renew\')">續約簽新約</button>' +
+    '</div>'
+
+  // 退租結算區塊
+  var settleBlock = '<div id="settleModeSettle">' +
     (alreadySettled ? '<div style="font-size:12px;color:#B07A2E;margin-bottom:12px;">此合約已結算，修改後將更新結算內容。</div>' : '<div style="font-size:12px;color:#888;margin-bottom:12px;">結算後合約將結束，門鎖綁定自動解除。</div>') +
     '<div style="display:flex;gap:10px;">' +
-      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">結算日期</label><input id="settle_settledAt" type="date" value="' + settleDate + '" style="' + inp + 'margin-bottom:10px;"></div>' +
+      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">結算日期</label><input id="settle_settledAt" type="date" value="' + settleDate + '" onchange="if(document.getElementById(\'settle_early\').checked)settleToggleEarly()" style="' + inp + 'margin-bottom:10px;"></div>' +
       '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">合約結束日</label><input id="settle_endedAt" type="date" value="' + endDate + '" style="' + inp + 'margin-bottom:10px;"></div>' +
     '</div>' +
-    '<label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:12px;"><input type="checkbox" id="settle_early"' + (earlyChecked ? ' checked' : '') + '> 提前終止合約</label>' +
+    '<label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:12px;"><input type="checkbox" id="settle_early"' + (earlyChecked ? ' checked' : '') + ' onchange="settleToggleEarly()"> 提前終止合約<span style="font-size:11px;color:#999;">（不勾選＝結束日以原合約為主）</span></label>' +
     '<div style="display:flex;gap:10px;">' +
       '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">押金</label><input id="settle_deposit" type="number" value="' + esc(deposit || 0) + '" oninput="settleRecalc()" style="' + inp + 'margin-bottom:10px;"></div>' +
       '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">預收電費</label><input id="settle_prepaid" type="number" value="' + esc(prepaid || 0) + '" oninput="settleRecalc()" style="' + inp + 'margin-bottom:10px;"></div>' +
@@ -7264,12 +7311,65 @@ async function openSettleModal(leaseId) {
     '<div id="settleResult" style="background:#F0F7F1;border-radius:12px;padding:14px;margin:10px 0;text-align:center;"></div>' +
     '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">結算備註</label>' +
     '<textarea id="settle_note" rows="2" style="' + inp + 'margin-bottom:14px;resize:vertical;">' + esc(note) + '</textarea>' +
-    '<button class="btn spin-btn" style="width:100%;background:var(--deep-sage,#4A6741);padding:13px;font-size:15px;font-weight:700;" onclick="btnLoad(this,function(){return saveSettle(\'' + leaseId + '\',' + (alreadySettled ? 'true' : 'false') + ')})">' + (alreadySettled ? '更新結算' : '確認結算') + '</button>' +
+  '</div>'
+
+  // 續約簽新約區塊
+  var renewBlock = '<div id="settleModeRenew" style="display:none;">' +
+    '<div style="font-size:12px;color:#888;margin-bottom:12px;">結束原合約並開立一份延續的新合約；電費度數與各項費用延續上期，不計退款。</div>' +
+    '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">新約起日</label><input id="settle_newStart" type="date" value="' + renewStart + '" style="' + inp + 'margin-bottom:10px;"></div>' +
+      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">新約迄日</label><input id="settle_newEnd" type="date" value="' + renewEnd + '" style="' + inp + 'margin-bottom:10px;"></div>' +
+    '</div>' +
+    '<div style="background:#F0F7F1;border-radius:12px;padding:12px;margin-bottom:12px;font-size:12px;color:#4A6741;line-height:1.7;">' +
+      '• 電費度數延續上期：新約電表初值 ＝ <b>' + Number(lastMeter).toLocaleString() + ' 度</b><br>' +
+      '• 租金、押金、預收電費、費率、停車位等沿用原合約<br>' +
+      '• 原合約結束日以原迄日為主，門鎖權限自動轉到新約' +
+    '</div>' +
+    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">備註（選填）</label>' +
+    '<textarea id="settle_renewNote" rows="2" style="' + inp + 'margin-bottom:14px;resize:vertical;"></textarea>' +
+  '</div>'
+
+  var html = '<div id="settleModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:360;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:460px;width:100%;margin:auto;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      '<h3 style="margin:0;">🧾 合約結算</h3>' +
+      '<button onclick="var m=document.getElementById(\'settleModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+    '</div>' +
+    modeTabs + settleBlock + renewBlock +
+    '<button id="settleBtnSettle" class="btn spin-btn" style="width:100%;background:var(--deep-sage,#4A6741);padding:13px;font-size:15px;font-weight:700;" onclick="btnLoad(this,function(){return saveSettle(\'' + leaseId + '\',' + (alreadySettled ? 'true' : 'false') + ')})">' + (alreadySettled ? '更新結算' : '確認結算') + '</button>' +
+    '<button id="settleBtnRenew" class="btn spin-btn" style="display:none;width:100%;background:#B07A2E;padding:13px;font-size:15px;font-weight:700;" onclick="btnLoad(this,function(){return saveRenew(\'' + leaseId + '\')})">確認續約並開新約</button>' +
     '</div></div>'
 
   var ex = document.getElementById('settleModal'); if (ex) ex.remove()
   document.body.insertAdjacentHTML('beforeend', html)
   settleRecalc()
+}
+function saveRenew(leaseId) {
+  return new Promise(function(resolve) {
+    var newStart = (document.getElementById('settle_newStart') || {}).value
+    var newEnd = (document.getElementById('settle_newEnd') || {}).value
+    var note = (document.getElementById('settle_renewNote') || {}).value || ''
+    if (!newStart) { showToast('❌ 請填新約起日'); resolve(); return }
+    showConfirm({
+      icon: '📄',
+      title: '確定續約並開立新約？',
+      msg: '將結束原合約（結束日以原迄日為主）並自動開立一份延續的新合約：\n電費度數延續上期、各項費用沿用，不計退款。',
+      okLabel: '確定續約',
+      onCancel: function() { resolve() },
+      onOk: async function() {
+        try {
+          var res = await fetch('/admin/api/managed/lease/' + leaseId + '/renew?key=' + encodeURIComponent(KEY), {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ newStart: newStart, newEnd: newEnd, note: note })
+          })
+          if (!res.ok) { showToast('❌ 續約失敗'); resolve(); return }
+          showToast('✅ 已續約並開立新合約')
+          var m = document.getElementById('settleModal'); if (m) m.remove()
+          await showLeaseList()
+        } catch (e) { showToast('❌ 續約失敗') }
+        resolve()
+      }
+    })
+  })
 }
 function saveSettle(leaseId, alreadySettled) {
   return new Promise(function(resolve) {
