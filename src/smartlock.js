@@ -220,14 +220,25 @@ function taipeiNow(ms = Date.now()) {
   return new Date(ms + 8 * 3600 * 1000)
 }
 
-// 今日 TTLock 密碼有效區間：現在 → 台北「隔天 00:00」（涵蓋整個今天）
-// 註：TTLock 會把 endDate 無條件捨去（觀察到 23:59:59 被砍成 23:30 提早失效），
-// 故 end 用隔天 00:00 的整點邊界，確保全天到午夜都有效。
+// 今日 TTLock 密碼有效區間：涵蓋整個今天，並對「門鎖時鐘漂移」加容錯緩衝。
+// 週期密碼（keyboardPwdType 3）是由門鎖用自己的 RTC 判斷是否在效期內；若門鎖時間
+// 慢了，剛發的密碼會被判為「尚未生效」而開不了門；快了則會提早失效。
+// 對策：
+//  - start 拉到「今天凌晨 00:00」再往前留 DRIFT 緩衝 → 容忍門鎖「時間慢了」。
+//  - end 用台北「隔天 00:00」再往後留 DRIFT 緩衝 → 容忍門鎖「時間快了」，
+//    同時避開 TTLock 會把 endDate 無條件捨去（23:59:59→23:30 提早失效）的問題。
+// 註：這是對輕微漂移的容錯；若門鎖時間差很多（整天都開不了），仍需用 TTLock App
+//    靠近門鎖以藍牙連線校時（或裝設閘道器自動校時）。
+const TTLOCK_DRIFT_MS = 2 * 3600 * 1000  // 容忍門鎖時鐘漂移 ±2 小時
 function taipeiTodayWindow() {
   const now = Date.now()
   const d = new Date(now + 8 * 3600 * 1000)
-  const endUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 0, 0) - 8 * 3600 * 1000
-  return { startDate: now, endDate: endUtc }
+  const startOfTodayUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0) - 8 * 3600 * 1000
+  const nextMidnightUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 0, 0) - 8 * 3600 * 1000
+  // start：今天凌晨與「現在往前 2 小時」取較早者，確保剛發的密碼即使門鎖慢了也已生效
+  const startDate = Math.min(startOfTodayUtc, now - TTLOCK_DRIFT_MS)
+  const endDate = nextMidnightUtc + TTLOCK_DRIFT_MS
+  return { startDate, endDate }
 }
 
 // 解析房東的 TTLock 帳密
