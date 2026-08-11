@@ -144,6 +144,8 @@ async function listLandlordLeases(landlordId) {
       })
     })
   })
+  // 文字升冪排序（數字自然排序：21-2 在 21-10 之前）
+  out.sort((a, b) => String(a.label).localeCompare(String(b.label), 'zh-Hant', { numeric: true }))
   return out
 }
 
