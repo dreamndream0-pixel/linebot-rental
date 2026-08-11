@@ -221,6 +221,10 @@ function roomsToCarousel(rooms, altText, t = {}) {
 async function listAvailableRooms(landlordId = null, t = {}) {
   const where = { status: 'AVAILABLE', deletedAt: null }
   if (landlordId) where.ownerId = landlordId
+  // 只顯示精選房源（房東可在 Bot 設定開啟）——精選 = 官網精選或主站精選
+  if (t.listFeaturedOnly === true) {
+    where.OR = [{ siteFeatured: true }, { featured: true }]
+  }
   const rooms = await prisma.property.findMany({
     where,
     include: { images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }] } },
