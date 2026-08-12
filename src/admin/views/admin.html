@@ -1104,12 +1104,9 @@ var MENU_GROUPS = [
     { label: '\u6536\u652f\u5831\u8868', icon: 'chart', run: 'report' },
     { label: '\u9580\u9396\u7ba1\u7406', icon: 'wrench', run: 'lock', feat: 'smartlock' },
     { label: '\u7dad\u4fee\u7ba1\u7406', icon: 'wrench', tab: 'repairs' },
-    { label: '\u5408\u7d04\u540c\u6b65', icon: 'share', run: 'sync-contract', feat: 'ragic' },
-    { label: '\u96fb\u8cbb\u540c\u6b65', icon: 'share', run: 'sync-utility', feat: 'ragic' },
-    { label: '\u79df\u91d1\u540c\u6b65', icon: 'share', run: 'sync-rent', feat: 'ragic' },
   ] },
   { label: '\u793e\u7fa4\u7ba1\u7406', icon: 'share', tab: 'socialPosting' },
-  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings'] },
+  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings', { label: 'Ragic \u540c\u6b65', icon: 'share', run: 'ragic-menu', feat: 'ragic' }] },
 ]
 
 function renderTabBar() {
@@ -5640,6 +5637,7 @@ async function renderManagedTab() {
 var _navRunPending = false
 function navRun(key) {
   document.querySelectorAll('.nav-group.open').forEach(function(x){ x.classList.remove('open') })
+  if (key === 'ragic-menu') { openRagicSyncMenu(); return }
   _navRunPending = true
   if (currentTab !== 'managed') switchTab('managed')
   _navRunPending = false
@@ -5658,6 +5656,24 @@ function runSyncFromMenu(key) {
   var fn = type === 'contract' ? syncRagic : type === 'utility' ? syncRagicUtility : syncRagicRent
   showToast('🔄 ' + label + '同步中，請稍候…')
   Promise.resolve(fn()).catch(function(){})
+}
+// Ragic 同步：合約／電費／租金三合一小視窗（進度直接顯示在按鈕上）
+function openRagicSyncMenu() {
+  var old = document.getElementById('ragicSyncModal'); if (old) old.remove()
+  var html = '<div id="ragicSyncModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:22px;max-width:340px;width:100%;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+        '<h3 style="margin:0;font-size:16px;">🔄 Ragic 同步</h3>' +
+        '<button onclick="var m=document.getElementById(\'ragicSyncModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px;">' +
+        '<button class="btn ragic-sync-btn" style="width:100%;padding:12px;font-size:14px;background:#8B6A42;position:relative;overflow:hidden;" onclick="ragicSyncBtn(this,\'contract\')">🔄 合約同步</button>' +
+        '<button class="btn ragic-sync-btn" style="width:100%;padding:12px;font-size:14px;background:#4A7A6A;position:relative;overflow:hidden;" onclick="ragicSyncBtn(this,\'utility\')">⚡ 電費同步</button>' +
+        '<button class="btn ragic-sync-btn" style="width:100%;padding:12px;font-size:14px;background:#7A5A3A;position:relative;overflow:hidden;" onclick="ragicSyncBtn(this,\'rent\')">💰 租金同步</button>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#999;margin-top:10px;">建議先「合約同步」，再跑電費、租金同步。</div>' +
+    '</div></div>'
+  document.body.insertAdjacentHTML('beforeend', html)
 }
 
 // ── Ragic 同步：進度直接顯示在按鈕上 ─────────────────────────────
