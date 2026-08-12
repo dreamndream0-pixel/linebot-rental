@@ -1378,7 +1378,7 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
       message = utilReminderFlex(data)
     } else {
       data.rent = parseInt(req.body.amount) || lease.rent || 0
-      data.rentPayDay = (req.body.dueDate ? new Date(req.body.dueDate).getDate() : lease.rentPayDay) || '—'
+      data.dueDateStr = req.body.dueDate || null  // 應繳日期以設定日期為準
       message = rentReminderFlex(data)
     }
     // 依序嘗試客服Bot→主Bot→系統Bot，任一成功即可（房客可能在客服 Bot 而非出租 Bot）

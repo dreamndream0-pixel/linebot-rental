@@ -98,96 +98,104 @@ function alreadyRemindedThisMonth(lastDate) {
   return last.getFullYear() === now.getFullYear() && last.getMonth() === now.getMonth()
 }
 
-// 租金提醒訊息
-function rentReminderFlex(lease) {
-  return {
-    type: 'flex',
-    altText: '🏠 租金繳費提醒',
-    contents: {
-      type: 'bubble',
-      header: {
-        type: 'box', layout: 'vertical', backgroundColor: '#7A9E7E', paddingAll: '16px',
-        contents: [{ type: 'text', text: '🏠 租金繳費提醒', weight: 'bold', size: 'lg', color: '#ffffff' }],
-      },
-      body: {
-        type: 'box', layout: 'vertical', spacing: 'sm',
-        contents: [
-          { type: 'text', text: lease.tenantName + ' 您好', weight: 'bold', size: 'md' },
-          { type: 'text', text: '提醒您本月租金即將到期', size: 'sm', color: '#666666', wrap: true },
-          { type: 'separator', margin: 'md' },
-          { type: 'box', layout: 'baseline', margin: 'md', contents: [
-            { type: 'text', text: '房源', size: 'sm', color: '#999999', flex: 2 },
-            { type: 'text', text: lease.managedTitle + (lease.roomLabel ? ' ' + lease.roomLabel : ''), size: 'sm', flex: 5, wrap: true },
-          ]},
-          { type: 'box', layout: 'baseline', contents: [
-            { type: 'text', text: '租金', size: 'sm', color: '#999999', flex: 2 },
-            { type: 'text', text: 'NT$ ' + Number(lease.rent).toLocaleString(), size: 'sm', flex: 5, weight: 'bold', color: '#4A6741' },
-          ]},
-          { type: 'box', layout: 'baseline', contents: [
-            { type: 'text', text: '繳費日', size: 'sm', color: '#999999', flex: 2 },
-            { type: 'text', text: '每月 ' + lease.rentPayDay + ' 號', size: 'sm', flex: 5 },
-          ]},
-          { type: 'text', text: '請記得準時繳費，謝謝您 🙏', size: 'xs', color: '#aaaaaa', margin: 'md', wrap: true },
-        ],
-      },
-    },
-  }
-}
-
 // 日期 → 台北 YYYY/MM/DD
 function fmtYMD(d) {
   if (!d) return '—'
   const t = new Date(new Date(d).getTime() + 8 * 3600 * 1000)
   return t.getUTCFullYear() + '/' + String(t.getUTCMonth() + 1).padStart(2, '0') + '/' + String(t.getUTCDate()).padStart(2, '0')
 }
-function kvRow(label, value, opts) {
+
+// 明細列（左標籤、右值，貼齊右側）
+function remRow(label, value, opts) {
   opts = opts || {}
-  return { type: 'box', layout: 'baseline', contents: [
-    { type: 'text', text: label, size: 'sm', color: '#999999', flex: 3 },
-    { type: 'text', text: String(value), size: 'sm', flex: 7, wrap: true, weight: opts.bold ? 'bold' : 'regular', color: opts.color || '#333333' },
+  return { type: 'box', layout: 'baseline', spacing: 'sm', margin: 'md', contents: [
+    { type: 'text', text: label, size: 'sm', color: '#A6A093', flex: 4 },
+    { type: 'text', text: String(value), size: 'sm', color: opts.color || '#4A473F', weight: opts.bold ? 'bold' : 'regular', flex: 8, align: 'end' },
   ]}
 }
 
-// 水電提醒訊息（含抄表明細：起算日/度數、結算日/度數、使用度數、金額、應繳日）
+// 繳費提醒卡片：統一的高級排版（頭部色帶＋金額主視覺＋明細）
+function reminderBubble(o) {
+  const body = [
+    { type: 'text', text: o.tenant + ' 您好', weight: 'bold', size: 'md', color: '#2B2B2B' },
+    { type: 'text', text: o.intro, size: 'sm', color: '#8C877D', wrap: true, margin: 'xs' },
+    // 金額主視覺卡
+    { type: 'box', layout: 'vertical', backgroundColor: o.tint, cornerRadius: '14px', paddingAll: '16px', margin: 'lg', spacing: 'none', contents: [
+      { type: 'text', text: o.amountLabel, size: 'xs', color: o.deep },
+      { type: 'box', layout: 'baseline', margin: 'xs', contents: [
+        { type: 'text', text: 'NT$', size: 'sm', color: o.deep, weight: 'bold', flex: 0 },
+        { type: 'text', text: '  ' + Number(o.amount || 0).toLocaleString(), size: 'xxl', color: o.deep, weight: 'bold', flex: 0 },
+      ]},
+      o.dueStr
+        ? { type: 'box', layout: 'baseline', margin: 'md', contents: [
+            { type: 'text', text: '應繳日期', size: 'xs', color: o.deep, flex: 0 },
+            { type: 'text', text: '   ' + o.dueStr, size: 'sm', color: o.deep, weight: 'bold', flex: 0 },
+          ]}
+        : { type: 'filler' },
+    ]},
+  ]
+  if (o.rows && o.rows.length) {
+    body.push({ type: 'text', text: o.detailTitle, size: 'xs', color: '#B0A891', weight: 'bold', margin: 'xl' })
+    body.push({ type: 'separator', margin: 'sm', color: '#ECE6DA' })
+    o.rows.forEach(function (rw) { body.push(rw) })
+  }
+  return {
+    type: 'flex',
+    altText: o.alt,
+    contents: {
+      type: 'bubble', size: 'mega',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: o.accent, paddingAll: '20px', spacing: 'xs',
+        contents: [
+          { type: 'text', text: o.icon + '  ' + o.title, color: '#FFFFFF', weight: 'bold', size: 'lg' },
+          { type: 'text', text: o.subtitle, color: o.subColor, size: 'sm' },
+        ],
+      },
+      body: { type: 'box', layout: 'vertical', paddingAll: '20px', spacing: 'none', contents: body },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '16px',
+        contents: [{ type: 'text', text: o.footer, size: 'xs', color: '#AEA89C', wrap: true, align: 'center' }],
+      },
+      styles: { footer: { separator: true } },
+    },
+  }
+}
+
+// 租金提醒訊息
+function rentReminderFlex(lease) {
+  const dueStr = lease.dueDateStr ? fmtYMD(lease.dueDateStr) : (lease.rentPayDay ? ('每月 ' + lease.rentPayDay + ' 號') : null)
+  return reminderBubble({
+    alt: '🏠 租金繳費通知', icon: '🏠', title: '租金繳費通知',
+    subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
+    subColor: '#DCEBDD', accent: '#5E8663', tint: '#EFF5EF', deep: '#3E6144',
+    tenant: lease.tenantName, intro: '提醒您本期租金即將到期',
+    amountLabel: '本期應繳租金', amount: Number(lease.rent || 0), dueStr: dueStr,
+    rows: [],
+    footer: '請於期限前完成繳費，謝謝您 🙏',
+  })
+}
+
+// 水電提醒訊息（含抄表明細：起算日/度數、結算日/度數、使用度數、費率）
 function utilReminderFlex(lease) {
   const r = lease.reading || null
   const amount = r ? (r.amount || 0) : (lease.utilAmount || 0)
-  const rows = [
-    kvRow('房源', lease.managedTitle + (lease.roomLabel ? ' ' + lease.roomLabel : '')),
-  ]
-  if (r) {
-    rows.push(kvRow('起算日', fmtYMD(r.startDate)))
-    rows.push(kvRow('起算度數', Number(r.startDegree || 0).toLocaleString() + ' 度'))
-    rows.push(kvRow('結算日', fmtYMD(r.endDate)))
-    rows.push(kvRow('結算度數', Number(r.endDegree || 0).toLocaleString() + ' 度'))
-    rows.push(kvRow('使用度數', Number(r.usedDegree || 0).toLocaleString() + ' 度'))
-    if (r.rate) rows.push(kvRow('每度費率', Number(r.rate).toLocaleString() + ' 元'))
-  }
-  if (amount > 0) rows.push(kvRow('應繳金額', 'NT$ ' + Number(amount).toLocaleString(), { bold: true, color: '#C9913A' }))
-  // 繳費日：以設定的應繳日期為準（非每月固定號）
   const dueRaw = (r && r.dueDate) ? r.dueDate : (lease.dueDateStr || null)
-  if (dueRaw) rows.push(kvRow('應繳日期', fmtYMD(dueRaw), { bold: true }))
-  return {
-    type: 'flex',
-    altText: '💡 水電繳費提醒',
-    contents: {
-      type: 'bubble',
-      header: {
-        type: 'box', layout: 'vertical', backgroundColor: '#C9913A', paddingAll: '16px',
-        contents: [{ type: 'text', text: '💡 水電繳費提醒', weight: 'bold', size: 'lg', color: '#ffffff' }],
-      },
-      body: {
-        type: 'box', layout: 'vertical', spacing: 'sm',
-        contents: [
-          { type: 'text', text: lease.tenantName + ' 您好', weight: 'bold', size: 'md' },
-          { type: 'text', text: '以下為您的水電費繳費明細', size: 'sm', color: '#666666', wrap: true },
-          { type: 'separator', margin: 'md' },
-          ...rows,
-          { type: 'text', text: '請記得準時繳費，謝謝您 🙏', size: 'xs', color: '#aaaaaa', margin: 'md', wrap: true },
-        ],
-      },
-    },
+  const rows = []
+  if (r) {
+    rows.push(remRow('抄表期間', fmtYMD(r.startDate) + '  →  ' + fmtYMD(r.endDate)))
+    rows.push(remRow('度數', Number(r.startDegree || 0).toLocaleString() + '  →  ' + Number(r.endDegree || 0).toLocaleString() + ' 度'))
+    rows.push(remRow('本期使用', Number(r.usedDegree || 0).toLocaleString() + ' 度', { bold: true, color: '#A9781E' }))
+    if (r.rate) rows.push(remRow('每度費率', 'NT$ ' + Number(r.rate).toLocaleString()))
   }
+  return reminderBubble({
+    alt: '💡 水電費繳費通知', icon: '💡', title: '水電費繳費通知',
+    subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
+    subColor: '#F3E6C6', accent: '#C6982E', tint: '#FBF4E4', deep: '#A9781E',
+    tenant: lease.tenantName, intro: '以下為本期水電費繳費明細',
+    amountLabel: '本期應繳金額', amount: amount, dueStr: dueRaw ? fmtYMD(dueRaw) : null,
+    detailTitle: '用電明細', rows: rows,
+    footer: '請於期限前完成繳費，感謝您的配合 🙏',
+  })
 }
 
 // 主檢查：每天跑，找出今天該提醒的租約
