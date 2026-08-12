@@ -7196,7 +7196,9 @@ function renderLeaseList() {
   // 有輸入搜尋字時 → 跨所有狀態一起找（避免資料分散在不同分頁而找不到）
   var baseList
   if (LEASE_SEARCH.trim()) {
-    baseList = d.overview || []
+    // 搜尋跨所有狀態（含已結算/已到期）：合併 overview 與 expired 去重
+    var _seen = {}; baseList = []
+    ;(d.overview || []).concat(d.expired || []).forEach(function(l){ if (l && !_seen[l.id]) { _seen[l.id] = 1; baseList.push(l) } })
   } else {
     baseList = d[LEASE_TAB] || []
   }
@@ -7322,6 +7324,34 @@ function settleRecalc() {
       '<div style="font-size:19px;font-weight:800;color:#C0524A;margin-top:4px;white-space:nowrap;">應補繳 ' + leaseMoney(-refund) + '</div>'
   }
 }
+var SETTLE_METER_DED_NAME = '電費（結算抄表）'
+// 找出/移除 結算抄表自動帶入的應扣列
+function settleFindMeterDedRow() {
+  var found = null
+  document.querySelectorAll('#settleDeductions .settle-ded-row').forEach(function(r) {
+    var n = (r.querySelector('.settle-ded-name') || {}).value
+    if (n === SETTLE_METER_DED_NAME) found = r
+  })
+  return found
+}
+// 依目前電表度數自動把「最後一期電費」帶入應扣（輸入即帶入，免按按鈕）
+function settleMeterSync() {
+  var end = (document.getElementById('settle_meterEnd') || {}).value
+  var row = settleFindMeterDedRow()
+  if (end === '' || end == null) {
+    // 清空度數 → 移除自動帶入列
+    if (row) { row.remove(); settleRecalc() }
+    return 0
+  }
+  var amt = settleMeterCalc()
+  if (row) {
+    row.querySelector('.settle-ded-amt').value = amt
+  } else {
+    document.getElementById('settleDeductions').insertAdjacentHTML('beforeend', settleDedRow(SETTLE_METER_DED_NAME, amt))
+  }
+  settleRecalc()
+  return amt
+}
 function settleMeterCalc() {
   var ctx = window.__settleCtx || {}
   var start = Number(ctx.meterStart || 0)
@@ -7331,25 +7361,13 @@ function settleMeterCalc() {
   if (end === '' || end == null) { if (box) box.innerHTML = ''; return 0 }
   var used = Math.max(0, Number(end) - start)
   var amt = Math.round(used * rate)
-  if (box) box.innerHTML = '使用 <b>' + used.toLocaleString() + '</b> 度 × ' + rate + ' 元 ＝ <b style="color:#C0524A;">' + leaseMoney(amt) + '</b>'
+  if (box) box.innerHTML = '使用 <b>' + used.toLocaleString() + '</b> 度 × ' + rate + ' 元 ＝ <b style="color:#C0524A;">' + leaseMoney(amt) + '</b>（已自動帶入應扣）'
   return amt
 }
 function settleMeterApply() {
   var end = (document.getElementById('settle_meterEnd') || {}).value
   if (end === '' || end == null) { showToast('請先輸入本期度數'); return }
-  var amt = settleMeterCalc()
-  var name = '電費（結算抄表）'
-  var found = null
-  document.querySelectorAll('#settleDeductions .settle-ded-row').forEach(function(r) {
-    var n = (r.querySelector('.settle-ded-name') || {}).value
-    if (n === name) found = r
-  })
-  if (found) {
-    found.querySelector('.settle-ded-amt').value = amt
-  } else {
-    document.getElementById('settleDeductions').insertAdjacentHTML('beforeend', settleDedRow(name, amt))
-  }
-  settleRecalc()
+  var amt = settleMeterSync()
   showToast('✅ 已帶入電費 ' + leaseMoney(amt))
 }
 function settleToggleEarly() {
@@ -7437,11 +7455,11 @@ async function openSettleModal(leaseId) {
     '</div>' +
     // ⚡ 電費抄表：直接在結算頁抄表算費
     '<div style="border:1px dashed #E5D9C5;border-radius:12px;padding:12px;margin-bottom:12px;background:#FCF9F3;">' +
-      '<div style="font-size:13px;font-weight:700;color:#B07A2E;margin-bottom:6px;">⚡ 電費抄表（可直接計算本期電費）</div>' +
+      '<div style="font-size:13px;font-weight:700;color:#B07A2E;margin-bottom:6px;">⚡ 電費抄表（輸入度數即自動帶入最後一期電費）</div>' +
       '<div style="font-size:12px;color:#888;margin-bottom:8px;">上期迄止度數：<b>' + Number(meterStart).toLocaleString() + ' 度</b>　抄表日：' + meterStartDateStr + '</div>' +
       '<div style="display:flex;gap:8px;">' +
-        '<div style="flex:1;"><label style="font-size:11px;color:#888;display:block;margin-bottom:3px;">本期迄止度數</label><input id="settle_meterEnd" type="number" placeholder="輸入電表度數" oninput="settleMeterCalc()" style="' + inp + '"></div>' +
-        '<div style="flex:1;"><label style="font-size:11px;color:#888;display:block;margin-bottom:3px;">每度費率</label><input id="settle_meterRate" type="number" value="' + esc(meterRateVal) + '" oninput="settleMeterCalc()" style="' + inp + '"></div>' +
+        '<div style="flex:1;"><label style="font-size:11px;color:#888;display:block;margin-bottom:3px;">本期迄止度數</label><input id="settle_meterEnd" type="number" placeholder="輸入電表度數" oninput="settleMeterSync()" style="' + inp + '"></div>' +
+        '<div style="flex:1;"><label style="font-size:11px;color:#888;display:block;margin-bottom:3px;">每度費率</label><input id="settle_meterRate" type="number" value="' + esc(meterRateVal) + '" oninput="settleMeterSync()" style="' + inp + '"></div>' +
       '</div>' +
       '<div style="display:flex;gap:8px;margin-top:8px;align-items:flex-end;">' +
         '<div style="flex:1;min-width:0;"><label style="font-size:11px;color:#888;display:block;margin-bottom:3px;">抄表日</label><input id="settle_meterDate" type="date" value="' + today + '" style="' + di + '"></div>' +
@@ -7483,6 +7501,7 @@ async function openSettleModal(leaseId) {
     '</div>' +
     modeTabs + settleBlock + renewBlock +
     '<button id="settleBtnSettle" class="btn spin-btn" style="width:100%;background:var(--deep-sage,#4A6741);padding:13px;font-size:15px;font-weight:700;" onclick="btnLoad(this,function(){return saveSettle(\'' + leaseId + '\',' + (alreadySettled ? 'true' : 'false') + ')})">' + (alreadySettled ? '更新結算' : '確認結算') + '</button>' +
+    (alreadySettled ? '<button id="settleBtnNotify" class="btn spin-btn" style="width:100%;margin-top:10px;background:#5A6B7B;padding:12px;font-size:14px;font-weight:700;" onclick="btnLoad(this,function(){return settleNotify(\'' + leaseId + '\')})">📨 傳送結算明細給房客</button>' : '') +
     '<button id="settleBtnRenew" class="btn spin-btn" style="display:none;width:100%;background:#B07A2E;padding:13px;font-size:15px;font-weight:700;" onclick="btnLoad(this,function(){return saveRenew(\'' + leaseId + '\')})">確認續約並開新約</button>' +
     '</div></div>'
 
@@ -7519,6 +7538,8 @@ function saveRenew(leaseId) {
 }
 function saveSettle(leaseId, alreadySettled) {
   return new Promise(function(resolve) {
+    // 送出前先確保「最後一期電費」已帶入應扣（避免輸入度數卻漏按帶入）
+    if (typeof settleMeterSync === 'function') settleMeterSync()
     var deductions = []
     document.querySelectorAll('#settleDeductions .settle-ded-row').forEach(function(row) {
       var name = (row.querySelector('.settle-ded-name') || {}).value || ''
@@ -7565,11 +7586,31 @@ function saveSettle(leaseId, alreadySettled) {
           showToast('✅ 已結算')
           var m = document.getElementById('settleModal'); if (m) m.remove()
           await showLeaseList()
+          // 結算完成後，詢問是否傳送結算明細給房客
+          showConfirm({
+            icon: '📨',
+            title: '傳送結算明細給房客？',
+            msg: '將透過 LINE 傳送本次結算明細（押金、應扣費用、退款/補繳金額）給房客。',
+            okLabel: '傳送',
+            onCancel: function() {},
+            onOk: async function() { await settleNotify(leaseId) },
+          })
         } catch (e) { showToast('❌ 結算失敗') }
         resolve()
       }
     })
   })
+}
+// 傳送結算明細給房客（LINE）
+async function settleNotify(leaseId) {
+  try {
+    var res = await fetch('/admin/api/managed/lease/' + leaseId + '/settle-notify?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({})
+    })
+    var d = {}; try { d = await res.json() } catch (e) {}
+    if (!res.ok) { showToast('❌ ' + (d.error || '傳送結算明細失敗')); return }
+    showToast('✅ 已傳送結算明細給房客' + (d.via ? '（' + d.via + '）' : ''))
+  } catch (e) { showToast('❌ 傳送結算明細失敗') }
 }
 function paymentCycleLabel(v) {
   return { MONTHLY:'月繳', BIMONTHLY:'雙月繳', QUARTERLY:'季繳', SEMIANNUAL:'半年繳', YEARLY:'年繳' }[v] || '月繳'

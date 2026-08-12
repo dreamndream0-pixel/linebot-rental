@@ -229,6 +229,34 @@ function utilReceiptFlex(lease) {
   })
 }
 
+// 合約結算明細（房東結算後推播給房客）
+function settleReceiptFlex(lease) {
+  const deposit = Number(lease.settleDeposit || 0)
+  const prepaid = Number(lease.settlePrepaid || 0)
+  const deductions = Array.isArray(lease.settleDeductions) ? lease.settleDeductions : []
+  const deductTotal = deductions.reduce((s, d) => s + (Number(d.amount) || 0), 0)
+  const refund = (lease.settleRefund != null) ? Number(lease.settleRefund) : (deposit + prepaid - deductTotal)
+  const rows = []
+  if (lease.settledAt) rows.push(remRow('結算日期', fmtYMD(lease.settledAt)))
+  if (lease.endedAt) rows.push(remRow('合約結束日', fmtYMD(lease.endedAt)))
+  rows.push(remRow('押金', 'NT$ ' + deposit.toLocaleString()))
+  if (prepaid > 0) rows.push(remRow('預收費用', 'NT$ ' + prepaid.toLocaleString()))
+  deductions.forEach(function (d) {
+    rows.push(remRow('－ ' + (d.name || '應扣費用'), 'NT$ ' + (Number(d.amount) || 0).toLocaleString(), { color: '#B5544C' }))
+  })
+  if (deductions.length) rows.push(remRow('應扣合計', 'NT$ ' + deductTotal.toLocaleString(), { bold: true, color: '#B5544C' }))
+  const positive = refund >= 0
+  return reminderBubble({
+    alt: '合約結算明細', title: '合約結算明細',
+    subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
+    subColor: '#D8DFE6', accent: '#5A6B7B', tint: '#EEF1F4', deep: '#3C4A57',
+    tenant: lease.tenantName, intro: '您的合約已完成結算，以下為結算明細',
+    amountLabel: positive ? '應退還您的金額' : '尚需補繳金額', amount: Math.abs(refund), dueStr: null,
+    detailTitle: '結算明細', rows: rows,
+    footer: positive ? '退款將依約定方式辦理，感謝您的承租' : '請於結算後儘速完成補繳，感謝您的配合',
+  })
+}
+
 // 水電提醒訊息（含抄表明細：起算日/度數、結算日/度數、使用度數、費率）
 function utilReminderFlex(lease) {
   const r = lease.reading || null
@@ -310,4 +338,4 @@ function startLeaseReminders() {
   console.log('✅ 租約繳費提醒排程已啟動（每日 9:00 檢查）')
 }
 
-module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex }
+module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex, settleReceiptFlex }
