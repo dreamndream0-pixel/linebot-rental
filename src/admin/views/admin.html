@@ -7066,18 +7066,19 @@ async function showLeaseList() {
 
 function renderLeaseList() {
   var box = document.getElementById('managedReportBox')
+  if (['overview','active','rentDueSoon','expiring','expired'].indexOf(LEASE_TAB) < 0) LEASE_TAB = 'active'
   var d = MANAGED.leaseList
   var counts = {
+    overview: (d.overview || []).length,
     active: (d.active || []).length,
     rentDueSoon: (d.rentDueSoon || []).length,
     expiring: (d.expiring || []).length,
-    expired: (d.expired || []).length,
-    ended: (d.ended || []).length
+    expired: (d.expired || []).length
   }
 
   function tabBtn(key, label, count, color) {
     var active = LEASE_TAB === key
-    return '<button class="spin-btn" onclick="btnLoad(this, function(){ LEASE_TAB=\'' + key + '\'; if(LEASE_TAB===\'rentDueSoon\'){ LEASE_SORT=\'nextRent\'; LEASE_SORT_DIR=\'asc\'; } return renderLeaseList() })" style="padding:8px 16px;border:none;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;background:' + (active ? color : '#EEE') + ';color:' + (active ? '#fff' : '#888') + ';">' + label + ' ' + count + '</button>'
+    return '<button class="spin-btn" onclick="btnLoad(this, function(){ LEASE_TAB=\'' + key + '\'; if(LEASE_TAB===\'rentDueSoon\'){ LEASE_SORT=\'nextRent\'; LEASE_SORT_DIR=\'asc\'; } return renderLeaseList() })" style="flex:none;white-space:nowrap;padding:8px 16px;border:none;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;background:' + (active ? color : '#EEE') + ';color:' + (active ? '#fff' : '#888') + ';">' + label + ' ' + count + '</button>'
   }
   function fmt(dt) { return dt ? new Date(dt).toLocaleDateString('zh-TW') : '—' }
   function sortTh(key, label) {
@@ -7131,9 +7132,7 @@ function renderLeaseList() {
   // 有輸入搜尋字時 → 跨所有狀態一起找（避免資料分散在不同分頁而找不到）
   var baseList
   if (LEASE_SEARCH.trim()) {
-    var _all = [].concat(d.active || [], d.expiring || [], d.expired || [], d.ended || [])
-    var _seen = {}
-    baseList = _all.filter(function(x){ if (_seen[x.id]) return false; _seen[x.id] = true; return true })
+    baseList = d.overview || []
   } else {
     baseList = d[LEASE_TAB] || []
   }
@@ -7168,12 +7167,12 @@ function renderLeaseList() {
       '<h3 style="margin:0;font-size:16px;">📋 代管清單（依房東分類）</h3>' +
       '<button onclick="document.getElementById(\'managedReportBox\').innerHTML=\'\'" style="border:none;background:none;font-size:18px;cursor:pointer;color:#999;">×</button>' +
     '</div>' +
-    '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">' +
+    '<div style="display:flex;gap:8px;margin-bottom:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;">' +
+      tabBtn('overview', '總覽', counts.overview, '#5A7D8C') +
       tabBtn('active', '承租中', counts.active, '#4A8A4A') +
-      tabBtn('rentDueSoon', '即將繳費租金', counts.rentDueSoon, '#7A8F45') +
+      tabBtn('rentDueSoon', '即將繳費', counts.rentDueSoon, '#7A8F45') +
       tabBtn('expiring', '即將到期', counts.expiring, '#E5A33C') +
       tabBtn('expired', '已到期', counts.expired, '#C0524A') +
-      tabBtn('ended', '已終止', counts.ended, '#888') +
     '</div>' +
     '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">' +
       '<input id="leaseSearchInput" value="' + esc(LEASE_SEARCH) + '" placeholder="🔍 搜尋承租人／房號／社區／房東" oninput="LEASE_SEARCH=this.value;clearTimeout(window._leaseSearchT);window._leaseSearchT=setTimeout(function(){var p=document.getElementById(\'leaseSearchInput\');var s=p?p.selectionStart:null;renderLeaseList();var n=document.getElementById(\'leaseSearchInput\');if(n){n.focus();if(s!=null)n.setSelectionRange(s,s);}},250)" style="flex:1;min-width:180px;padding:8px 12px;border:1.5px solid #E5E0D5;border-radius:8px;font-size:13px;">' +

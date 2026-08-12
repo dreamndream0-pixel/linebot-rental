@@ -819,7 +819,7 @@ router.get('/admin/api/managed-leases', async (req, res) => {
     const now = new Date()
     const today = startOfDay(now)
     const rentDueLimit = startOfDay(now)
-    rentDueLimit.setDate(rentDueLimit.getDate() + 7)
+    rentDueLimit.setDate(rentDueLimit.getDate() + 30)  // 即將繳費：一個月內
     const result = leases.map(l => {
       // 單筆計算失敗（例如租金排程資料異常）也不整個清單掛掉，退回最基本欄位。
       let computedStatus = l.status
@@ -877,12 +877,14 @@ router.get('/admin/api/managed-leases', async (req, res) => {
       }
     })
 
+    // 合約期間內（含即將到期）＝承租中
+    const inPeriod = r => r.status === 'ACTIVE' || r.status === 'EXPIRING'
     res.json({
-      active: result.filter(r => r.status === 'ACTIVE'),
-      rentDueSoon: result.filter(r => r.status === 'ACTIVE' && r.nextRentDate && startOfDay(r.nextRentDate) <= rentDueLimit),
-      expiring: result.filter(r => r.status === 'EXPIRING'),
-      expired: result.filter(r => r.status === 'EXPIRED'),
-      ended: result.filter(r => r.status === 'ENDED'),
+      overview: result.filter(r => r.status !== 'ENDED'),          // 總覽：所有未結束合約
+      active: result.filter(inPeriod),                              // 承租中：合約期間內（含即將到期）
+      rentDueSoon: result.filter(r => inPeriod(r) && r.nextRentDate && startOfDay(r.nextRentDate) <= rentDueLimit),
+      expiring: result.filter(r => r.status === 'EXPIRING'),        // 即將到期：30 天內到期
+      expired: result.filter(r => r.status === 'EXPIRED'),          // 已到期
     })
   } catch (e) {
     console.error('代管清單失敗:', e.message)
