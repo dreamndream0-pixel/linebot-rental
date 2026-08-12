@@ -109,8 +109,8 @@ function fmtYMD(d) {
 function remRow(label, value, opts) {
   opts = opts || {}
   return { type: 'box', layout: 'baseline', spacing: 'sm', margin: 'md', contents: [
-    { type: 'text', text: label, size: 'sm', color: '#A6A093', flex: 4 },
-    { type: 'text', text: String(value), size: 'sm', color: opts.color || '#4A473F', weight: opts.bold ? 'bold' : 'regular', flex: 8, align: 'end' },
+    { type: 'text', text: label, size: 'sm', color: '#A6A093', flex: 3 },
+    { type: 'text', text: String(value), size: 'sm', color: opts.color || '#4A473F', weight: opts.bold ? 'bold' : 'regular', flex: 9, align: 'end', wrap: true },
   ]}
 }
 
@@ -122,14 +122,11 @@ function reminderBubble(o) {
     // 金額主視覺卡
     { type: 'box', layout: 'vertical', backgroundColor: o.tint, cornerRadius: '14px', paddingAll: '16px', margin: 'lg', spacing: 'none', contents: [
       { type: 'text', text: o.amountLabel, size: 'xs', color: o.deep },
-      { type: 'box', layout: 'baseline', margin: 'xs', contents: [
-        { type: 'text', text: 'NT$', size: 'sm', color: o.deep, weight: 'bold', flex: 0 },
-        { type: 'text', text: '  ' + Number(o.amount || 0).toLocaleString(), size: 'xxl', color: o.deep, weight: 'bold', flex: 0 },
-      ]},
+      { type: 'text', text: 'NT$ ' + Number(o.amount || 0).toLocaleString(), size: 'xl', color: o.deep, weight: 'bold', margin: 'xs', wrap: true },
       o.dueStr
         ? { type: 'box', layout: 'baseline', margin: 'md', contents: [
-            { type: 'text', text: '應繳日期', size: 'xs', color: o.deep, flex: 0 },
-            { type: 'text', text: '   ' + o.dueStr, size: 'sm', color: o.deep, weight: 'bold', flex: 0 },
+            { type: 'text', text: '應繳日期', size: 'xs', color: o.deep, flex: 3 },
+            { type: 'text', text: o.dueStr, size: 'sm', color: o.deep, weight: 'bold', flex: 6, align: 'end' },
           ]}
         : { type: 'filler' },
     ]},
@@ -147,7 +144,7 @@ function reminderBubble(o) {
       header: {
         type: 'box', layout: 'vertical', backgroundColor: o.accent, paddingAll: '20px', spacing: 'xs',
         contents: [
-          { type: 'text', text: o.icon + '  ' + o.title, color: '#FFFFFF', weight: 'bold', size: 'lg' },
+          { type: 'text', text: o.title, color: '#FFFFFF', weight: 'bold', size: 'lg' },
           { type: 'text', text: o.subtitle, color: o.subColor, size: 'sm' },
         ],
       },
@@ -165,13 +162,13 @@ function reminderBubble(o) {
 function rentReminderFlex(lease) {
   const dueStr = lease.dueDateStr ? fmtYMD(lease.dueDateStr) : (lease.rentPayDay ? ('每月 ' + lease.rentPayDay + ' 號') : null)
   return reminderBubble({
-    alt: '🏠 租金繳費通知', icon: '🏠', title: '租金繳費通知',
+    alt: '租金繳費通知', title: '租金繳費通知',
     subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
     subColor: '#DCEBDD', accent: '#5E8663', tint: '#EFF5EF', deep: '#3E6144',
     tenant: lease.tenantName, intro: '提醒您本期租金即將到期',
     amountLabel: '本期應繳租金', amount: Number(lease.rent || 0), dueStr: dueStr,
     rows: [],
-    footer: '請於期限前完成繳費，謝謝您 🙏',
+    footer: '請於期限前完成繳費，謝謝您',
   })
 }
 
@@ -182,19 +179,19 @@ function utilReminderFlex(lease) {
   const dueRaw = (r && r.dueDate) ? r.dueDate : (lease.dueDateStr || null)
   const rows = []
   if (r) {
-    rows.push(remRow('抄表期間', fmtYMD(r.startDate) + '  →  ' + fmtYMD(r.endDate)))
-    rows.push(remRow('度數', Number(r.startDegree || 0).toLocaleString() + '  →  ' + Number(r.endDegree || 0).toLocaleString() + ' 度'))
+    rows.push(remRow('抄表期間', fmtYMD(r.startDate) + ' → ' + fmtYMD(r.endDate)))
+    rows.push(remRow('度數', Number(r.startDegree || 0).toLocaleString() + ' → ' + Number(r.endDegree || 0).toLocaleString() + ' 度'))
     rows.push(remRow('本期使用', Number(r.usedDegree || 0).toLocaleString() + ' 度', { bold: true, color: '#A9781E' }))
     if (r.rate) rows.push(remRow('每度費率', 'NT$ ' + Number(r.rate).toLocaleString()))
   }
   return reminderBubble({
-    alt: '💡 水電費繳費通知', icon: '💡', title: '水電費繳費通知',
+    alt: '水電費繳費通知', title: '水電費繳費通知',
     subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
     subColor: '#F3E6C6', accent: '#C6982E', tint: '#FBF4E4', deep: '#A9781E',
     tenant: lease.tenantName, intro: '以下為本期水電費繳費明細',
     amountLabel: '本期應繳金額', amount: amount, dueStr: dueRaw ? fmtYMD(dueRaw) : null,
     detailTitle: '用電明細', rows: rows,
-    footer: '請於期限前完成繳費，感謝您的配合 🙏',
+    footer: '請於期限前完成繳費，感謝您的配合',
   })
 }
 
