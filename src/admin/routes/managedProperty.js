@@ -1398,6 +1398,11 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
           }
         } catch (e) { console.error('租金期間回算失敗:', e.message) }
       }
+      // 房東設定的租金匯款資訊（顯示於卡片，供房客轉帳）
+      try {
+        const ll = await prisma.landlord.findUnique({ where: { id: lease.managedProperty.landlordId }, select: { rentPayInfo: true } })
+        if (ll && ll.rentPayInfo) data.rentPayInfo = ll.rentPayInfo
+      } catch (e) { console.error('讀取匯款資訊失敗:', e.message) }
       message = rentReminderFlex(data)
     }
     // 依序嘗試客服Bot→主Bot→系統Bot，任一成功即可（房客可能在客服 Bot 而非出租 Bot）
