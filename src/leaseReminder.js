@@ -206,6 +206,29 @@ function rentReceiptFlex(lease) {
   })
 }
 
+// 水電收款確認（房東登記收款後推播給房客）
+function utilReceiptFlex(lease) {
+  const r = lease.reading || null
+  const rows = []
+  if (r) {
+    rows.push(remRow('抄表期間', fmtYMD(r.startDate) + ' → ' + fmtYMD(r.endDate)))
+    rows.push(remRow('度數', Number(r.startDegree || 0).toLocaleString() + ' → ' + Number(r.endDegree || 0).toLocaleString() + ' 度'))
+    rows.push(remRow('本期使用', Number(r.usedDegree || 0).toLocaleString() + ' 度', { bold: true, color: '#A9781E' }))
+    if (r.rate) rows.push(remRow('每度費率', 'NT$ ' + Number(r.rate).toLocaleString()))
+  }
+  if (lease.paidDateStr) rows.push(remRow('繳款日期', fmtYMD(lease.paidDateStr)))
+  if (lease.payMethod) rows.push(remRow('繳費方式', String(lease.payMethod)))
+  return reminderBubble({
+    alt: '水電費收款確認', title: '水電費收款確認',
+    subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
+    subColor: '#F3E6C6', accent: '#C6982E', tint: '#FBF4E4', deep: '#A9781E',
+    tenant: lease.tenantName, intro: '已收到您的水電費，感謝您的配合',
+    amountLabel: '本次已收金額', amount: Number(lease.paidAmount || 0), dueStr: null,
+    detailTitle: '繳費明細', rows: rows,
+    footer: '如有疑問請與我們聯繫，謝謝您',
+  })
+}
+
 // 水電提醒訊息（含抄表明細：起算日/度數、結算日/度數、使用度數、費率）
 function utilReminderFlex(lease) {
   const r = lease.reading || null
@@ -287,4 +310,4 @@ function startLeaseReminders() {
   console.log('✅ 租約繳費提醒排程已啟動（每日 9:00 檢查）')
 }
 
-module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex }
+module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex }

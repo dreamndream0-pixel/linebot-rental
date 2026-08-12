@@ -3,7 +3,7 @@ const express = require('express')
 const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
-const { getClientForLease, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex } = require('../../leaseReminder')
+const { getClientForLease, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex } = require('../../leaseReminder')
 const { findLineTenant } = require('../../tenantStore')
 
 // 權限過濾：super 看全部，房東只看自己的
@@ -1434,9 +1434,18 @@ router.post('/admin/api/managed/lease/:leaseId/receipt', express.json(), async (
     data.paidAmount = parseInt(b.paidAmount) || 0
     data.paidDateStr = b.paidDate || null
     data.payMethod = b.payMethod || lease.payMethod || null
-    data.periodStartStr = b.periodStart || null
-    data.periodEndStr = b.periodEnd || null
-    const message = rentReceiptFlex(data)
+    let message
+    if (b.kind === 'UTILITY') {
+      if (b.readingId) {
+        const reading = await prisma.utilityReading.findFirst({ where: { id: b.readingId, leaseId: lease.id } })
+        if (reading) data.reading = reading
+      }
+      message = utilReceiptFlex(data)
+    } else {
+      data.periodStartStr = b.periodStart || null
+      data.periodEndStr = b.periodEnd || null
+      message = rentReceiptFlex(data)
+    }
     const result = await pushToLeaseTenant(lease, message)
     res.json({ ok: true, via: result.via })
   } catch (e) {
