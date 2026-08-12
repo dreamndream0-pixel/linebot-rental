@@ -3,7 +3,7 @@ const express = require('express')
 const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
-const { getClientForLease, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex } = require('../../leaseReminder')
+const { getClientForLease, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex, settleReceiptFlex } = require('../../leaseReminder')
 const { findLineTenant } = require('../../tenantStore')
 
 // 權限過濾：super 看全部，房東只看自己的
@@ -884,7 +884,7 @@ router.get('/admin/api/managed-leases', async (req, res) => {
       active: result.filter(inPeriod),                              // 承租中：合約期間內（含即將到期）
       rentDueSoon: result.filter(r => inPeriod(r) && r.nextRentDate && startOfDay(r.nextRentDate) <= rentDueLimit),
       expiring: result.filter(r => r.status === 'EXPIRING'),        // 即將到期：30 天內到期
-      expired: result.filter(r => r.status === 'EXPIRED'),          // 已到期
+      expired: result.filter(r => r.status === 'EXPIRED' || r.status === 'ENDED'), // 已到期（含已結算）
     })
   } catch (e) {
     console.error('代管清單失敗:', e.message)
@@ -1450,6 +1450,29 @@ router.post('/admin/api/managed/lease/:leaseId/receipt', express.json(), async (
     res.json({ ok: true, via: result.via })
   } catch (e) {
     console.error('收款確認推播失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── 結算明細：結算後推播結算明細（押金/預收/應扣/退款）給房客 ──
+router.post('/admin/api/managed/lease/:leaseId/settle-notify', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    if (!lease.settledAt) return res.status(400).json({ error: '此合約尚未結算，無法傳送結算明細' })
+    if (!lease.lineUserId) return res.status(400).json({ error: '此租約尚未綁定 LINE 租客（合約內 LINE userID 為空）' })
+    const data = {
+      ...lease,
+      managedTitle: lease.managedProperty.title,
+      settleDeductions: lease.settleDeductions ? safeParse(lease.settleDeductions) : [],
+    }
+    const message = settleReceiptFlex(data)
+    const result = await pushToLeaseTenant(lease, message)
+    res.json({ ok: true, via: result.via })
+  } catch (e) {
+    console.error('結算明細推播失敗:', e.message)
     res.status(500).json({ error: e.message })
   }
 })

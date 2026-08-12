@@ -7499,6 +7499,7 @@ async function openSettleModal(leaseId) {
     '</div>' +
     modeTabs + settleBlock + renewBlock +
     '<button id="settleBtnSettle" class="btn spin-btn" style="width:100%;background:var(--deep-sage,#4A6741);padding:13px;font-size:15px;font-weight:700;" onclick="btnLoad(this,function(){return saveSettle(\'' + leaseId + '\',' + (alreadySettled ? 'true' : 'false') + ')})">' + (alreadySettled ? '更新結算' : '確認結算') + '</button>' +
+    (alreadySettled ? '<button id="settleBtnNotify" class="btn spin-btn" style="width:100%;margin-top:10px;background:#5A6B7B;padding:12px;font-size:14px;font-weight:700;" onclick="btnLoad(this,function(){return settleNotify(\'' + leaseId + '\')})">📨 傳送結算明細給房客</button>' : '') +
     '<button id="settleBtnRenew" class="btn spin-btn" style="display:none;width:100%;background:#B07A2E;padding:13px;font-size:15px;font-weight:700;" onclick="btnLoad(this,function(){return saveRenew(\'' + leaseId + '\')})">確認續約並開新約</button>' +
     '</div></div>'
 
@@ -7583,11 +7584,31 @@ function saveSettle(leaseId, alreadySettled) {
           showToast('✅ 已結算')
           var m = document.getElementById('settleModal'); if (m) m.remove()
           await showLeaseList()
+          // 結算完成後，詢問是否傳送結算明細給房客
+          showConfirm({
+            icon: '📨',
+            title: '傳送結算明細給房客？',
+            msg: '將透過 LINE 傳送本次結算明細（押金、應扣費用、退款/補繳金額）給房客。',
+            okLabel: '傳送',
+            onCancel: function() {},
+            onOk: async function() { await settleNotify(leaseId) },
+          })
         } catch (e) { showToast('❌ 結算失敗') }
         resolve()
       }
     })
   })
+}
+// 傳送結算明細給房客（LINE）
+async function settleNotify(leaseId) {
+  try {
+    var res = await fetch('/admin/api/managed/lease/' + leaseId + '/settle-notify?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({})
+    })
+    var d = {}; try { d = await res.json() } catch (e) {}
+    if (!res.ok) { showToast('❌ ' + (d.error || '傳送結算明細失敗')); return }
+    showToast('✅ 已傳送結算明細給房客' + (d.via ? '（' + d.via + '）' : ''))
+  } catch (e) { showToast('❌ 傳送結算明細失敗') }
 }
 function paymentCycleLabel(v) {
   return { MONTHLY:'月繳', BIMONTHLY:'雙月繳', QUARTERLY:'季繳', SEMIANNUAL:'半年繳', YEARLY:'年繳' }[v] || '月繳'
