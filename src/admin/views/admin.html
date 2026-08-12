@@ -7645,12 +7645,12 @@ async function openLeaseLedger(leaseId) {
     '<div style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:14px;">' +
       '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">＋ 新增收支</div>' +
       '<div class="hscroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
-        (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
+        (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var di=iw+"background:#fff;-webkit-appearance:none;appearance:none;color:#333;font-size:14px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
           '<div style="display:flex;gap:8px;width:max-content;">' +
             '<div style="' + c(96) + '"><label style="' + lb + '">類型</label><select id="lease_rec_type" style="' + iw + '"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select></div>' +
             '<div style="' + c(104) + '"><label style="' + lb + '">項目</label><select id="lease_rec_category" style="' + iw + '"><option value="RENT">租金</option><option value="UTILITY">水電</option><option value="REPAIR">維修</option><option value="PARKING">汽車位</option><option value="OTHER">其他</option></select></div>' +
             '<div style="' + c(92) + '"><label style="' + lb + '">金額</label><input id="lease_rec_amount" type="number" placeholder="金額" style="' + iw + '"></div>' +
-            '<div style="' + c(150) + '"><label style="' + lb + '">日期</label><input id="lease_rec_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
+            '<div style="' + c(150) + '"><label style="' + lb + '">日期</label><input id="lease_rec_date" type="date" value="' + today + '" style="' + di + '"></div>' +
             '<div style="' + c(150) + '"><label style="' + lb + '">說明</label><input id="lease_rec_desc" placeholder="說明" style="' + iw + '"></div>' +
           '</div>' })() +
       '</div>' +
@@ -7667,14 +7667,14 @@ async function openLeaseLedger(leaseId) {
       '</div>' +
       '<input type="hidden" id="util_edit_id" value="">' +
       '<div class="hscroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
-        (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
+        (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var di=iw+"background:#fff;-webkit-appearance:none;appearance:none;color:#333;font-size:14px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
           '<div style="display:flex;gap:8px;width:max-content;">' +
-            '<div style="' + c(150) + '"><label style="' + lb + '">起算日期</label><input id="util_start_date" type="date" value="' + readingStartDate + '" style="' + iw + '"></div>' +
+            '<div style="' + c(150) + '"><label style="' + lb + '">起算日期</label><input id="util_start_date" type="date" value="' + readingStartDate + '" style="' + di + '"></div>' +
             '<div style="' + c(92) + '"><label style="' + lb + '">起算度數</label><input id="util_start_degree" type="number" value="' + readingStartDegree + '" placeholder="度數" style="' + iw + '"></div>' +
-            '<div style="' + c(150) + '"><label style="' + lb + '">結算日期</label><input id="util_end_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
+            '<div style="' + c(150) + '"><label style="' + lb + '">結算日期</label><input id="util_end_date" type="date" value="' + today + '" style="' + di + '"></div>' +
             '<div style="' + c(92) + '"><label style="' + lb + '">本期度數</label><input id="util_end_degree" type="number" placeholder="度數" style="' + iw + '"></div>' +
             '<div style="' + c(84) + '"><label style="' + lb + '">每度金額</label><input id="util_rate" type="number" value="' + defaultRate + '" placeholder="元" style="' + iw + '"></div>' +
-            '<div style="' + c(150) + '"><label style="' + lb + '">應繳日期</label><input id="util_due_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
+            '<div style="' + c(150) + '"><label style="' + lb + '">應繳日期</label><input id="util_due_date" type="date" value="' + today + '" style="' + di + '"></div>' +
             '<div style="' + c(130) + '"><label style="' + lb + '">備註</label><input id="util_note" placeholder="備註" style="' + iw + '"></div>' +
           '</div>' })() +
       '</div>' +
@@ -7687,9 +7687,15 @@ async function openLeaseLedger(leaseId) {
     '</div></div>'
   var ex = document.getElementById('leaseLedgerModal'); if (ex) ex.remove()
   document.body.insertAdjacentHTML('beforeend', html)
-  // 水平滑動的表單開啟時捲到最左（顯示第一個欄位）
-  var lm = document.getElementById('leaseLedgerModal')
-  if (lm) lm.querySelectorAll('.hscroll').forEach(function(el){ el.scrollLeft = 0 })
+  // 水平滑動的表單開啟時捲到最左（顯示第一個欄位）；於版面完成後多次校正，
+  // 壓過 iOS 初次渲染 date 欄位時可能造成的自動捲動。
+  function _resetLedgerScroll() {
+    var lm = document.getElementById('leaseLedgerModal')
+    if (lm) lm.querySelectorAll('.hscroll').forEach(function(el){ el.scrollLeft = 0 })
+  }
+  requestAnimationFrame(function(){ _resetLedgerScroll(); requestAnimationFrame(_resetLedgerScroll) })
+  setTimeout(_resetLedgerScroll, 80)
+  setTimeout(_resetLedgerScroll, 300)
 }
 
 async function addUtilityReading(leaseId) {
