@@ -108,9 +108,10 @@ function fmtYMD(d) {
 // 明細列（左標籤、右值，貼齊右側）
 function remRow(label, value, opts) {
   opts = opts || {}
-  return { type: 'box', layout: 'baseline', spacing: 'sm', margin: 'md', contents: [
-    { type: 'text', text: label, size: 'sm', color: '#A6A093', flex: 3 },
-    { type: 'text', text: String(value), size: 'sm', color: opts.color || '#4A473F', weight: opts.bold ? 'bold' : 'regular', flex: 9, align: 'end', wrap: true },
+  // 用 horizontal（非 baseline）以支援文字換行，避免較長標籤（如「合約結束日」「－ 未收電費」）被截斷成「…」
+  return { type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'md', contents: [
+    { type: 'text', text: label, size: 'sm', color: '#A6A093', flex: 4, wrap: true },
+    { type: 'text', text: String(value), size: 'sm', color: opts.color || '#4A473F', weight: opts.bold ? 'bold' : 'regular', flex: 8, align: 'end', wrap: true },
   ]}
 }
 
