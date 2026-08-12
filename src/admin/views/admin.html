@@ -1096,7 +1096,16 @@ function availableTabs() {
 var MENU_GROUPS = [
   { label: '\u7e3d\u89bd', icon: 'chart', tab: 'overview' },
   { label: '\u51fa\u79df\u7ba1\u7406', icon: 'home', children: ['tenants', 'properties', 'bookings'] },
-  { label: '\u5305\u79df\u4ee3\u7ba1', icon: 'building', children: ['managed', 'repairs'] },
+  { label: '\u5305\u79df\u4ee3\u7ba1', icon: 'building', groupTab: 'managed', children: [
+    { label: '\u59d4\u8a17\u5217\u8868', icon: 'clipboard', run: 'commission' },
+    { label: '\u4ee3\u7ba1\u6e05\u55ae', icon: 'clipboard', run: 'lease' },
+    { label: '\u6536\u652f\u5831\u8868', icon: 'chart', run: 'report' },
+    { label: '\u9580\u9396\u7ba1\u7406', icon: 'wrench', run: 'lock', feat: 'smartlock' },
+    { label: '\u7dad\u4fee\u7ba1\u7406', icon: 'wrench', tab: 'repairs' },
+    { label: '\u5408\u7d04\u540c\u6b65', icon: 'share', run: 'sync-contract', feat: 'ragic' },
+    { label: '\u96fb\u8cbb\u540c\u6b65', icon: 'share', run: 'sync-utility', feat: 'ragic' },
+    { label: '\u79df\u91d1\u540c\u6b65', icon: 'share', run: 'sync-rent', feat: 'ragic' },
+  ] },
   { label: '\u793e\u7fa4\u7ba1\u7406', icon: 'share', tab: 'socialPosting' },
   { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings'] },
 ]
@@ -1110,13 +1119,32 @@ function renderTabBar() {
       return '<div class="nav-group"><button class="nav-group-btn' + (active ? ' active' : '') + '" onclick="switchTab(\'' + g.tab + '\')">' +
         '<span class="tab-icon">' + uiLineIcon(g.icon) + '</span><span>' + g.label + '</span></button></div>'
     }
-    var children = (g.children || []).filter(function(id) { return avail[id] })
+    // children \u53ef\u70ba tab \u5b57\u4e32\uff0c\u6216\u52d5\u4f5c\u7269\u4ef6 { label, icon, run | tab, feat }
+    var children = (g.children || []).filter(function(c) {
+      if (typeof c === 'string') return avail[c]
+      if (c.tab) return avail[c.tab]
+      if (c.feat && !feat(c.feat)) return false   // \u529f\u80fd\u6388\u6b0a\uff08\u9580\u9396/Ragic\uff09
+      return true
+    })
     if (!children.length) return ''
-    var groupActive = children.indexOf(currentTab) >= 0
-    var items = children.map(function(id) {
-      var t = avail[id]
-      return '<button class="nav-leaf' + (currentTab === id ? ' active' : '') + '" onclick="switchTab(\'' + id + '\')">' +
-        '<span class="tab-icon">' + uiLineIcon(t.icon) + '</span><span>' + t.label + '</span></button>'
+    var groupActive = children.some(function(c) {
+      var id = (typeof c === 'string') ? c : (c.tab || null)
+      return id && currentTab === id
+    }) || (g.groupTab && currentTab === g.groupTab)
+    var items = children.map(function(c) {
+      if (typeof c === 'string') {
+        var t = avail[c]
+        return '<button class="nav-leaf' + (currentTab === c ? ' active' : '') + '" onclick="switchTab(\'' + c + '\')">' +
+          '<span class="tab-icon">' + uiLineIcon(t.icon) + '</span><span>' + t.label + '</span></button>'
+      }
+      if (c.tab) {
+        var t2 = avail[c.tab]
+        return '<button class="nav-leaf' + (currentTab === c.tab ? ' active' : '') + '" onclick="switchTab(\'' + c.tab + '\')">' +
+          '<span class="tab-icon">' + uiLineIcon(c.icon || t2.icon) + '</span><span>' + (c.label || t2.label) + '</span></button>'
+      }
+      // \u52d5\u4f5c\u9805\u76ee\uff1a\u5207\u5230\u5305\u79df\u4ee3\u7ba1\u9801\u5f8c\u57f7\u884c navRun
+      return '<button class="nav-leaf" onclick="navRun(\'' + c.run + '\')">' +
+        '<span class="tab-icon">' + uiLineIcon(c.icon) + '</span><span>' + c.label + '</span></button>'
     }).join('')
     return '<div class="nav-group">' +
       '<button class="nav-group-btn' + (groupActive ? ' active' : '') + '" onclick="toggleNavGroup(event, this)">' +
@@ -5602,28 +5630,32 @@ async function renderManagedTab() {
     ? '<div class="empty">尚無委託物業，點上方「+ 新增委託」開始</div>'
     : MANAGED.list.map(managedCard).join('')
 
-  el.innerHTML =
-    '<div style="margin-bottom:18px;">' +
-      '<div style="display:flex;gap:8px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;">' +
-        '<button class="btn spin-btn" style="flex:none;width:auto;white-space:nowrap;padding:10px 18px;background:#7D6A9A;" onclick="btnLoad(this, showCommissionList)">📁 委託列表</button>' +
-        '<button class="btn spin-btn" style="flex:none;width:auto;white-space:nowrap;padding:10px 18px;background:#5A7D8C;" onclick="btnLoad(this, showLeaseList)">📋 代管清單</button>' +
-        '<button class="btn spin-btn" style="flex:none;width:auto;white-space:nowrap;padding:10px 18px;background:#6B7F6E;" onclick="btnLoad(this, showManagedReport)">📊 收支報表</button>' +
-        (feat('smartlock') ? '<button class="btn spin-btn" style="flex:none;width:auto;white-space:nowrap;padding:10px 18px;background:#6B5A9A;" onclick="btnLoad(this, openLockManager)">🔐 門鎖管理</button>' : '') +
-        (feat('ragic') ? '<button class="btn" style="flex:none;width:auto;white-space:nowrap;padding:10px 18px;background:#8B6A42;" onclick="toggleSyncMenu()">🔄 資料同步 ▾</button>' : '') +
-      '</div>' +
-      (feat('ragic') ?
-        '<div id="syncMenu" style="display:none;gap:8px;flex-wrap:wrap;margin-top:8px;">' +
-          '<button class="btn ragic-sync-btn" style="flex:none;width:auto;white-space:nowrap;padding:9px 16px;font-size:13px;background:#8B6A42;position:relative;overflow:hidden;min-width:120px;" onclick="ragicSyncBtn(this,\'contract\')">🔄 合約同步</button>' +
-          '<button class="btn ragic-sync-btn" style="flex:none;width:auto;white-space:nowrap;padding:9px 16px;font-size:13px;background:#4A7A6A;position:relative;overflow:hidden;min-width:120px;" onclick="ragicSyncBtn(this,\'utility\')">⚡ 電費同步</button>' +
-          '<button class="btn ragic-sync-btn" style="flex:none;width:auto;white-space:nowrap;padding:9px 16px;font-size:13px;background:#7A5A3A;position:relative;overflow:hidden;min-width:120px;" onclick="ragicSyncBtn(this,\'rent\')">💰 租金同步</button>' +
-        '</div>'
-      : '') +
-    '</div>' +
-    '<div id="managedReportBox"></div>'
+  // 工具列改放到最上面「包租代管」下拉選單；此頁只保留內容區，預設載入代管清單
+  el.innerHTML = '<div id="managedReportBox"></div>'
+  if (!_navRunPending) { try { showLeaseList() } catch (e) {} }
 }
-function toggleSyncMenu() {
-  var m = document.getElementById('syncMenu')
-  if (m) m.style.display = (m.style.display === 'flex') ? 'none' : 'flex'
+// 由「包租代管」選單項目觸發：切到包租代管頁後執行對應功能
+var _navRunPending = false
+function navRun(key) {
+  document.querySelectorAll('.nav-group.open').forEach(function(x){ x.classList.remove('open') })
+  _navRunPending = true
+  if (currentTab !== 'managed') switchTab('managed')
+  _navRunPending = false
+  var box = document.getElementById('managedReportBox')
+  if (!box) return
+  if (key === 'commission') showCommissionList()
+  else if (key === 'lease') showLeaseList()
+  else if (key === 'report') showManagedReport()
+  else if (key === 'lock') openLockManager()
+  else if (key === 'sync-contract' || key === 'sync-utility' || key === 'sync-rent') runSyncFromMenu(key)
+}
+function runSyncFromMenu(key) {
+  var type = key === 'sync-contract' ? 'contract' : key === 'sync-utility' ? 'utility' : 'rent'
+  var label = type === 'contract' ? '合約' : type === 'utility' ? '電費' : '租金'
+  _ragicBtn = null
+  var fn = type === 'contract' ? syncRagic : type === 'utility' ? syncRagicUtility : syncRagicRent
+  showToast('🔄 ' + label + '同步中，請稍候…')
+  Promise.resolve(fn()).catch(function(){})
 }
 
 // ── Ragic 同步：進度直接顯示在按鈕上 ─────────────────────────────
