@@ -1367,8 +1367,14 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
     const kind = req.body.kind === 'UTILITY' ? 'UTILITY' : 'RENT'
     let message
     if (kind === 'UTILITY') {
-      data.utilAmount = parseInt(req.body.amount) || lease.utilAmount || 0
-      data.utilPayDay = (req.body.dueDate ? new Date(req.body.dueDate).getDate() : lease.utilPayDay) || '—'
+      // 帶入該筆抄表明細（起算日/度數、結算日/度數、使用度數、金額、應繳日）
+      if (req.body.readingId) {
+        const reading = await prisma.utilityReading.findFirst({ where: { id: req.body.readingId, leaseId: lease.id } })
+        if (reading) data.reading = reading
+      }
+      data.utilAmount = parseInt(req.body.amount) || (data.reading && data.reading.amount) || lease.utilAmount || 0
+      // 繳費日以設定的應繳日期為準（具體日期，非每月固定號）
+      data.dueDateStr = req.body.dueDate || null
       message = utilReminderFlex(data)
     } else {
       data.rent = parseInt(req.body.amount) || lease.rent || 0
