@@ -1381,6 +1381,23 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
       data.dueDateStr = req.body.dueDate || null  // 應繳日期以設定日期為準
       data.periodStartStr = req.body.periodStart || null
       data.periodEndStr = req.body.periodEnd || null
+      // 若前端沒帶期間 → 以租金排程回算（對應應繳日，否則取最近未繳期）
+      if (!data.periodStartStr || !data.periodEndStr) {
+        try {
+          const rps = await prisma.rentPayment.findMany({ where: { leaseId: lease.id } })
+          const sched = buildRentSchedule(lease, rps)
+          let row = null
+          if (req.body.dueDate) {
+            const dt = startOfDay(req.body.dueDate).getTime()
+            row = sched.find(s => s.dueDate && startOfDay(s.dueDate).getTime() === dt)
+          }
+          if (!row) row = sched.find(s => (s.unpaid || 0) > 0) || sched[0]
+          if (row) {
+            data.periodStartStr = data.periodStartStr || ymd(row.periodStart)
+            data.periodEndStr = data.periodEndStr || ymd(row.periodEnd)
+          }
+        } catch (e) { console.error('租金期間回算失敗:', e.message) }
+      }
       message = rentReminderFlex(data)
     }
     // 依序嘗試客服Bot→主Bot→系統Bot，任一成功即可（房客可能在客服 Bot 而非出租 Bot）
