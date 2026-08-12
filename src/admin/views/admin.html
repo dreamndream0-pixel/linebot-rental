@@ -7644,14 +7644,16 @@ async function openLeaseLedger(leaseId) {
     '</div>' +
     '<div style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:14px;">' +
       '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">＋ 新增收支</div>' +
-      (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;"; var cell="min-width:0;"; return '' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">' +
-          '<div style="' + cell + '"><label style="' + lb + '">類型</label><select id="lease_rec_type" style="' + iw + '"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select></div>' +
-          '<div style="' + cell + '"><label style="' + lb + '">項目</label><select id="lease_rec_category" style="' + iw + '"><option value="RENT">租金</option><option value="UTILITY">水電</option><option value="REPAIR">維修</option><option value="PARKING">汽車位</option><option value="OTHER">其他</option></select></div>' +
-          '<div style="' + cell + '"><label style="' + lb + '">金額</label><input id="lease_rec_amount" type="number" placeholder="金額" style="' + iw + '"></div>' +
-          '<div style="' + cell + '"><label style="' + lb + '">日期</label><input id="lease_rec_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
-          '<div style="grid-column:1/-1;' + cell + '"><label style="' + lb + '">說明</label><input id="lease_rec_desc" placeholder="說明" style="' + iw + '"></div>' +
-        '</div>' })() +
+      '<div class="hscroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
+        (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
+          '<div style="display:flex;gap:8px;width:max-content;">' +
+            '<div style="' + c(96) + '"><label style="' + lb + '">類型</label><select id="lease_rec_type" style="' + iw + '"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select></div>' +
+            '<div style="' + c(104) + '"><label style="' + lb + '">項目</label><select id="lease_rec_category" style="' + iw + '"><option value="RENT">租金</option><option value="UTILITY">水電</option><option value="REPAIR">維修</option><option value="PARKING">汽車位</option><option value="OTHER">其他</option></select></div>' +
+            '<div style="' + c(92) + '"><label style="' + lb + '">金額</label><input id="lease_rec_amount" type="number" placeholder="金額" style="' + iw + '"></div>' +
+            '<div style="' + c(150) + '"><label style="' + lb + '">日期</label><input id="lease_rec_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
+            '<div style="' + c(150) + '"><label style="' + lb + '">說明</label><input id="lease_rec_desc" placeholder="說明" style="' + iw + '"></div>' +
+          '</div>' })() +
+      '</div>' +
       '<button class="btn spin-btn" style="width:100%;padding:10px;font-size:14px;" onclick="btnLoad(this,function(){return addLeaseRecord(\'' + l.managedId + '\',\'' + l.id + '\')})">新增</button>' +
     '</div>' +
     '<h4 style="margin:14px 0 10px;font-size:15px;">租金繳納明細</h4>' +
@@ -7664,16 +7666,18 @@ async function openLeaseLedger(leaseId) {
         '<button id="util_cancel_btn" onclick="cancelEditUtilityReading(\'' + l.id + '\')" style="display:none;border:none;background:none;color:#C0524A;font-size:13px;cursor:pointer;padding:0;">✕ 取消</button>' +
       '</div>' +
       '<input type="hidden" id="util_edit_id" value="">' +
-      (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;"; var cell="min-width:0;"; return '' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">' +
-          '<div style="' + cell + '"><label style="' + lb + '">起算日期</label><input id="util_start_date" type="date" value="' + readingStartDate + '" style="' + iw + '"></div>' +
-          '<div style="' + cell + '"><label style="' + lb + '">起算度數</label><input id="util_start_degree" type="number" value="' + readingStartDegree + '" placeholder="度數" style="' + iw + '"></div>' +
-          '<div style="' + cell + '"><label style="' + lb + '">結算日期</label><input id="util_end_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
-          '<div style="' + cell + '"><label style="' + lb + '">本期度數</label><input id="util_end_degree" type="number" placeholder="度數" style="' + iw + '"></div>' +
-          '<div style="' + cell + '"><label style="' + lb + '">每度金額</label><input id="util_rate" type="number" value="' + defaultRate + '" placeholder="元" style="' + iw + '"></div>' +
-          '<div style="' + cell + '"><label style="' + lb + '">應繳日期</label><input id="util_due_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
-          '<div style="grid-column:1/-1;' + cell + '"><label style="' + lb + '">備註</label><input id="util_note" placeholder="備註" style="' + iw + '"></div>' +
-        '</div>' })() +
+      '<div class="hscroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
+        (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
+          '<div style="display:flex;gap:8px;width:max-content;">' +
+            '<div style="' + c(150) + '"><label style="' + lb + '">起算日期</label><input id="util_start_date" type="date" value="' + readingStartDate + '" style="' + iw + '"></div>' +
+            '<div style="' + c(92) + '"><label style="' + lb + '">起算度數</label><input id="util_start_degree" type="number" value="' + readingStartDegree + '" placeholder="度數" style="' + iw + '"></div>' +
+            '<div style="' + c(150) + '"><label style="' + lb + '">結算日期</label><input id="util_end_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
+            '<div style="' + c(92) + '"><label style="' + lb + '">本期度數</label><input id="util_end_degree" type="number" placeholder="度數" style="' + iw + '"></div>' +
+            '<div style="' + c(84) + '"><label style="' + lb + '">每度金額</label><input id="util_rate" type="number" value="' + defaultRate + '" placeholder="元" style="' + iw + '"></div>' +
+            '<div style="' + c(150) + '"><label style="' + lb + '">應繳日期</label><input id="util_due_date" type="date" value="' + today + '" style="' + iw + '"></div>' +
+            '<div style="' + c(130) + '"><label style="' + lb + '">備註</label><input id="util_note" placeholder="備註" style="' + iw + '"></div>' +
+          '</div>' })() +
+      '</div>' +
       '<button id="util_submit_btn" class="btn spin-btn" style="width:100%;padding:10px;font-size:14px;" onclick="btnLoad(this,function(){return addUtilityReading(\'' + l.id + '\')})">新增抄表</button>' +
     '</div>' +
     '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:1520px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="16" style="padding:8px;text-align:center;font-size:13px;">水電明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:8px;text-align:left;font-size:12px;">起算日期</th><th style="padding:8px;text-align:right;font-size:12px;">起算度數</th><th style="padding:8px;text-align:left;font-size:12px;">結算日期</th><th style="padding:8px;text-align:right;font-size:12px;">結算度數</th><th style="padding:8px;text-align:right;font-size:12px;">使用度數</th><th style="padding:8px;text-align:right;font-size:12px;">每度</th><th style="padding:8px;text-align:right;font-size:12px;">應繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">應繳日期</th><th style="padding:8px;text-align:right;font-size:12px;">未繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">備註</th><th style="padding:8px;text-align:left;font-size:12px;">已繳金額</th><th style="padding:8px;text-align:left;font-size:12px;">繳款日期</th><th style="padding:8px;text-align:left;font-size:12px;">方式</th><th style="padding:8px;text-align:left;font-size:12px;">匯款圖</th><th style="padding:8px;text-align:center;font-size:12px;">儲存</th><th style="padding:8px;text-align:center;font-size:12px;">提醒</th></tr></thead><tbody id="utilTbody_' + l.id + '">' + renderUtilityBillingRows(billing.utilityReadings || [], l.id) + '</tbody></table></div>' +
