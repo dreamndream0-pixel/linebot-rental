@@ -7645,7 +7645,7 @@ async function openLeaseLedger(leaseId) {
     '<div style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:14px;">' +
       '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">＋ 新增收支</div>' +
       '<div class="hscroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
-        (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var di=iw+"background:#fff;-webkit-appearance:none;appearance:none;color:#333;font-size:14px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
+        (function(){ var iw="width:100%;box-sizing:border-box;height:40px;padding:0 10px;border:1px solid #E5E0D5;border-radius:8px;font-size:14px;color:#333;background:#fff;line-height:1.2;"; var di=iw+"-webkit-appearance:none;appearance:none;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
           '<div style="display:flex;gap:8px;width:max-content;">' +
             '<div style="' + c(96) + '"><label style="' + lb + '">類型</label><select id="lease_rec_type" style="' + iw + '"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select></div>' +
             '<div style="' + c(104) + '"><label style="' + lb + '">項目</label><select id="lease_rec_category" style="' + iw + '"><option value="RENT">租金</option><option value="UTILITY">水電</option><option value="REPAIR">維修</option><option value="PARKING">汽車位</option><option value="OTHER">其他</option></select></div>' +
@@ -7667,7 +7667,7 @@ async function openLeaseLedger(leaseId) {
       '</div>' +
       '<input type="hidden" id="util_edit_id" value="">' +
       '<div class="hscroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;padding-bottom:4px;">' +
-        (function(){ var iw="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"; var di=iw+"background:#fff;-webkit-appearance:none;appearance:none;color:#333;font-size:14px;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
+        (function(){ var iw="width:100%;box-sizing:border-box;height:40px;padding:0 10px;border:1px solid #E5E0D5;border-radius:8px;font-size:14px;color:#333;background:#fff;line-height:1.2;"; var di=iw+"-webkit-appearance:none;appearance:none;"; var lb="font-size:11px;color:#888;display:block;margin-bottom:3px;white-space:nowrap;"; var c=function(w){return "flex:none;width:"+w+"px;"}; return '' +
           '<div style="display:flex;gap:8px;width:max-content;">' +
             '<div style="' + c(150) + '"><label style="' + lb + '">起算日期</label><input id="util_start_date" type="date" value="' + readingStartDate + '" style="' + di + '"></div>' +
             '<div style="' + c(92) + '"><label style="' + lb + '">起算度數</label><input id="util_start_degree" type="number" value="' + readingStartDegree + '" placeholder="度數" style="' + iw + '"></div>' +
