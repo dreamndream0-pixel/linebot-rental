@@ -7531,7 +7531,7 @@ function paymentMethodOptions(v) {
 function renderRentBillingRows(rows, leaseId) {
   if (!rows || !rows.length) return '<tr><td colspan="12" style="padding:16px;text-align:center;color:#aaa;">尚無租金繳納明細</td></tr>'
   var inp = 'box-sizing:border-box;height:32px;padding:0 6px;border:1px solid #E5E0D5;border-radius:6px;font-size:12px;background:#fff;'
-  var di = inp + '-webkit-appearance:none;appearance:none;color:#333;'  // 日期欄：白底、去 iOS 灰膠囊
+  var di = inp + '-webkit-appearance:none;appearance:none;color:#333;white-space:nowrap;overflow:hidden;'  // 日期欄：白底、去 iOS 灰膠囊、不換行
   return rows.map(function(r, idx) {
     var key = 'rent_' + idx
     var unpaid = Number(r.unpaid || 0)
@@ -7567,17 +7567,17 @@ function renderRentBillingRows(rows, leaseId) {
       '<td style="padding:4px 6px;font-size:12px;">' + r.index + '</td>' +
       '<td style="padding:3px;">' +
         '<div style="display:flex;gap:2px;align-items:center;">' +
-          '<input id="' + key + '_start" type="date" value="' + leaseDateInput(r.periodStart) + '" style="' + di + 'width:90px;" title="期間開始">' +
+          '<input id="' + key + '_start" type="date" value="' + leaseDateInput(r.periodStart) + '" style="' + di + 'width:118px;" title="期間開始">' +
           '<span style="font-size:11px;">~</span>' +
-          '<input id="' + key + '_end" type="date" value="' + leaseDateInput(r.periodEnd) + '" style="' + di + 'width:90px;" title="期間結束">' +
+          '<input id="' + key + '_end" type="date" value="' + leaseDateInput(r.periodEnd) + '" style="' + di + 'width:118px;" title="期間結束">' +
         '</div>' + unlockLabel +
       '</td>' +
-      '<td style="padding:3px;"><input id="' + key + '_amount" type="number" value="' + Number(r.amount || 0) + '" style="' + inp + 'width:66px;text-align:right;" title="應繳租金"></td>' +
-      '<td style="padding:3px;"><input id="' + key + '_duedate" type="date" value="' + leaseDateInput(r.dueDate) + '" style="' + di + 'width:90px;" title="應繳日期"></td>' +
+      '<td style="padding:3px;"><input id="' + key + '_amount" type="number" value="' + Number(r.amount || 0) + '" style="' + inp + 'width:70px;text-align:right;" title="應繳租金"></td>' +
+      '<td style="padding:3px;"><input id="' + key + '_duedate" type="date" value="' + leaseDateInput(r.dueDate) + '" style="' + di + 'width:118px;" title="應繳日期"></td>' +
       statusCell +
-      '<td style="padding:3px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳" style="' + inp + 'width:66px;"></td>' +
-      '<td style="padding:3px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="' + di + 'width:90px;"></td>' +
-      '<td style="padding:3px;"><select id="' + key + '_method" style="' + inp + 'width:66px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
+      '<td style="padding:3px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳" style="' + inp + 'width:70px;"></td>' +
+      '<td style="padding:3px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="' + di + 'width:118px;"></td>' +
+      '<td style="padding:3px;"><select id="' + key + '_method" style="' + inp + 'width:68px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
       '<td style="padding:3px;font-size:12px;white-space:nowrap;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="width:74px;font-size:11px;"> ' + receipt + '</td>' +
       '<td style="padding:6px;text-align:center;white-space:nowrap;">' +
         '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;" onclick="btnLoad(this,function(){return saveRentPayment(\'' + leaseId + '\',\'' + key + '\',\'' + (r.id || '') + '\')})">💾 儲存</button>' +
@@ -7590,7 +7590,7 @@ function renderRentBillingRows(rows, leaseId) {
 function renderUtilityBillingRows(rows, leaseId) {
   if (!rows || !rows.length) return '<tr><td colspan="16" style="padding:16px;text-align:center;color:#aaa;">尚無水電抄表明細</td></tr>'
   var inp = 'box-sizing:border-box;height:32px;padding:0 6px;border:1px solid #E5E0D5;border-radius:6px;font-size:12px;background:#fff;'
-  var di = inp + '-webkit-appearance:none;appearance:none;color:#333;'
+  var di = inp + '-webkit-appearance:none;appearance:none;color:#333;white-space:nowrap;overflow:hidden;'
   return rows.map(function(r) {
     var key = 'util_' + r.id
     var unpaid = Math.max(0, Number(r.amount || 0) - Number(r.paidAmount || 0))
@@ -7623,9 +7623,9 @@ function renderUtilityBillingRows(rows, leaseId) {
       '</tr>'
     }
     return '<tr>' + commonCells +
-      '<td style="padding:3px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳" style="' + inp + 'width:68px;"></td>' +
-      '<td style="padding:3px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="' + di + 'width:90px;"></td>' +
-      '<td style="padding:3px;"><select id="' + key + '_method" style="' + inp + 'width:66px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
+      '<td style="padding:3px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳" style="' + inp + 'width:72px;"></td>' +
+      '<td style="padding:3px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="' + di + 'width:118px;"></td>' +
+      '<td style="padding:3px;"><select id="' + key + '_method" style="' + inp + 'width:68px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
       '<td style="padding:3px;font-size:12px;white-space:nowrap;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="width:74px;font-size:11px;"> ' + receipt + '</td>' +
       '<td style="padding:3px;text-align:center;white-space:nowrap;">' +
         '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;" onclick="btnLoad(this,function(){return saveUtilityPayment(\'' + leaseId + '\',\'' + r.id + '\',\'' + key + '\')})">💾 儲存</button>' +
