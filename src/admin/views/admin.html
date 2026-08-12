@@ -1197,6 +1197,9 @@ function switchTab(tab) {
 function renderTab() {
   var el = document.getElementById('content')
   updatePageTitle()
+  // 上方統計卡片只在「總覽」頁顯示
+  var statsEl = document.getElementById('stats')
+  if (statsEl) statsEl.style.display = (currentTab === 'overview') ? '' : 'none'
   if (currentTab === 'overview') el.innerHTML = renderOverview()
   if (currentTab === 'tenants') el.innerHTML = renderTenants()
   if (currentTab === 'bookings') el.innerHTML = renderBookings()
@@ -5600,18 +5603,27 @@ async function renderManagedTab() {
     : MANAGED.list.map(managedCard).join('')
 
   el.innerHTML =
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;">' +
-      '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#7D6A9A;" onclick="btnLoad(this, showCommissionList)">📁 委託列表（' + MANAGED.list.length + '）</button>' +
-      '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#5A7D8C;" onclick="btnLoad(this, showLeaseList)">📋 代管清單</button>' +
-      '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#6B7F6E;" onclick="btnLoad(this, showManagedReport)">📊 收支報表</button>' +
-      (feat('smartlock') ? '<button class="btn spin-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#6B5A9A;" onclick="btnLoad(this, openLockManager)">🔐 門鎖管理</button>' : '') +
-      (feat('ragic') ? (
-        '<button class="btn ragic-sync-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#8B6A42;margin-left:auto;position:relative;overflow:hidden;min-width:120px;" onclick="ragicSyncBtn(this,\'contract\')">🔄 合約同步</button>' +
-        '<button class="btn ragic-sync-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#4A7A6A;position:relative;overflow:hidden;min-width:120px;" onclick="ragicSyncBtn(this,\'utility\')">⚡ 電費同步</button>' +
-        '<button class="btn ragic-sync-btn" style="width:auto;white-space:nowrap;padding:10px 18px;background:#7A5A3A;position:relative;overflow:hidden;min-width:120px;" onclick="ragicSyncBtn(this,\'rent\')">💰 租金同步</button>'
-      ) : '') +
+    '<div style="margin-bottom:18px;">' +
+      '<div style="display:flex;gap:8px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;">' +
+        '<button class="btn spin-btn" style="flex:none;width:auto;white-space:nowrap;padding:10px 18px;background:#7D6A9A;" onclick="btnLoad(this, showCommissionList)">📁 委託列表</button>' +
+        '<button class="btn spin-btn" style="flex:none;width:auto;white-space:nowrap;padding:10px 18px;background:#5A7D8C;" onclick="btnLoad(this, showLeaseList)">📋 代管清單</button>' +
+        '<button class="btn spin-btn" style="flex:none;width:auto;white-space:nowrap;padding:10px 18px;background:#6B7F6E;" onclick="btnLoad(this, showManagedReport)">📊 收支報表</button>' +
+        (feat('smartlock') ? '<button class="btn spin-btn" style="flex:none;width:auto;white-space:nowrap;padding:10px 18px;background:#6B5A9A;" onclick="btnLoad(this, openLockManager)">🔐 門鎖管理</button>' : '') +
+        (feat('ragic') ? '<button class="btn" style="flex:none;width:auto;white-space:nowrap;padding:10px 18px;background:#8B6A42;" onclick="toggleSyncMenu()">🔄 資料同步 ▾</button>' : '') +
+      '</div>' +
+      (feat('ragic') ?
+        '<div id="syncMenu" style="display:none;gap:8px;flex-wrap:wrap;margin-top:8px;">' +
+          '<button class="btn ragic-sync-btn" style="flex:none;width:auto;white-space:nowrap;padding:9px 16px;font-size:13px;background:#8B6A42;position:relative;overflow:hidden;min-width:120px;" onclick="ragicSyncBtn(this,\'contract\')">🔄 合約同步</button>' +
+          '<button class="btn ragic-sync-btn" style="flex:none;width:auto;white-space:nowrap;padding:9px 16px;font-size:13px;background:#4A7A6A;position:relative;overflow:hidden;min-width:120px;" onclick="ragicSyncBtn(this,\'utility\')">⚡ 電費同步</button>' +
+          '<button class="btn ragic-sync-btn" style="flex:none;width:auto;white-space:nowrap;padding:9px 16px;font-size:13px;background:#7A5A3A;position:relative;overflow:hidden;min-width:120px;" onclick="ragicSyncBtn(this,\'rent\')">💰 租金同步</button>' +
+        '</div>'
+      : '') +
     '</div>' +
     '<div id="managedReportBox"></div>'
+}
+function toggleSyncMenu() {
+  var m = document.getElementById('syncMenu')
+  if (m) m.style.display = (m.style.display === 'flex') ? 'none' : 'flex'
 }
 
 // ── Ragic 同步：進度直接顯示在按鈕上 ─────────────────────────────
