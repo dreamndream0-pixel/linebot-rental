@@ -7128,7 +7128,16 @@ function renderLeaseList() {
   }
 
   // 依房東（屋主）分組（先套用搜尋與排序）
-  var list = applyLeaseFilterSort(d[LEASE_TAB] || [])
+  // 有輸入搜尋字時 → 跨所有狀態一起找（避免資料分散在不同分頁而找不到）
+  var baseList
+  if (LEASE_SEARCH.trim()) {
+    var _all = [].concat(d.active || [], d.expiring || [], d.expired || [], d.ended || [])
+    var _seen = {}
+    baseList = _all.filter(function(x){ if (_seen[x.id]) return false; _seen[x.id] = true; return true })
+  } else {
+    baseList = d[LEASE_TAB] || []
+  }
+  var list = applyLeaseFilterSort(baseList)
   var shownCount = list.length
   var groups = {}, order = []
   list.forEach(function(l) { var k = l.ownerName || '（未填房東）'; if (!groups[k]) { groups[k] = []; order.push(k) } groups[k].push(l) })
@@ -7173,7 +7182,7 @@ function renderLeaseList() {
           .map(function(o){ return '<option value="' + o[0] + '"' + (LEASE_DUE===o[0]?' selected':'') + '>' + o[1] + '</option>' }).join('') +
       '</select>' +
       '<span style="font-size:12px;color:#888;white-space:nowrap;">點表頭箭頭可排序</span>' +
-      '<span style="font-size:12px;color:#888;white-space:nowrap;">共 ' + shownCount + ' 筆</span>' +
+      '<span style="font-size:12px;color:#888;white-space:nowrap;">共 ' + shownCount + ' 筆' + (LEASE_SEARCH.trim() ? '（跨所有狀態）' : '') + '</span>' +
       '<button class="spin-btn" onclick="btnLoad(this,function(){return bulkSetPrepaid()})" style="padding:8px 12px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:#B07A2E;color:#fff;white-space:nowrap;">批次設定預收電費</button>' +
     '</div>' +
     groupsHtml +
