@@ -165,6 +165,58 @@ router.post('/admin/api/smartlock/seed', express.json(), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── 從 TTLock 帳號抓取現有門鎖，覆蓋房間門鎖資料（保留 userId/leaseId）──
+// 依內建 room↔lockId 對照表指派，但只保留 TTLock 帳號目前實際存在的鎖；
+// 帳號中尚未對應到房間的鎖（可能是新加的）會回報，供房東手動綁定。
+router.post('/admin/api/smartlock/import-ttlock', express.json(), async (req, res) => {
+  const ctx = await authLandlord(req, res); if (!ctx) return
+  try {
+    const landlord = await prisma.landlord.findUnique({
+      where: { id: ctx.landlordId },
+      select: { ttlockConfig: true, lockRooms: true },
+    })
+    const creds = parseCreds(landlord)
+    if (!creds) return res.status(400).json({ error: '尚未設定 TTLock 帳密' })
+    const result = await listLocks(creds)
+    if (result.error) return res.status(502).json(result)
+    const liveLocks = result.list || []
+    const liveIds = new Set(liveLocks.map(l => Number(l.lockId)))
+    const cur = parseRoomsJson(landlord && landlord.lockRooms)
+
+    const merged = {}
+    const usedIds = new Set()
+    for (const key of Object.keys(DEFAULT_LOCK_DB)) {
+      const def = DEFAULT_LOCK_DB[key]
+      let entry
+      if (def.type === 'ttlock' && Array.isArray(def.ids)) {
+        const ids = def.ids.map(Number).filter(id => liveIds.has(id))
+        ids.forEach(id => usedIds.add(id))
+        entry = ids.length ? { type: 'ttlock', ids } : { type: 'keypad' }
+      } else {
+        entry = { type: def.type }
+      }
+      // 保留已填的房客 UID 與綁定合約
+      if (cur[key] && cur[key].userId) entry.userId = cur[key].userId
+      if (cur[key] && cur[key].leaseId) entry.leaseId = cur[key].leaseId
+      merged[key] = entry
+    }
+    await prisma.landlord.update({
+      where: { id: ctx.landlordId },
+      data: { lockRooms: JSON.stringify(merged) },
+    })
+    const unmatched = liveLocks
+      .filter(l => !usedIds.has(Number(l.lockId)))
+      .map(l => ({ name: l.name || '(未命名)', lockId: l.lockId }))
+    res.json({
+      ok: true,
+      count: Object.keys(merged).length,
+      totalLocks: liveLocks.length,
+      matched: usedIds.size,
+      unmatched,
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── 用量／帳款：列出各房客本年度取密碼次數與待收帳款 ──
 router.get('/admin/api/smartlock/usage', async (req, res) => {
   const ctx = await authLandlord(req, res); if (!ctx) return
