@@ -7508,7 +7508,7 @@ function renderRentBillingRows(rows, leaseId) {
         '<td style="padding:4px 6px;text-align:center;">' +
           '<button class="btn" style="width:auto;padding:6px 12px;font-size:12px;background:#7A6A52;" onclick="unlockRow(\'' + key + '\',\'' + leaseId + '\',\'rent\')">🔓 解除鎖定</button>' +
         '</td>' +
-        '<td style="padding:4px 6px;text-align:center;"><button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'RENT\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate) + '\')})">LINE提醒</button></td>' +
+        '<td style="padding:4px 6px;text-align:center;"><button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'RENT\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate) + '\',\'\',\'' + leaseDateInput(r.periodStart) + '\',\'' + leaseDateInput(r.periodEnd) + '\')})">LINE提醒</button></td>' +
       '</tr>'
     }
 
@@ -7536,7 +7536,7 @@ function renderRentBillingRows(rows, leaseId) {
         '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;" onclick="btnLoad(this,function(){return saveRentPayment(\'' + leaseId + '\',\'' + key + '\',\'' + (r.id || '') + '\')})">💾 儲存</button>' +
         (r.id ? ' <button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#C0524A;" onclick="btnLoad(this,function(){return deleteRentPayment(\'' + leaseId + '\',\'' + r.id + '\')})">×</button>' : '') +
       '</td>' +
-      '<td style="padding:6px;text-align:center;"><button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'RENT\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate) + '\')})">LINE提醒</button></td>' +
+      '<td style="padding:6px;text-align:center;"><button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'RENT\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate) + '\',\'\',\'' + leaseDateInput(r.periodStart) + '\',\'' + leaseDateInput(r.periodEnd) + '\')})">LINE提醒</button></td>' +
     '</tr>'
   }).join('')
 }
@@ -7837,7 +7837,7 @@ async function saveUtilityPayment(leaseId, readingId, key) {
   openLeaseLedger(leaseId)
 }
 
-function sendLeasePaymentReminder(leaseId, kind, amount, dueDate, readingId) {
+function sendLeasePaymentReminder(leaseId, kind, amount, dueDate, readingId, periodStart, periodEnd) {
   var label = kind === 'UTILITY' ? '水電' : '租金'
   // 用頁內 modal（LINE / 手機瀏覽器的原生 confirm() 有時被封鎖 → 按了沒反應）
   return new Promise(function(resolve) {
@@ -7849,7 +7849,7 @@ function sendLeasePaymentReminder(leaseId, kind, amount, dueDate, readingId) {
       onOk: async function() {
         try {
           var res = await fetch('/admin/api/managed/lease/' + leaseId + '/remind?key=' + encodeURIComponent(KEY), {
-            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ kind: kind, amount: amount, dueDate: dueDate, readingId: readingId || null })
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ kind: kind, amount: amount, dueDate: dueDate, readingId: readingId || null, periodStart: periodStart || null, periodEnd: periodEnd || null })
           })
           if (!res.ok) {
             var data = {}; try { data = await res.json() } catch(e) {}

@@ -158,16 +158,26 @@ function reminderBubble(o) {
   }
 }
 
-// 租金提醒訊息
+const CYCLE_LABEL = { MONTHLY: '月繳', BIMONTHLY: '雙月繳', QUARTERLY: '季繳', SEMIANNUAL: '半年繳', YEARLY: '年繳' }
+
+// 租金提醒訊息（含租期期間、繳費週期明細）
 function rentReminderFlex(lease) {
   const dueStr = lease.dueDateStr ? fmtYMD(lease.dueDateStr) : (lease.rentPayDay ? ('每月 ' + lease.rentPayDay + ' 號') : null)
+  const rows = []
+  if (lease.periodStartStr && lease.periodEndStr) {
+    rows.push(remRow('租金期間', fmtYMD(lease.periodStartStr) + ' → ' + fmtYMD(lease.periodEndStr)))
+  }
+  if (lease.paymentCycle && CYCLE_LABEL[lease.paymentCycle]) {
+    rows.push(remRow('繳費週期', CYCLE_LABEL[lease.paymentCycle]))
+  }
+  if (lease.payMethod) rows.push(remRow('繳費方式', String(lease.payMethod)))
   return reminderBubble({
     alt: '租金繳費通知', title: '租金繳費通知',
     subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
     subColor: '#DCEBDD', accent: '#5E8663', tint: '#EFF5EF', deep: '#3E6144',
     tenant: lease.tenantName, intro: '提醒您本期租金即將到期',
     amountLabel: '本期應繳租金', amount: Number(lease.rent || 0), dueStr: dueStr,
-    rows: [],
+    detailTitle: '租金明細', rows: rows,
     footer: '請於期限前完成繳費，謝謝您',
   })
 }
