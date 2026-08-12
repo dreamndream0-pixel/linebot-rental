@@ -189,6 +189,23 @@ function rentReminderFlex(lease) {
   })
 }
 
+// 租金收款確認（房東登記收款後推播給房客）
+function rentReceiptFlex(lease) {
+  const rows = []
+  if (lease.periodStartStr && lease.periodEndStr) rows.push(remRow('租金期間', fmtYMD(lease.periodStartStr) + ' → ' + fmtYMD(lease.periodEndStr)))
+  if (lease.paidDateStr) rows.push(remRow('繳款日期', fmtYMD(lease.paidDateStr)))
+  if (lease.payMethod) rows.push(remRow('繳費方式', String(lease.payMethod)))
+  return reminderBubble({
+    alt: '租金收款確認', title: '租金收款確認',
+    subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
+    subColor: '#DCEBDD', accent: '#5E8663', tint: '#EFF5EF', deep: '#3E6144',
+    tenant: lease.tenantName, intro: '已收到您的租金，感謝您的配合',
+    amountLabel: '本次已收金額', amount: Number(lease.paidAmount || 0), dueStr: null,
+    detailTitle: '繳費明細', rows: rows,
+    footer: '如有疑問請與我們聯繫，謝謝您',
+  })
+}
+
 // 水電提醒訊息（含抄表明細：起算日/度數、結算日/度數、使用度數、費率）
 function utilReminderFlex(lease) {
   const r = lease.reading || null
@@ -270,4 +287,4 @@ function startLeaseReminders() {
   console.log('✅ 租約繳費提醒排程已啟動（每日 9:00 檢查）')
 }
 
-module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex }
+module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex }

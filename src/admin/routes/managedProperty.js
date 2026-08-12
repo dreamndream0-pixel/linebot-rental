@@ -3,7 +3,7 @@ const express = require('express')
 const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
-const { getClientForLease, pushToLeaseTenant, rentReminderFlex, utilReminderFlex } = require('../../leaseReminder')
+const { getClientForLease, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex } = require('../../leaseReminder')
 const { findLineTenant } = require('../../tenantStore')
 
 // 權限過濾：super 看全部，房東只看自己的
@@ -1417,6 +1417,30 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
     res.json({ ok: true, via: result.via })
   } catch (e) {
     console.error('手動繳費提醒失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── 收款確認：登記收款後推播「已收款」明細給房客（目前支援租金）──
+router.post('/admin/api/managed/lease/:leaseId/receipt', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    if (!lease.lineUserId) return res.status(400).json({ error: '此租約尚未綁定 LINE 租客（合約內 LINE userID 為空）' })
+    const b = req.body
+    const data = { ...lease, managedTitle: lease.managedProperty.title }
+    data.paidAmount = parseInt(b.paidAmount) || 0
+    data.paidDateStr = b.paidDate || null
+    data.payMethod = b.payMethod || lease.payMethod || null
+    data.periodStartStr = b.periodStart || null
+    data.periodEndStr = b.periodEnd || null
+    const message = rentReceiptFlex(data)
+    const result = await pushToLeaseTenant(lease, message)
+    res.json({ ok: true, via: result.via })
+  } catch (e) {
+    console.error('收款確認推播失敗:', e.message)
     res.status(500).json({ error: e.message })
   }
 })

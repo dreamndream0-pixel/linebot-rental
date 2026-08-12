@@ -7861,7 +7861,25 @@ async function saveRentPayment(leaseId, key, rentPaymentId) {
   var data = {}; try { data = await res.json() } catch(e) {}
   if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || res.status)); return }
   showToast('✅ 租金繳費已儲存')
-  openLeaseLedger(leaseId)
+  // 詢問是否推播「收款確認」給房客
+  showConfirm({
+    icon: '📩', title: '發送收款確認給房客？',
+    msg: '將以 LINE 推播「租金收款確認」給房客（已收金額 NT$ ' + Number(body.paidAmount).toLocaleString() + '）。',
+    okLabel: '發送', cancelLabel: '不用',
+    onOk: async function() {
+      try {
+        var r = await fetch('/admin/api/managed/lease/' + leaseId + '/receipt?key=' + encodeURIComponent(KEY), {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ kind: 'RENT', paidAmount: body.paidAmount, paidDate: body.paidDate, payMethod: body.payMethod, periodStart: body.periodStart, periodEnd: body.periodEnd })
+        })
+        var rd = {}; try { rd = await r.json() } catch(e) {}
+        if (!r.ok) showInfoModal('❌ 收款確認發送失敗', (rd.error || ('HTTP ' + r.status)) + '\n\n若顯示 invalid（無效的 to），代表此房客尚未加入該 LINE Bot，或合約內 LINE userID 有誤。')
+        else showToast('✅ 已發送收款確認' + (rd.via ? '（' + rd.via + '）' : ''))
+      } catch (e) { showToast('❌ 發送失敗') }
+      openLeaseLedger(leaseId)
+    },
+    onCancel: function() { openLeaseLedger(leaseId) }
+  })
 }
 
 async function saveUtilityPayment(leaseId, readingId, key) {
