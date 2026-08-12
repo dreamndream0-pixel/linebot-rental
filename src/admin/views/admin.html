@@ -7530,7 +7530,8 @@ function paymentMethodOptions(v) {
 }
 function renderRentBillingRows(rows, leaseId) {
   if (!rows || !rows.length) return '<tr><td colspan="12" style="padding:16px;text-align:center;color:#aaa;">尚無租金繳納明細</td></tr>'
-  var inp = 'padding:5px;border:1px solid #E5E0D5;border-radius:6px;font-size:12px;'
+  var inp = 'box-sizing:border-box;height:32px;padding:0 6px;border:1px solid #E5E0D5;border-radius:6px;font-size:12px;background:#fff;'
+  var di = inp + '-webkit-appearance:none;appearance:none;color:#333;'  // 日期欄：白底、去 iOS 灰膠囊
   return rows.map(function(r, idx) {
     var key = 'rent_' + idx
     var unpaid = Number(r.unpaid || 0)
@@ -7559,25 +7560,25 @@ function renderRentBillingRows(rows, leaseId) {
     }
 
     // ── 可編輯列──
-    var statusCell = '<td style="padding:8px;font-size:12px;text-align:right;color:' + (unpaid > 0 ? '#C0524A' : '#2E7D32') + ';">' + leaseMoney(unpaid) + '</td>' +
-      '<td style="padding:8px;font-size:12px;text-align:center;">' + (paid ? '<span style="color:#2E7D32;font-weight:700;">已收款</span>' : '<span style="color:#C0524A;font-weight:700;">未繳</span>') + '</td>'
+    var statusCell = '<td style="padding:3px 6px;font-size:12px;text-align:right;white-space:nowrap;color:' + (unpaid > 0 ? '#C0524A' : '#2E7D32') + ';">' + leaseMoney(unpaid) + '</td>' +
+      '<td style="padding:3px 6px;font-size:12px;text-align:center;white-space:nowrap;">' + (paid ? '<span style="color:#2E7D32;font-weight:700;">已收款</span>' : '<span style="color:#C0524A;font-weight:700;">未繳</span>') + '</td>'
     var unlockLabel = r.locked ? '<br><span style="font-size:11px;color:#E07B39;">已解鎖</span>' : ''
     return '<tr>' +
       '<td style="padding:4px 6px;font-size:12px;">' + r.index + '</td>' +
-      '<td style="padding:4px;min-width:150px;">' +
-        '<div style="display:flex;gap:3px;align-items:center;">' +
-          '<input id="' + key + '_start" type="date" value="' + leaseDateInput(r.periodStart) + '" style="' + inp + 'width:100px;" title="期間開始">' +
+      '<td style="padding:3px;">' +
+        '<div style="display:flex;gap:2px;align-items:center;">' +
+          '<input id="' + key + '_start" type="date" value="' + leaseDateInput(r.periodStart) + '" style="' + di + 'width:90px;" title="期間開始">' +
           '<span style="font-size:11px;">~</span>' +
-          '<input id="' + key + '_end" type="date" value="' + leaseDateInput(r.periodEnd) + '" style="' + inp + 'width:100px;" title="期間結束">' +
+          '<input id="' + key + '_end" type="date" value="' + leaseDateInput(r.periodEnd) + '" style="' + di + 'width:90px;" title="期間結束">' +
         '</div>' + unlockLabel +
       '</td>' +
-      '<td style="padding:4px;"><input id="' + key + '_amount" type="number" value="' + Number(r.amount || 0) + '" style="' + inp + 'width:76px;text-align:right;" title="應繳租金"></td>' +
-      '<td style="padding:4px;"><input id="' + key + '_duedate" type="date" value="' + leaseDateInput(r.dueDate) + '" style="' + inp + 'width:104px;" title="應繳日期"></td>' +
+      '<td style="padding:3px;"><input id="' + key + '_amount" type="number" value="' + Number(r.amount || 0) + '" style="' + inp + 'width:66px;text-align:right;" title="應繳租金"></td>' +
+      '<td style="padding:3px;"><input id="' + key + '_duedate" type="date" value="' + leaseDateInput(r.dueDate) + '" style="' + di + 'width:90px;" title="應繳日期"></td>' +
       statusCell +
-      '<td style="padding:4px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳" style="' + inp + 'width:76px;"></td>' +
-      '<td style="padding:4px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="' + inp + 'width:104px;"></td>' +
-      '<td style="padding:4px;"><select id="' + key + '_method" style="' + inp + 'width:78px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
-      '<td style="padding:4px;font-size:12px;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="width:80px;font-size:11px;"><br>' + receipt + '</td>' +
+      '<td style="padding:3px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳" style="' + inp + 'width:66px;"></td>' +
+      '<td style="padding:3px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="' + di + 'width:90px;"></td>' +
+      '<td style="padding:3px;"><select id="' + key + '_method" style="' + inp + 'width:66px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
+      '<td style="padding:3px;font-size:12px;white-space:nowrap;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="width:74px;font-size:11px;"> ' + receipt + '</td>' +
       '<td style="padding:6px;text-align:center;white-space:nowrap;">' +
         '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;" onclick="btnLoad(this,function(){return saveRentPayment(\'' + leaseId + '\',\'' + key + '\',\'' + (r.id || '') + '\')})">💾 儲存</button>' +
         (r.id ? ' <button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#C0524A;" onclick="btnLoad(this,function(){return deleteRentPayment(\'' + leaseId + '\',\'' + r.id + '\')})">×</button>' : '') +
@@ -7588,29 +7589,32 @@ function renderRentBillingRows(rows, leaseId) {
 }
 function renderUtilityBillingRows(rows, leaseId) {
   if (!rows || !rows.length) return '<tr><td colspan="16" style="padding:16px;text-align:center;color:#aaa;">尚無水電抄表明細</td></tr>'
+  var inp = 'box-sizing:border-box;height:32px;padding:0 6px;border:1px solid #E5E0D5;border-radius:6px;font-size:12px;background:#fff;'
+  var di = inp + '-webkit-appearance:none;appearance:none;color:#333;'
   return rows.map(function(r) {
     var key = 'util_' + r.id
     var unpaid = Math.max(0, Number(r.amount || 0) - Number(r.paidAmount || 0))
     var receipt = r.receiptUrl ? '<a href="' + esc(r.receiptUrl) + '" target="_blank" style="font-size:12px;color:#4A6741;">查看</a>' : '<span style="font-size:12px;color:#aaa;">無</span>'
     var isLocked = (r.paidAmount || 0) > 0 && !UNLOCKED_ROWS[key]
+    var tc = 'padding:3px 6px;font-size:12px;white-space:nowrap;'
     var commonCells =
-      '<td style="padding:8px;font-size:12px;">' + leaseDate(r.startDate) + '</td>' +
-      '<td style="padding:8px;font-size:12px;text-align:right;">' + Number(r.startDegree || 0).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:12px;">' + leaseDate(r.endDate) + '</td>' +
-      '<td style="padding:8px;font-size:12px;text-align:right;">' + Number(r.endDegree || 0).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:12px;text-align:right;">' + Number(r.usedDegree || 0).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:12px;text-align:right;">' + Number(r.rate || 0).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:12px;text-align:right;">' + leaseMoney(r.amount) + '</td>' +
-      '<td style="padding:8px;font-size:12px;">' + leaseDate(r.dueDate) + '</td>' +
-      '<td style="padding:8px;font-size:12px;text-align:right;color:' + (unpaid > 0 ? '#C0524A' : '#2E7D32') + ';">' + leaseMoney(unpaid) + '</td>' +
-      '<td style="padding:8px;font-size:12px;">' + esc(r.note || '') + '</td>'
+      '<td style="' + tc + '">' + leaseDate(r.startDate) + '</td>' +
+      '<td style="' + tc + 'text-align:right;">' + Number(r.startDegree || 0).toLocaleString() + '</td>' +
+      '<td style="' + tc + '">' + leaseDate(r.endDate) + '</td>' +
+      '<td style="' + tc + 'text-align:right;">' + Number(r.endDegree || 0).toLocaleString() + '</td>' +
+      '<td style="' + tc + 'text-align:right;">' + Number(r.usedDegree || 0).toLocaleString() + '</td>' +
+      '<td style="' + tc + 'text-align:right;">' + Number(r.rate || 0).toLocaleString() + '</td>' +
+      '<td style="' + tc + 'text-align:right;">' + leaseMoney(r.amount) + '</td>' +
+      '<td style="' + tc + '">' + leaseDate(r.dueDate) + '</td>' +
+      '<td style="' + tc + 'text-align:right;color:' + (unpaid > 0 ? '#C0524A' : '#2E7D32') + ';">' + leaseMoney(unpaid) + '</td>' +
+      '<td style="padding:3px 6px;font-size:12px;">' + esc(r.note || '') + '</td>'
     if (isLocked) {
       return '<tr style="background:#F9FBF9;">' + commonCells +
-        '<td style="padding:8px;font-size:12px;font-weight:600;">' + Number(r.paidAmount||0).toLocaleString() + '</td>' +
-        '<td style="padding:8px;font-size:12px;">' + leaseDate(r.paidDate) + '</td>' +
-        '<td style="padding:8px;font-size:12px;">' + esc(r.payMethod || '—') + '</td>' +
-        '<td style="padding:8px;font-size:12px;">' + receipt + '</td>' +
-        '<td style="padding:8px;text-align:center;white-space:nowrap;">' +
+        '<td style="' + tc + 'font-weight:600;">' + Number(r.paidAmount||0).toLocaleString() + '</td>' +
+        '<td style="' + tc + '">' + leaseDate(r.paidDate) + '</td>' +
+        '<td style="' + tc + '">' + esc(r.payMethod || '—') + '</td>' +
+        '<td style="' + tc + '">' + receipt + '</td>' +
+        '<td style="padding:3px 6px;text-align:center;white-space:nowrap;">' +
           '<button class="btn" style="width:auto;padding:6px 12px;font-size:12px;background:#7A6A52;" onclick="unlockRow(\'' + key + '\',\'' + leaseId + '\',\'util\')">🔓 解除鎖定</button>' +
           ' <button class="btn spin-btn" style="width:auto;padding:5px 8px;font-size:12px;background:#5A7D8C;" title="編輯抄表" onclick="editUtilityReading(\'' + leaseId + '\',' + JSON.stringify(r) + ')">✎</button>' +
           ' <button class="btn spin-btn" style="width:auto;padding:5px 8px;font-size:12px;background:#C0524A;" onclick="btnLoad(this,function(){return deleteUtilityReading(\'' + leaseId + '\',\'' + r.id + '\')})">×</button>' +
@@ -7619,11 +7623,11 @@ function renderUtilityBillingRows(rows, leaseId) {
       '</tr>'
     }
     return '<tr>' + commonCells +
-      '<td style="padding:8px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳金額" style="width:95px;padding:6px;border:1px solid #E5E0D5;border-radius:7px;font-size:12px;"></td>' +
-      '<td style="padding:8px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="width:130px;padding:6px;border:1px solid #E5E0D5;border-radius:7px;font-size:12px;"></td>' +
-      '<td style="padding:8px;"><select id="' + key + '_method" style="width:90px;padding:6px;border:1px solid #E5E0D5;border-radius:7px;font-size:12px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
-      '<td style="padding:8px;font-size:12px;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="width:92px;font-size:11px;"><br>' + receipt + '</td>' +
-      '<td style="padding:8px;text-align:center;white-space:nowrap;">' +
+      '<td style="padding:3px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳" style="' + inp + 'width:68px;"></td>' +
+      '<td style="padding:3px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="' + di + 'width:90px;"></td>' +
+      '<td style="padding:3px;"><select id="' + key + '_method" style="' + inp + 'width:66px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
+      '<td style="padding:3px;font-size:12px;white-space:nowrap;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="width:74px;font-size:11px;"> ' + receipt + '</td>' +
+      '<td style="padding:3px;text-align:center;white-space:nowrap;">' +
         '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;" onclick="btnLoad(this,function(){return saveUtilityPayment(\'' + leaseId + '\',\'' + r.id + '\',\'' + key + '\')})">💾 儲存</button>' +
         ' <button class="btn spin-btn" style="width:auto;padding:5px 8px;font-size:12px;background:#5A7D8C;" title="編輯抄表" onclick="editUtilityReading(\'' + leaseId + '\',' + JSON.stringify(r) + ')">✎</button>' +
         ' <button class="btn spin-btn" style="width:auto;padding:5px 8px;font-size:12px;background:#C0524A;" onclick="btnLoad(this,function(){return deleteUtilityReading(\'' + leaseId + '\',\'' + r.id + '\')})">×</button>' +
