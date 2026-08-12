@@ -7223,12 +7223,14 @@ function settleRecalc() {
   var refund = deposit + prepaid - total
   var box = document.getElementById('settleResult')
   if (!box) return
+  var n2 = function(x){ return Number(x || 0).toLocaleString() }
+  var formula = '<div style="font-size:12px;color:#888;white-space:nowrap;">押金 ' + n2(deposit) + ' ＋ 預收 ' + n2(prepaid) + ' － 應扣 ' + n2(total) + '</div>'
   if (refund >= 0) {
-    box.innerHTML = '<div style="font-size:13px;color:#888;">押金 ' + leaseMoney(deposit) + ' ＋ 預收 ' + leaseMoney(prepaid) + ' － 應扣 ' + leaseMoney(total) + '</div>' +
-      '<div style="font-size:20px;font-weight:800;color:#2E7D46;margin-top:4px;">應退還房客 ' + leaseMoney(refund) + '</div>'
+    box.innerHTML = formula +
+      '<div style="font-size:19px;font-weight:800;color:#2E7D46;margin-top:4px;white-space:nowrap;">應退還房客 ' + leaseMoney(refund) + '</div>'
   } else {
-    box.innerHTML = '<div style="font-size:13px;color:#888;">押金 ' + leaseMoney(deposit) + ' ＋ 預收 ' + leaseMoney(prepaid) + ' － 應扣 ' + leaseMoney(total) + '</div>' +
-      '<div style="font-size:20px;font-weight:800;color:#C0524A;margin-top:4px;">應補繳 ' + leaseMoney(-refund) + '</div>'
+    box.innerHTML = formula +
+      '<div style="font-size:19px;font-weight:800;color:#C0524A;margin-top:4px;white-space:nowrap;">應補繳 ' + leaseMoney(-refund) + '</div>'
   }
 }
 function settleMeterCalc() {
