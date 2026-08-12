@@ -6994,7 +6994,7 @@ async function loadManagedOpts() {
 
 // 代管清單分頁狀態
 var LEASE_TAB = 'active'
-var LEASE_SORT = 'tenant'   // tenant / room / title / rent / end / nextRent
+var LEASE_SORT = 'room'   // 預設房號升冪：tenant / room / title / rent / end / nextRent
 var LEASE_SORT_DIR = 'asc'
 var LEASE_SEARCH = ''
 var LEASE_DUE = ''          // '' / '7' / '14' / '30'：只看即將繳費 N 天內
@@ -7078,7 +7078,7 @@ function renderLeaseList() {
 
   function tabBtn(key, label, count, color) {
     var active = LEASE_TAB === key
-    return '<button class="spin-btn" onclick="btnLoad(this, function(){ LEASE_TAB=\'' + key + '\'; if(LEASE_TAB===\'rentDueSoon\'){ LEASE_SORT=\'nextRent\'; LEASE_SORT_DIR=\'asc\'; } return renderLeaseList() })" style="flex:none;white-space:nowrap;padding:8px 16px;border:none;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;background:' + (active ? color : '#EEE') + ';color:' + (active ? '#fff' : '#888') + ';">' + label + ' ' + count + '</button>'
+    return '<button class="spin-btn" onclick="btnLoad(this, function(){ LEASE_TAB=\'' + key + '\'; return renderLeaseList() })" style="flex:none;white-space:nowrap;padding:8px 16px;border:none;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;background:' + (active ? color : '#EEE') + ';color:' + (active ? '#fff' : '#888') + ';">' + label + ' ' + count + '</button>'
   }
   function fmt(dt) { return dt ? new Date(dt).toLocaleDateString('zh-TW') : '—' }
   function sortTh(key, label) {
