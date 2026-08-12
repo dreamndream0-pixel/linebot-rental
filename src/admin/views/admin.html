@@ -7603,7 +7603,7 @@ function renderRentBillingRows(rows, leaseId) {
         '<td style="padding:4px 6px;font-size:12px;">' + esc(r.payMethod || '—') + '</td>' +
         '<td style="padding:4px 6px;font-size:12px;">' + receipt + '</td>' +
         '<td style="padding:4px 6px;text-align:center;">' +
-          '<button class="btn" style="width:auto;padding:6px 12px;font-size:12px;background:#7A6A52;" onclick="unlockRow(\'' + key + '\',\'' + leaseId + '\',\'rent\')">🔓 解除鎖定</button>' +
+          '<button class="btn" style="width:auto;padding:6px 12px;font-size:12px;background:#7A6A52;white-space:nowrap;" onclick="unlockRow(\'' + key + '\',\'' + leaseId + '\',\'rent\')">🔓 解除鎖定</button>' +
         '</td>' +
         '<td style="padding:4px 6px;text-align:center;"><button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'RENT\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate) + '\',\'\',\'' + leaseDateInput(r.periodStart) + '\',\'' + leaseDateInput(r.periodEnd) + '\')})">LINE提醒</button></td>' +
       '</tr>'
@@ -7628,7 +7628,7 @@ function renderRentBillingRows(rows, leaseId) {
       '<td style="padding:3px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳" style="' + inp + 'width:70px;"></td>' +
       '<td style="padding:3px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="' + di + 'width:118px;"></td>' +
       '<td style="padding:3px;"><select id="' + key + '_method" style="' + inp + 'width:68px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
-      '<td style="padding:3px;font-size:12px;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><div style="white-space:nowrap;"><input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="max-width:130px;font-size:11px;"></div><div style="margin-top:2px;white-space:nowrap;">' + receipt + '</div></td>' +
+      '<td style="padding:3px;font-size:12px;white-space:nowrap;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><label style="display:inline-block;padding:5px 10px;background:#EFEDE8;border:1px solid #E5E0D5;border-radius:6px;font-size:12px;cursor:pointer;">📎 上傳<input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="display:none;"></label> ' + receipt + '</td>' +
       '<td style="padding:6px;text-align:center;white-space:nowrap;">' +
         '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;" onclick="btnLoad(this,function(){return saveRentPayment(\'' + leaseId + '\',\'' + key + '\',\'' + (r.id || '') + '\')})">💾 儲存</button>' +
         (r.id ? ' <button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#C0524A;" onclick="btnLoad(this,function(){return deleteRentPayment(\'' + leaseId + '\',\'' + r.id + '\')})">×</button>' : '') +
@@ -7665,7 +7665,7 @@ function renderUtilityBillingRows(rows, leaseId) {
         '<td style="' + tc + '">' + esc(r.payMethod || '—') + '</td>' +
         '<td style="' + tc + '">' + receipt + '</td>' +
         '<td style="padding:3px 6px;text-align:center;white-space:nowrap;">' +
-          '<button class="btn" style="width:auto;padding:6px 12px;font-size:12px;background:#7A6A52;" onclick="unlockRow(\'' + key + '\',\'' + leaseId + '\',\'util\')">🔓 解除鎖定</button>' +
+          '<button class="btn" style="width:auto;padding:6px 12px;font-size:12px;background:#7A6A52;white-space:nowrap;" onclick="unlockRow(\'' + key + '\',\'' + leaseId + '\',\'util\')">🔓 解除鎖定</button>' +
           ' <button class="btn spin-btn" style="width:auto;padding:5px 8px;font-size:12px;background:#5A7D8C;" title="編輯抄表" onclick="editUtilityReading(\'' + leaseId + '\',' + JSON.stringify(r) + ')">✎</button>' +
           ' <button class="btn spin-btn" style="width:auto;padding:5px 8px;font-size:12px;background:#C0524A;" onclick="btnLoad(this,function(){return deleteUtilityReading(\'' + leaseId + '\',\'' + r.id + '\')})">×</button>' +
         '</td>' +
@@ -7676,7 +7676,7 @@ function renderUtilityBillingRows(rows, leaseId) {
       '<td style="padding:3px;"><input id="' + key + '_paid" type="number" value="' + (r.paidAmount || '') + '" placeholder="已繳" style="' + inp + 'width:72px;"></td>' +
       '<td style="padding:3px;"><input id="' + key + '_date" type="date" value="' + leaseDateInput(r.paidDate) + '" style="' + di + 'width:118px;"></td>' +
       '<td style="padding:3px;"><select id="' + key + '_method" style="' + inp + 'width:68px;">' + paymentMethodOptions(r.payMethod || '') + '</select></td>' +
-      '<td style="padding:3px;font-size:12px;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><div style="white-space:nowrap;"><input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="max-width:130px;font-size:11px;"></div><div style="margin-top:2px;white-space:nowrap;">' + receipt + '</div></td>' +
+      '<td style="padding:3px;font-size:12px;white-space:nowrap;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><label style="display:inline-block;padding:5px 10px;background:#EFEDE8;border:1px solid #E5E0D5;border-radius:6px;font-size:12px;cursor:pointer;">📎 上傳<input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="display:none;"></label> ' + receipt + '</td>' +
       '<td style="padding:3px;text-align:center;white-space:nowrap;">' +
         '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;" onclick="btnLoad(this,function(){return saveUtilityPayment(\'' + leaseId + '\',\'' + r.id + '\',\'' + key + '\')})">💾 儲存</button>' +
         ' <button class="btn spin-btn" style="width:auto;padding:5px 8px;font-size:12px;background:#5A7D8C;" title="編輯抄表" onclick="editUtilityReading(\'' + leaseId + '\',' + JSON.stringify(r) + ')">✎</button>' +
