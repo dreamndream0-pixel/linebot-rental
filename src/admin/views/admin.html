@@ -7054,7 +7054,12 @@ async function showLeaseList() {
   var box = document.getElementById('managedReportBox')
   box.innerHTML = '<div class="empty">載入代管清單中...</div>'
   var res = await fetch('/admin/api/managed-leases?key=' + encodeURIComponent(KEY))
-  if (!res.ok) { box.innerHTML = ''; showToast('❌ 載入失敗'); return }
+  if (!res.ok) {
+    var ed = {}; try { ed = await res.json() } catch (e) {}
+    box.innerHTML = '<div class="empty">載入失敗（HTTP ' + res.status + '）</div>'
+    showInfoModal('❌ 代管清單載入失敗', (ed.error || ('HTTP ' + res.status)))
+    return
+  }
   MANAGED.leaseList = await res.json()
   renderLeaseList()
 }

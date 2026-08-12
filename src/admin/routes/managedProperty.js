@@ -821,24 +821,29 @@ router.get('/admin/api/managed-leases', async (req, res) => {
     const rentDueLimit = startOfDay(now)
     rentDueLimit.setDate(rentDueLimit.getDate() + 7)
     const result = leases.map(l => {
+      // 單筆計算失敗（例如租金排程資料異常）也不整個清單掛掉，退回最基本欄位。
       let computedStatus = l.status
       let daysToEnd = null
-      if (l.leaseEnd) {
-        daysToEnd = Math.ceil((new Date(l.leaseEnd) - now) / 86400000)
-        if (l.status === 'ACTIVE') {
-          if (daysToEnd < 0) computedStatus = 'EXPIRED'
-          else if (daysToEnd <= 30) computedStatus = 'EXPIRING'
-        }
-      }
-      // 用租金明細排程計算下一筆未繳租金，避免繳費週期/合約起日/已繳紀錄算錯。
-      const nextRent = l.status === 'ACTIVE' ? nextUnpaidRentRow(l, now) : null
       let nextRentDate = null
       let daysToRent = null
       let nextRentAmount = null
-      if (nextRent) {
-        nextRentDate = nextRent.dueDate
-        nextRentAmount = nextRent.amount
-        daysToRent = Math.ceil((startOfDay(nextRentDate) - today) / 86400000)
+      try {
+        if (l.leaseEnd) {
+          daysToEnd = Math.ceil((new Date(l.leaseEnd) - now) / 86400000)
+          if (l.status === 'ACTIVE') {
+            if (daysToEnd < 0) computedStatus = 'EXPIRED'
+            else if (daysToEnd <= 30) computedStatus = 'EXPIRING'
+          }
+        }
+        // 用租金明細排程計算下一筆未繳租金，避免繳費週期/合約起日/已繳紀錄算錯。
+        const nextRent = l.status === 'ACTIVE' ? nextUnpaidRentRow(l, now) : null
+        if (nextRent) {
+          nextRentDate = nextRent.dueDate
+          nextRentAmount = nextRent.amount
+          daysToRent = Math.ceil((startOfDay(nextRentDate) - today) / 86400000)
+        }
+      } catch (e) {
+        console.error('代管清單單筆計算失敗:', l.id, e.message)
       }
       return {
         id: l.id,
