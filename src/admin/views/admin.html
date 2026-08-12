@@ -3639,6 +3639,7 @@ async function editLandlord(id) {
     '<div class="modal-field"><label>Email（登入帳號）</label><input id="' + formId + '_email" type="email" value="' + esc(l.email || '') + '"></div>' +
     '<div class="modal-field full"><label>電話</label><input id="' + formId + '_phone" value="' + esc(l.phone || '') + '" placeholder="可留空"></div>' +
     '<div class="modal-field full"><label>LINE 聯絡資訊</label><input id="' + formId + '_lineOfficialId" value="' + esc(l.lineOfficialId || '') + '" placeholder="@官方帳號ID 或 https://line.me/..."><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;">只用於前台 LINE 聯絡按鈕，不需要設定 Bot Token。可填官方帳號 ID、個人 LINE 連結或 lin.ee 短連結。</div></div>' +
+    '<div class="modal-field full"><label>租金匯款資訊</label><textarea id="' + formId + '_rentPayInfo" rows="3" placeholder="例：\n國泰世華(013) 帳號 1234-5678-90123\n戶名：王小明" style="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;resize:vertical;">' + esc(l.rentPayInfo || '') + '</textarea><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;">會顯示在租金繳費提醒卡片，供房客轉帳使用。</div></div>' +
     '</div>'
   var foot =
     '<button class="action-btn" onclick="closeAdminModal(\'' + modalId + '\')">取消</button>' +
@@ -3656,6 +3657,8 @@ async function saveLandlordInline(id, formId) {
   var email = emailEl ? emailEl.value.trim() : ''
   var phone = phoneEl ? phoneEl.value.trim() : ''
   var lineOfficialId = lineOfficialIdEl ? lineOfficialIdEl.value.trim() : ''
+  var rentPayInfoEl = document.getElementById(formId + '_rentPayInfo')
+  var rentPayInfo = rentPayInfoEl ? rentPayInfoEl.value.trim() : ''
 
   if (!name) { showToast('❌ 房東名稱不可空白'); return }
   if (!email) { showToast('❌ Email 不可空白'); return }
@@ -3664,7 +3667,7 @@ async function saveLandlordInline(id, formId) {
 
   var res = await fetch('/admin/api/landlord/' + id + '?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ name: name, email: email, phone: phone, lineOfficialId: lineOfficialId })
+    body: JSON.stringify({ name: name, email: email, phone: phone, lineOfficialId: lineOfficialId, rentPayInfo: rentPayInfo })
   })
   var data = await res.json()
   if (!res.ok) { showToast('❌ ' + (data.error || '更新失敗')); return }

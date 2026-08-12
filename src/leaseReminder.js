@@ -136,6 +136,13 @@ function reminderBubble(o) {
     body.push({ type: 'separator', margin: 'sm', color: '#ECE6DA' })
     o.rows.forEach(function (rw) { body.push(rw) })
   }
+  // 匯款資訊區塊（房客轉帳用）
+  if (o.payInfo) {
+    body.push({ type: 'box', layout: 'vertical', backgroundColor: '#F6F4EF', cornerRadius: '10px', paddingAll: '12px', margin: 'lg', spacing: 'xs', contents: [
+      { type: 'text', text: '匯款資訊', size: 'xs', color: '#9A927F', weight: 'bold' },
+      { type: 'text', text: String(o.payInfo), size: 'sm', color: '#43413B', wrap: true },
+    ]})
+  }
   return {
     type: 'flex',
     altText: o.alt,
@@ -177,7 +184,7 @@ function rentReminderFlex(lease) {
     subColor: '#DCEBDD', accent: '#5E8663', tint: '#EFF5EF', deep: '#3E6144',
     tenant: lease.tenantName, intro: '提醒您本期租金即將到期',
     amountLabel: '本期應繳租金', amount: Number(lease.rent || 0), dueStr: dueStr,
-    detailTitle: '租金明細', rows: rows,
+    detailTitle: '租金明細', rows: rows, payInfo: lease.rentPayInfo || null,
     footer: '請於期限前完成繳費，謝謝您',
   })
 }

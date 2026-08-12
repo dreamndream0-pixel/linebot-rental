@@ -39,10 +39,21 @@ router.post('/admin/api/landlord', express.json(), async (req, res) => {
 // 編輯房東基本資料
 router.post('/admin/api/landlord/:id', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
-  if (!auth || auth.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+  // super 可編輯全部；房東本人可編輯自己（僅限部分欄位，如租金匯款資訊）
+  const isSelf = auth && auth.role !== 'super' && auth.landlordId === req.params.id
+  if (!auth || (auth.role !== 'super' && !isSelf)) return res.status(401).json({ error: 'unauthorized' })
 
-  const { name, email, phone, isActive, lineOfficialId } = req.body
+  const { name, email, phone, isActive, lineOfficialId, rentPayInfo } = req.body
   const data = {}
+  if (rentPayInfo !== undefined) data.rentPayInfo = String(rentPayInfo || '').trim() || null
+  // 房東本人只允許更新 rentPayInfo，其他欄位忽略
+  if (auth.role !== 'super') {
+    if (rentPayInfo === undefined) return res.json({ ok: true })
+    try {
+      const landlord = await prisma.landlord.update({ where: { id: req.params.id }, data: { rentPayInfo: data.rentPayInfo } })
+      return res.json(landlord)
+    } catch (e) { return res.status(500).json({ error: e.message }) }
+  }
   if (name !== undefined) {
     if (!name.trim()) return res.status(400).json({ error: '房東名稱不可空白' })
     data.name = name.trim()
