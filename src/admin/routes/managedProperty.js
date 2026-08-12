@@ -1433,9 +1433,11 @@ router.get('/admin/api/broker-key', async (req, res) => {
 // 需在後台設定 RAGIC_API_KEY 環境變數，以及 RAGIC_FORM_URL（如 https://ap11.ragic.com/urbanite/表單名稱/1）
 const RAGIC_PAYMENT_CYCLE = { '月繳':'MONTHLY','雙月繳':'BIMONTHLY','季繳':'QUARTERLY','半年繳':'SEMIANNUAL','年繳':'YEARLY' }
 const RAGIC_BUILDING_TITLES = {
-  '紅寶石|11':'紅寶石 11棟','紅寶石|21':'紅寶石 21棟','紅寶石|28':'紅寶石 28棟',
-  '致富讚|22':'致富讚 22棟','青雲巷|25-21':'青雲巷 25-21棟'
+  '紅寶石|11':'紅寶石 11號','紅寶石|21':'紅寶石 21號','紅寶石|28':'紅寶石 28號',
+  '致富讚|22':'致富讚 22號','青雲巷|25-21':'青雲巷 25-21號'
 }
+// 標題比對正規化：忽略空白（後台標題「紅寶石11號」「紅寶石 28號」空白不一致）
+function normTitle(s) { return String(s || '').replace(/\s+/g, '') }
 const RAGIC_LINE_USER_ID_FIELDS = [
   'LINE User ID', 'Line User ID', 'lineUserId', 'line userID', 'LINE_USER_ID',
   'LINE UID', 'LINE ID', 'LINE用戶ID', 'LINE 用戶 ID', 'LINE使用者ID', 'LINE 使用者 ID',
@@ -1542,7 +1544,7 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
 
     // 取得現有各棟 ID + 預載既有租約（避免每筆再查一次 lease）
     const mpList = await prisma.managedProperty.findMany({ select: { id: true, title: true, landlordId: true } })
-    const mpByTitle = Object.fromEntries(mpList.map(m => [m.title, m]))
+    const mpByTitle = Object.fromEntries(mpList.map(m => [normTitle(m.title), m]))
     const leaseByRagic = {}
     ;(await prisma.lease.findMany({ select: { id: true, ragicId: true } }))
       .forEach(l => { if (l.ragicId) leaseByRagic[l.ragicId] = l })
@@ -1561,7 +1563,7 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
       const buildingKey = `${row['社區名稱']}|${row['房屋號']}`
       const title = RAGIC_BUILDING_TITLES[buildingKey]
       if (!title) { skipNoBuilding++; unmatched.add(buildingKey); continue }
-      const managedProperty = mpByTitle[title]
+      const managedProperty = mpByTitle[normTitle(title)]
       if (!managedProperty) { skipNoProperty++; unmatched.add(buildingKey + ' → ' + title + '（後台無此委託物業）'); continue }
       const lineUserId = pickRagicValue(row, RAGIC_LINE_USER_ID_FIELDS)
       const lineTenant = lineUserId ? await findLeaseLineTenant(lineUserId, managedProperty.landlordId, lineTenantCache) : null
