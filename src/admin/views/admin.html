@@ -7196,7 +7196,9 @@ function renderLeaseList() {
   // 有輸入搜尋字時 → 跨所有狀態一起找（避免資料分散在不同分頁而找不到）
   var baseList
   if (LEASE_SEARCH.trim()) {
-    baseList = d.overview || []
+    // 搜尋跨所有狀態（含已結算/已到期）：合併 overview 與 expired 去重
+    var _seen = {}; baseList = []
+    ;(d.overview || []).concat(d.expired || []).forEach(function(l){ if (l && !_seen[l.id]) { _seen[l.id] = 1; baseList.push(l) } })
   } else {
     baseList = d[LEASE_TAB] || []
   }
