@@ -87,10 +87,13 @@ function buildRentSchedule(lease, rentPayments) {
   const leaseEnd = lease.leaseEnd ? new Date(lease.leaseEnd) : addMonths(start, 12)
   const payDay = lease.rentPayDay || start.getDate()
   const rows = []
-  const locked = (rentPayments || [])
-    .filter(p => (p.paidAmount || 0) > 0)
+  // 已儲存的期別（含未收款的「僅修改金額/應繳日」覆寫）：都列入明細；
+  // 已繳者鎖定，未繳者維持可編輯。
+  const stored = (rentPayments || [])
+    .slice()
     .sort((a, b) => new Date(a.periodStart) - new Date(b.periodStart))
-  locked.forEach((p, i) => {
+  stored.forEach((p, i) => {
+    const paidAmt = p.paidAmount || 0
     rows.push({
       id: p.id,
       index: i + 1,
@@ -99,29 +102,32 @@ function buildRentSchedule(lease, rentPayments) {
       periodEnd: p.periodEnd,
       amount: p.amount,
       dueDate: p.dueDate,
-      paidAmount: p.paidAmount,
+      paidAmount: paidAmt,
       paidDate: p.paidDate,
       payMethod: p.payMethod,
       receiptUrl: p.receiptUrl,
       note: p.note,
       settled: !!p.settled,
-      locked: true,
+      locked: paidAmt > 0,   // 只有已繳才鎖定；未繳覆寫仍可編輯
       // 已結清（含折扣時實收<應繳）視為無欠款；否則以應繳−已繳計算
-      unpaid: p.settled ? 0 : Math.max(0, (p.amount || 0) - (p.paidAmount || 0)),
+      unpaid: p.settled ? 0 : Math.max(0, (p.amount || 0) - paidAmt),
     })
   })
 
-  const lastLockedEnd = locked.reduce((max, p) => {
+  const lastStoredEnd = stored.reduce((max, p) => {
     const t = new Date(p.periodEnd).getTime()
     return t > max ? t : max
   }, 0)
-  let periodStart = lastLockedEnd ? new Date(lastLockedEnd + 86400000) : new Date(start)
+  let periodStart = lastStoredEnd ? new Date(lastStoredEnd + 86400000) : new Date(start)
   if (periodStart < start) periodStart = new Date(start)
   let idx = 1
   while (periodStart <= leaseEnd && idx <= 120) {
     const nextStart = addMonths(periodStart, months)
     const periodEnd = new Date(Math.min(addMonths(periodStart, months).getTime() - 86400000, leaseEnd.getTime()))
-    const due = lease.paymentDueMode === 'CONTRACT_START' ? new Date(periodStart) : fixedDueDate(periodStart, payDay)
+    // 預設應繳日期：期別起始日前 3 天（CONTRACT_START 模式維持＝期別起始日）
+    const due = lease.paymentDueMode === 'CONTRACT_START'
+      ? new Date(periodStart)
+      : new Date(new Date(periodStart).getTime() - 3 * 86400000)
     // 有停車費的合約：租金明細每期金額 ＝（折後租金 ＋ 停車費）× 期數
     const parking = lease.parkingFee || 0
     const amount = (effectiveRent(lease) + parking) * months
@@ -1165,7 +1171,9 @@ router.post('/admin/api/managed/lease/:leaseId/payment', express.json(), async (
     const kind = b.kind === 'UTILITY' ? 'UTILITY' : 'RENT'
     const paidAmount = parseInt(b.paidAmount) || 0
     const paidDate = b.paidDate ? new Date(b.paidDate) : null
-    if (!paidAmount || !paidDate) return res.status(400).json({ error: '請輸入已繳金額與繳費日期' })
+    const isPaid = paidAmount > 0 && !!paidDate
+    // 水電：此列僅用於登記收款，仍需已繳金額與繳款日期
+    if (kind === 'UTILITY' && !isPaid) return res.status(400).json({ error: '請輸入已繳金額與繳費日期' })
 
     if (kind === 'UTILITY') {
       const reading = await prisma.utilityReading.findFirst({ where: { id: b.utilityReadingId, leaseId: lease.id } })
@@ -1197,20 +1205,23 @@ router.post('/admin/api/managed/lease/:leaseId/payment', express.json(), async (
     }
 
     let recordId = existing?.recordId || null
-    const recordData = {
-      managedPropertyId: lease.managedPropertyId,
-      leaseId: lease.id,
-      type: 'INCOME',
-      category: 'RENT',
-      amount: paidAmount,
-      recordDate: paidDate,
-      description: `租金 ${ymd(periodStart)}~${ymd(periodEnd)} ${b.payMethod ? `(${b.payMethod})` : ''}`.trim(),
-    }
-    if (recordId) {
-      await prisma.managementRecord.update({ where: { id: recordId }, data: recordData })
-    } else {
-      const record = await prisma.managementRecord.create({ data: recordData })
-      recordId = record.id
+    // 只有實際收款才建立／更新收入記錄；未收款時僅儲存期別/金額/應繳日的修改
+    if (isPaid) {
+      const recordData = {
+        managedPropertyId: lease.managedPropertyId,
+        leaseId: lease.id,
+        type: 'INCOME',
+        category: 'RENT',
+        amount: paidAmount,
+        recordDate: paidDate,
+        description: `租金 ${ymd(periodStart)}~${ymd(periodEnd)} ${b.payMethod ? `(${b.payMethod})` : ''}`.trim(),
+      }
+      if (recordId) {
+        await prisma.managementRecord.update({ where: { id: recordId }, data: recordData })
+      } else {
+        const record = await prisma.managementRecord.create({ data: recordData })
+        recordId = record.id
+      }
     }
 
     const data = {
