@@ -996,11 +996,18 @@ router.get('/admin/api/managed/lease/:leaseId/settle-preview', async (req, res) 
     // 上期抄表日期（作為本期起算日）：最近抄表迄日 → 合約抄表日 → 合約起日
     const lastMeterDate = latestReading ? latestReading.endDate
       : (lease.meterReadDate || lease.leaseStart || null)
+    // 按日退租金用：折後月租、已繳租金到期日（已繳期別中最遠的迄日）
+    const monthlyRent = effectiveRent(lease)
+    const paidThroughDate = rentPayments
+      .filter(p => (p.paidAmount || 0) > 0 && p.periodEnd)
+      .reduce((max, p) => (!max || new Date(p.periodEnd) > new Date(max)) ? p.periodEnd : max, null)
     res.json({
       deposit: lease.deposit || 0,
       prepaidUtility: lease.prepaidUtility || 0,
       unpaidUtility,
       unpaidRent,
+      monthlyRent,
+      paidThroughDate,
       suggestedDeductions,
       // 合約日期（結束日預設用原合約迄日；續約起訖預設）
       leaseStart: lease.leaseStart,
