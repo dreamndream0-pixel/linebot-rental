@@ -6708,6 +6708,7 @@ async function showManagedReport() {
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
       '<h3 style="margin:0;font-size:16px;">📊 收支報表</h3>' +
       '<div style="display:flex;gap:8px;align-items:center;">' +
+        '<button onclick="openUtilityExpenseModal()" style="border:1px solid #C0524A;background:#fff;color:#C0524A;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">＋ 水電支出</button>' +
         '<button onclick="exportReportCSV()" style="border:1px solid #4A6741;background:#fff;color:#4A6741;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">⬇ 匯出 CSV</button>' +
         '<button onclick="document.getElementById(\'managedReportBox\').innerHTML=\'\'" style="border:none;background:none;font-size:18px;cursor:pointer;color:#999;">×</button>' +
       '</div>' +
@@ -6745,6 +6746,54 @@ async function showManagedReport() {
 }
 function rangeLabel(r) {
   return { thisMonth:'本月', lastMonth:'上月', thisQuarter:'本季', thisYear:'本年', all:'全部' }[r] || '全部'
+}
+// 快速登記水電支出（台電/台水帳單）→ 建立 EXPENSE 收支，反映到報表支出
+function openUtilityExpenseModal() {
+  var props = (REPORT_DATA && REPORT_DATA.filters && REPORT_DATA.filters.properties) || []
+  if (!props.length) { showToast('尚無委託物業'); return }
+  var today = leaseDateInput(new Date())
+  var propOpts = props.map(function(p){ return '<option value="' + p.id + '">' + esc(p.title) + '（' + esc(p.ownerName || '') + '）</option>' }).join('')
+  var inp = 'width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;font-size:14px;margin-bottom:10px;'
+  var di = 'width:100%;box-sizing:border-box;height:42px;padding:0 10px;border:1px solid #E5E0D5;border-radius:8px;font-size:14px;background:#fff;-webkit-appearance:none;appearance:none;margin-bottom:10px;'
+  var html = '<div id="utilExpModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:400;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:22px;max-width:400px;width:100%;margin:auto;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+        '<h3 style="margin:0;font-size:16px;">💡 登記水電支出</h3>' +
+        '<button onclick="var m=document.getElementById(\'utilExpModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#888;margin-bottom:10px;">記錄你付給台電／台水的帳單，計入報表「支出」。</div>' +
+      '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">物業</label>' +
+      '<select id="uexp_prop" style="' + inp + '">' + propOpts + '</select>' +
+      '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">費別</label>' +
+      '<select id="uexp_kind" style="' + inp + '"><option value="台電">台電（電費）</option><option value="台水">台水（水費）</option></select>' +
+      '<div style="display:flex;gap:10px;">' +
+        '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">金額</label><input id="uexp_amount" type="number" placeholder="NT$" style="' + inp + '"></div>' +
+        '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">費用日期</label><input id="uexp_date" type="date" value="' + today + '" style="' + di + '"></div>' +
+      '</div>' +
+      '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">備註（選填，例：帳單月份）</label>' +
+      '<input id="uexp_note" placeholder="例：2026年7-8月" style="' + inp + '">' +
+      '<button class="btn spin-btn" style="width:100%;background:#C0524A;padding:13px;font-size:15px;font-weight:700;margin-top:6px;" onclick="btnLoad(this,function(){return saveUtilityExpense()})">儲存支出</button>' +
+    '</div></div>'
+  var ex = document.getElementById('utilExpModal'); if (ex) ex.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+async function saveUtilityExpense() {
+  var propId = (document.getElementById('uexp_prop') || {}).value
+  var kind = (document.getElementById('uexp_kind') || {}).value || '台電'
+  var amount = (document.getElementById('uexp_amount') || {}).value
+  var date = (document.getElementById('uexp_date') || {}).value
+  var note = (document.getElementById('uexp_note') || {}).value || ''
+  if (!propId) { showToast('❌ 請選擇物業'); return }
+  if (!amount || Number(amount) <= 0) { showToast('❌ 請輸入金額'); return }
+  var desc = kind + '帳單' + (note ? '（' + note + '）' : '')
+  var res = await fetch('/admin/api/managed/' + propId + '/record?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ type: 'EXPENSE', category: 'UTILITY', amount: amount, recordDate: date, description: desc })
+  })
+  if (!res.ok) { var d={}; try{d=await res.json()}catch(e){}; showToast('❌ 儲存失敗：' + (d.error || res.status)); return }
+  showToast('✅ 已登記' + kind + '支出 ' + leaseMoney(Number(amount)))
+  var m = document.getElementById('utilExpModal'); if (m) m.remove()
+  showManagedReport()
 }
 
 function reportStat(label, value, color, sub) {
