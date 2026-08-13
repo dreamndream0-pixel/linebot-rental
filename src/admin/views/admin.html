@@ -6229,6 +6229,8 @@ function openManagedForm(id) {
         '<option value="OTHER"' + (m.subleaseFeeType==='OTHER'?' selected':'') + '>其他（自訂金額）</option>' +
       '</select>' +
       '<div id="subFeeOtherBox">' + mInput('其他服務費金額', 'm_subleaseFeeOther', m.subleaseFeeOther, 'number') + '</div>' +
+      mInput('承租成本（每月付給屋主）', 'm_leaseCost', m.leaseCost, 'number') +
+      '<div style="font-size:11px;color:#aaa;margin:-4px 0 6px;">包租物業每月付給屋主的租金；用於計算平台利潤（實收−承租成本−支出）。</div>' +
     '</div>' +
     '<div style="display:flex;gap:10px;">' +
       '<div style="flex:1;">' + mInput('合約起日', 'm_contractStart', fmtDate(m.contractStart), 'date') + '</div>' +
@@ -6270,7 +6272,7 @@ async function saveManaged(id) {
     ownerName: val('m_ownerName'), ownerPhone: val('m_ownerPhone'),
     ownerBankName: val('m_ownerBankName'), ownerBank: val('m_ownerBank'),
     roomCount: val('m_roomCount'), manageType: val('m_manageType'),
-    feePercent: val('m_feePercent'),
+    feePercent: val('m_feePercent'), leaseCost: val('m_leaseCost'),
     subleaseFeeType: val('m_subleaseFeeType'), subleaseFeeOther: val('m_subleaseFeeOther'),
     contractStart: val('m_contractStart'), contractEnd: val('m_contractEnd'),
   }
@@ -6628,8 +6630,9 @@ async function showManagedReport() {
 
   var rows = data.byProperty.map(function(p) {
     var typeLabel = mtLabel(p.manageType)
+    var costHint = (p.manageType !== 'TRUST' && p.leaseCost > 0) ? '<br><span style="font-size:10px;color:#B58A45;">承租成本 ' + Number(p.leaseCost).toLocaleString() + '/月 × ' + p.ownerMonths + '月</span>' : ''
     return '<tr>' +
-      '<td style="padding:8px;font-size:13px;white-space:nowrap;">' + esc(p.title) + '<br><span style="font-size:11px;color:#999;">' + esc(p.ownerName) + '・' + typeLabel + '</span></td>' +
+      '<td style="padding:8px;font-size:13px;white-space:nowrap;">' + esc(p.title) + '<br><span style="font-size:11px;color:#999;">' + esc(p.ownerName) + '・' + typeLabel + '</span>' + costHint + '</td>' +
       '<td style="padding:8px;font-size:13px;color:#4A8A4A;text-align:right;white-space:nowrap;">' + Number(p.income).toLocaleString() + '</td>' +
       '<td style="padding:8px;font-size:13px;color:' + (p.unpaid>0?'#C0524A':'#aaa') + ';text-align:right;white-space:nowrap;">' + Number(p.unpaid).toLocaleString() + '</td>' +
       '<td style="padding:8px;font-size:13px;color:#C0524A;text-align:right;white-space:nowrap;">' + Number(p.expense).toLocaleString() + '</td>' +
@@ -6656,7 +6659,8 @@ async function showManagedReport() {
       reportStat('期間實收', 'NT$ ' + Number(s.actualIncome).toLocaleString(), '#4A8A4A') +
       reportStat('未收合計', 'NT$ ' + Number(s.unpaidTotal).toLocaleString(), s.unpaidTotal>0?'#C0524A':'#7A9E7E', '租金 ' + Number(s.unpaidRent).toLocaleString() + '＋水電 ' + Number(s.unpaidUtil).toLocaleString()) +
       reportStat('期間支出', 'NT$ ' + Number(s.expense).toLocaleString(), '#C0524A') +
-      reportStat('平台利潤', 'NT$ ' + Number(s.profit).toLocaleString(), '#4A6741') +
+      reportStat('承租成本', 'NT$ ' + Number(s.ownerCost||0).toLocaleString(), '#8A6D3B', '包租付屋主') +
+      reportStat('平台利潤', 'NT$ ' + Number(s.profit).toLocaleString(), s.profit>=0?'#4A6741':'#C0524A') +
       reportStat('待撥屋主', 'NT$ ' + Number(s.pendingPayout).toLocaleString(), '#E5A33C') +
       reportStat('淨現金流', 'NT$ ' + Number(s.netCashflow).toLocaleString(), s.netCashflow>=0?'#2E7D46':'#C0524A', '實收−支出−已撥') +
     '</div>' +
