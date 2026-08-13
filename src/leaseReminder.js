@@ -291,15 +291,17 @@ async function checkLeaseReminders() {
 
   const leases = await prisma.lease.findMany({
     where: { status: 'ACTIVE', lineUserId: { not: null } },
-    include: { managedProperty: { select: { title: true, landlordId: true, landlord: { select: { rentPayInfo: true } } } } },
+    include: { managedProperty: { select: { title: true, landlordId: true, ownerBankName: true, ownerBank: true, landlord: { select: { rentPayInfo: true } } } } },
   })
 
   for (const lease of leases) {
+    const mp = lease.managedProperty
+    // 收款帳戶：以委託物業的屋主匯款銀行＋帳號為主，未填才退用房東共用匯款資訊
+    const propInfo = [(mp.ownerBankName || '').trim(), (mp.ownerBank || '').trim()].filter(Boolean).join(' ')
     const data = {
       ...lease,
-      managedTitle: lease.managedProperty.title,
-      // 房東銀行收款帳號／匯款資訊（顯示於租金與水電費提醒卡片）
-      rentPayInfo: lease.managedProperty.landlord ? lease.managedProperty.landlord.rentPayInfo : null,
+      managedTitle: mp.title,
+      rentPayInfo: propInfo || (mp.landlord ? mp.landlord.rentPayInfo : null),
     }
 
     // 租金提醒：繳費日前 3 天
