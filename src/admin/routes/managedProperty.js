@@ -3,7 +3,7 @@ const express = require('express')
 const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
-const { getClientForLease, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex, settleReceiptFlex } = require('../../leaseReminder')
+const { getClientForLease, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex, settleReceiptFlex, buildPayInfo } = require('../../leaseReminder')
 const { findLineTenant } = require('../../tenantStore')
 
 // 權限過濾：super 看全部，房東只看自己的
@@ -62,22 +62,21 @@ function safeParse(s) {
   try { return JSON.parse(s) } catch { return null }
 }
 
-// 決定顯示於繳費卡片的「收款帳戶」：
+// 決定顯示於繳費卡片的「收款帳戶」（戶名／銀行／帳號 結構）：
 // 以委託物業的屋主匯款銀行＋帳號為主（房東委託該物業指定的收款帳戶）；
 // 若該物業未填，才退用房東共用的匯款資訊（rentPayInfo）。
 async function resolvePayInfo(managedProperty) {
   if (!managedProperty) return null
   const bank = (managedProperty.ownerBankName || '').trim()
   const acct = (managedProperty.ownerBank || '').trim()
-  const propInfo = [bank, acct].filter(Boolean).join(' ')
-  if (propInfo) return propInfo
-  if (managedProperty.landlordId) {
+  let fallback = null
+  if (!bank && !acct && managedProperty.landlordId) {
     try {
       const ll = await prisma.landlord.findUnique({ where: { id: managedProperty.landlordId }, select: { rentPayInfo: true } })
-      if (ll && ll.rentPayInfo) return ll.rentPayInfo
+      fallback = ll && ll.rentPayInfo
     } catch (e) { console.error('讀取房東匯款資訊失敗:', e.message) }
   }
-  return null
+  return buildPayInfo(managedProperty, fallback)
 }
 
 async function getOwnedLease(auth, leaseId) {
