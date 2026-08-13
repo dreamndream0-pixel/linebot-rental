@@ -6598,51 +6598,83 @@ async function syncRagicRent() {
 }
 
 // ── 收支報表 ───────────────────────────────────────────────────
+var REPORT_FILTER = { range: 'all', ownerName: '', propertyId: '' }
+var REPORT_RANGES = [['thisMonth','本月'],['lastMonth','上月'],['thisQuarter','本季'],['thisYear','本年'],['all','全部']]
+function setReportRange(r) { REPORT_FILTER.range = r; showManagedReport() }
+function setReportOwner(v) { REPORT_FILTER.ownerName = v; REPORT_FILTER.propertyId = ''; showManagedReport() }
+function setReportProperty(v) { REPORT_FILTER.propertyId = v; showManagedReport() }
 async function showManagedReport() {
   var box = document.getElementById('managedReportBox')
   box.innerHTML = '<div class="empty">載入報表中...</div>'
-  var res = await fetch('/admin/api/managed-report?key=' + encodeURIComponent(KEY))
+  var qs = 'key=' + encodeURIComponent(KEY) + '&range=' + encodeURIComponent(REPORT_FILTER.range) +
+    (REPORT_FILTER.ownerName ? '&ownerName=' + encodeURIComponent(REPORT_FILTER.ownerName) : '') +
+    (REPORT_FILTER.propertyId ? '&propertyId=' + encodeURIComponent(REPORT_FILTER.propertyId) : '')
+  var res = await fetch('/admin/api/managed-report?' + qs)
   if (!res.ok) { box.innerHTML = ''; showToast('❌ 報表載入失敗'); return }
   var data = await res.json()
   var s = data.summary
+  var f = data.filters || { owners: [], properties: [] }
+
+  // 期間切換按鈕
+  var rangeBtns = REPORT_RANGES.map(function(o) {
+    var on = REPORT_FILTER.range === o[0]
+    return '<button onclick="setReportRange(\'' + o[0] + '\')" style="flex:none;padding:6px 12px;border:1px solid ' + (on?'#4A6741':'#E5E0D5') + ';background:' + (on?'#4A6741':'#fff') + ';color:' + (on?'#fff':'#666') + ';border-radius:8px;font-size:12px;font-weight:' + (on?'700':'400') + ';cursor:pointer;white-space:nowrap;">' + o[1] + '</button>'
+  }).join('')
+  // 屋主 / 物業 下拉
+  var ownerOpts = '<option value="">全部屋主</option>' + (f.owners||[]).map(function(o){ return '<option value="' + esc(o) + '"' + (REPORT_FILTER.ownerName===o?' selected':'') + '>' + esc(o) + '</option>' }).join('')
+  var propList = (f.properties||[]).filter(function(p){ return !REPORT_FILTER.ownerName || p.ownerName===REPORT_FILTER.ownerName })
+  var propOpts = '<option value="">全部物業</option>' + propList.map(function(p){ return '<option value="' + p.id + '"' + (REPORT_FILTER.propertyId===p.id?' selected':'') + '>' + esc(p.title) + '</option>' }).join('')
+  var selStyle = 'padding:7px 10px;border:1px solid #E5E0D5;border-radius:8px;font-size:12px;background:#fff;flex:1;min-width:120px;'
 
   var rows = data.byProperty.map(function(p) {
     var typeLabel = mtLabel(p.manageType)
     return '<tr>' +
-      '<td style="padding:8px;font-size:13px;">' + esc(p.title) + '<br><span style="font-size:11px;color:#999;">' + esc(p.ownerName) + '・' + typeLabel + '</span></td>' +
-      '<td style="padding:8px;font-size:13px;color:#4A8A4A;">' + Number(p.income).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:13px;color:#C0524A;">' + Number(p.expense).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:13px;">' + Number(p.payout).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:13px;font-weight:700;color:#4A6741;">' + Number(p.profit).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:13px;color:' + (p.pending>0?'#E5A33C':'#aaa') + ';">' + (p.pending>0 ? ('待付 ' + Number(p.pending).toLocaleString()) : '已結清') + '</td>' +
+      '<td style="padding:8px;font-size:13px;white-space:nowrap;">' + esc(p.title) + '<br><span style="font-size:11px;color:#999;">' + esc(p.ownerName) + '・' + typeLabel + '</span></td>' +
+      '<td style="padding:8px;font-size:13px;color:#4A8A4A;text-align:right;white-space:nowrap;">' + Number(p.income).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:13px;color:' + (p.unpaid>0?'#C0524A':'#aaa') + ';text-align:right;white-space:nowrap;">' + Number(p.unpaid).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:13px;color:#C0524A;text-align:right;white-space:nowrap;">' + Number(p.expense).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:13px;font-weight:700;color:#4A6741;text-align:right;white-space:nowrap;">' + Number(p.profit).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:13px;text-align:right;color:' + (p.pending>0?'#E5A33C':'#aaa') + ';white-space:nowrap;">' + (p.pending>0 ? ('待付 ' + Number(p.pending).toLocaleString()) : '已結清') + '</td>' +
     '</tr>'
-  }).join('') || '<tr><td colspan="6" style="padding:16px;text-align:center;color:#aaa;">尚無資料</td></tr>'
+  }).join('') || '<tr><td colspan="6" style="padding:16px;text-align:center;color:#aaa;">此條件下尚無資料</td></tr>'
 
   box.innerHTML =
     '<div style="background:#fff;border:1px solid #E5E0D5;border-radius:14px;padding:20px;margin-bottom:18px;">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
-      '<h3 style="margin:0;font-size:16px;">📊 收支報表（進行中物業）</h3>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      '<h3 style="margin:0;font-size:16px;">📊 收支報表</h3>' +
       '<button onclick="document.getElementById(\'managedReportBox\').innerHTML=\'\'" style="border:none;background:none;font-size:18px;cursor:pointer;color:#999;">×</button>' +
     '</div>' +
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:16px;">' +
+    // 篩選列
+    '<div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:6px;margin-bottom:8px;">' + rangeBtns + '</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">' +
+      '<select onchange="setReportOwner(this.value)" style="' + selStyle + '">' + ownerOpts + '</select>' +
+      '<select onchange="setReportProperty(this.value)" style="' + selStyle + '">' + propOpts + '</select>' +
+    '</div>' +
+    // KPI 卡
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:10px;margin-bottom:16px;">' +
       reportStat('委託物業', s.count + ' 件', '#7A9E7E') +
-      reportStat('總收入', 'NT$ ' + Number(s.totalIncome).toLocaleString(), '#4A8A4A') +
-      reportStat('總支出', 'NT$ ' + Number(s.totalExpense).toLocaleString(), '#C0524A') +
-      reportStat('管理費收入', 'NT$ ' + Number(s.totalMgmtFee).toLocaleString(), '#4A6741') +
+      reportStat('期間實收', 'NT$ ' + Number(s.actualIncome).toLocaleString(), '#4A8A4A') +
+      reportStat('未收合計', 'NT$ ' + Number(s.unpaidTotal).toLocaleString(), s.unpaidTotal>0?'#C0524A':'#7A9E7E', '租金 ' + Number(s.unpaidRent).toLocaleString() + '＋水電 ' + Number(s.unpaidUtil).toLocaleString()) +
+      reportStat('期間支出', 'NT$ ' + Number(s.expense).toLocaleString(), '#C0524A') +
+      reportStat('平台利潤', 'NT$ ' + Number(s.profit).toLocaleString(), '#4A6741') +
       reportStat('待撥屋主', 'NT$ ' + Number(s.pendingPayout).toLocaleString(), '#E5A33C') +
+      reportStat('淨現金流', 'NT$ ' + Number(s.netCashflow).toLocaleString(), s.netCashflow>=0?'#2E7D46':'#C0524A', '實收−支出−已撥') +
     '</div>' +
     '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;">' +
-      '<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;">' +
-      '<th style="padding:8px;text-align:left;font-size:12px;">物業</th><th style="padding:8px;text-align:left;font-size:12px;">收入</th><th style="padding:8px;text-align:left;font-size:12px;">支出</th><th style="padding:8px;text-align:left;font-size:12px;">已撥屋主</th><th style="padding:8px;text-align:left;font-size:12px;">平台利潤</th><th style="padding:8px;text-align:left;font-size:12px;">待付</th>' +
+      '<table style="width:100%;border-collapse:collapse;min-width:520px;"><thead><tr style="background:#F5F0EA;">' +
+      '<th style="padding:8px;text-align:left;font-size:12px;white-space:nowrap;">物業</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">實收</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">未收</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">支出</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">平台利潤</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">待付</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>' +
     '</div>' +
+    '<div style="font-size:11px;color:#aaa;margin-top:10px;">＊實收＝期間內已入帳收入；未收＝截至期末的應收未收（租金＋水電）；平台利潤：代管＝管理費，包租＝實收−承租成本−支出（需在委託物業設定承租成本）。</div>' +
     '</div>'
 }
 
-function reportStat(label, value, color) {
+function reportStat(label, value, color, sub) {
   return '<div style="background:#F8F6F2;border-radius:10px;padding:12px;text-align:center;">' +
     '<div style="font-size:11px;color:#999;margin-bottom:4px;">' + label + '</div>' +
-    '<div style="font-size:15px;font-weight:700;color:' + color + ';">' + value + '</div></div>'
+    '<div style="font-size:15px;font-weight:700;color:' + color + ';white-space:nowrap;">' + value + '</div>' +
+    (sub ? '<div style="font-size:10px;color:#b3ab9c;margin-top:3px;line-height:1.3;">' + sub + '</div>' : '') +
+    '</div>'
 }
 
 // ═══════════════════════════════════════════════════════════════
