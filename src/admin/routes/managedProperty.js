@@ -547,41 +547,105 @@ router.get('/admin/api/managed-report', async (req, res) => {
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
   try {
-    const props = await prisma.managedProperty.findMany({
+    // ── 期間 ──
+    const range = req.query.range || 'all'
+    const now = new Date()
+    const y = now.getFullYear(), mo = now.getMonth()
+    let start = null, end = null
+    if (range === 'thisMonth') { start = new Date(y, mo, 1); end = new Date(y, mo + 1, 0, 23, 59, 59, 999) }
+    else if (range === 'lastMonth') { start = new Date(y, mo - 1, 1); end = new Date(y, mo, 0, 23, 59, 59, 999) }
+    else if (range === 'thisQuarter') { const q = Math.floor(mo / 3); start = new Date(y, q * 3, 1); end = new Date(y, q * 3 + 3, 0, 23, 59, 59, 999) }
+    else if (range === 'thisYear') { start = new Date(y, 0, 1); end = new Date(y, 11, 31, 23, 59, 59, 999) }
+    else if (range === 'custom') {
+      if (req.query.from) start = startOfDay(req.query.from)
+      if (req.query.to) { end = startOfDay(req.query.to); end.setHours(23, 59, 59, 999) }
+    }
+    const asOf = end || now  // 未收以期末（或今天）為準
+
+    // ── 篩選選項（不受目前篩選影響，供下拉選單）──
+    const allProps = await prisma.managedProperty.findMany({
       where: { ...ownFilter(auth), status: 'ACTIVE' },
+      select: { id: true, title: true, ownerName: true },
+      orderBy: { title: 'asc' },
+    })
+    const owners = [...new Set(allProps.map(p => p.ownerName).filter(Boolean))]
+
+    // ── 套用篩選的物業 ──
+    const where = { ...ownFilter(auth), status: 'ACTIVE' }
+    if (req.query.propertyId) where.id = req.query.propertyId
+    if (req.query.ownerName) where.ownerName = req.query.ownerName
+    const dateWhere = (start || end) ? { recordDate: { ...(start ? { gte: start } : {}), ...(end ? { lte: end } : {}) } } : null
+    const props = await prisma.managedProperty.findMany({
+      where,
       include: {
-        incomes: true,
+        incomes: dateWhere ? { where: dateWhere } : true,
         payouts: true,
       },
     })
+    const propIds = props.map(p => p.id)
 
-    let totalIncome = 0, totalExpense = 0, totalMgmtFee = 0, totalPayout = 0, pendingPayout = 0
+    // ── 未收租金／未收水電（以期末為準）：抓合約與抄表 ──
+    const leases = propIds.length ? await prisma.lease.findMany({
+      where: { managedPropertyId: { in: propIds } },
+      include: { rentPayments: true },
+    }) : []
+    const leaseIds = leases.map(l => l.id)
+    const leaseToProp = {}; leases.forEach(l => { leaseToProp[l.id] = l.managedPropertyId })
+    const readings = leaseIds.length ? await prisma.utilityReading.findMany({ where: { leaseId: { in: leaseIds } } }) : []
+    const unpaidRentByProp = {}, unpaidUtilByProp = {}
+    for (const l of leases) {
+      let ur = 0
+      try {
+        const sched = buildRentSchedule(l, l.rentPayments)
+        ur = sched.filter(r => r.dueDate && startOfDay(r.dueDate) <= asOf).reduce((s, r) => s + Math.max(0, r.unpaid || 0), 0)
+      } catch (e) { /* 單筆排程異常不影響整體 */ }
+      unpaidRentByProp[l.managedPropertyId] = (unpaidRentByProp[l.managedPropertyId] || 0) + ur
+    }
+    for (const rd of readings) {
+      if (rd.endDate && startOfDay(rd.endDate) > asOf) continue
+      const u = Math.max(0, (rd.amount || 0) - (rd.paidAmount || 0))
+      if (u > 0) { const pid = leaseToProp[rd.leaseId]; unpaidUtilByProp[pid] = (unpaidUtilByProp[pid] || 0) + u }
+    }
+
+    // ── 逐物業彙總 ──
+    let actualIncome = 0, expenseTotal = 0, mgmtFeeTotal = 0, paidOutTotal = 0, pendingPayout = 0
+    let unpaidRentTotal = 0, unpaidUtilTotal = 0, profitTotal = 0
     const byProperty = props.map(p => {
-      const income = p.incomes.filter(r => r.type === 'INCOME').reduce((s, r) => s + r.amount, 0)
+      const income = p.incomes.filter(r => r.type === 'INCOME').reduce((s, r) => s + r.amount, 0)  // 期間實收
       const expense = p.incomes.filter(r => r.type === 'EXPENSE').reduce((s, r) => s + r.amount, 0)
       const mgmtFee = p.payouts.reduce((s, r) => s + r.mgmtFee, 0)
-      const payout = p.payouts.reduce((s, r) => s + r.payoutAmount, 0)
+      const paidOut = p.payouts.filter(r => r.status === 'PAID').reduce((s, r) => s + r.payoutAmount, 0)
       const pending = p.payouts.filter(r => r.status === 'PENDING').reduce((s, r) => s + r.payoutAmount, 0)
-
-      // 平台利潤：代管=管理費；包租=轉租收入-承租成本-支出
+      const unpaidRent = unpaidRentByProp[p.id] || 0
+      const unpaidUtil = unpaidUtilByProp[p.id] || 0
+      // 平台利潤：代管=管理費；包租=實收-承租成本-支出
       const profit = p.manageType === 'TRUST'
         ? mgmtFee
         : (income - (p.leaseCost * Math.max(p.payouts.length, 1)) - expense)
 
-      totalIncome += income
-      totalExpense += expense
-      totalMgmtFee += mgmtFee
-      totalPayout += payout
-      pendingPayout += pending
+      actualIncome += income; expenseTotal += expense; mgmtFeeTotal += mgmtFee
+      paidOutTotal += paidOut; pendingPayout += pending
+      unpaidRentTotal += unpaidRent; unpaidUtilTotal += unpaidUtil; profitTotal += profit
 
       return {
         id: p.id, title: p.title, ownerName: p.ownerName, manageType: p.manageType,
-        income, expense, mgmtFee, payout, pending, profit,
+        income, expense, mgmtFee, paidOut, pending, unpaidRent, unpaidUtil,
+        unpaid: unpaidRent + unpaidUtil, profit,
       }
     })
+    const netCashflow = actualIncome - expenseTotal - paidOutTotal
 
     res.json({
-      summary: { totalIncome, totalExpense, totalMgmtFee, totalPayout, pendingPayout, count: props.length },
+      range, from: start, to: end,
+      filters: { owners, properties: allProps, ownerName: req.query.ownerName || '', propertyId: req.query.propertyId || '' },
+      summary: {
+        count: props.length,
+        actualIncome, expense: expenseTotal, mgmtFee: mgmtFeeTotal,
+        unpaidRent: unpaidRentTotal, unpaidUtil: unpaidUtilTotal, unpaidTotal: unpaidRentTotal + unpaidUtilTotal,
+        paidOut: paidOutTotal, pendingPayout, profit: profitTotal, netCashflow,
+        // 相容舊欄位
+        totalIncome: actualIncome, totalExpense: expenseTotal, totalMgmtFee: mgmtFeeTotal,
+      },
       byProperty,
     })
   } catch (e) {
