@@ -592,22 +592,45 @@ router.get('/admin/api/managed-report', async (req, res) => {
       include: { rentPayments: true },
     }) : []
     const leaseIds = leases.map(l => l.id)
+    const leaseById = {}; leases.forEach(l => { leaseById[l.id] = l })
+    const propTitleById = {}; props.forEach(p => { propTitleById[p.id] = p.title })
     const leaseToProp = {}; leases.forEach(l => { leaseToProp[l.id] = l.managedPropertyId })
     const readings = leaseIds.length ? await prisma.utilityReading.findMany({ where: { leaseId: { in: leaseIds } } }) : []
     const unpaidRentByProp = {}, unpaidUtilByProp = {}
+    const unpaidList = []  // 催收清單
+    const todayStart = startOfDay(now)
     for (const l of leases) {
       let ur = 0
       try {
         const sched = buildRentSchedule(l, l.rentPayments)
-        ur = sched.filter(r => r.dueDate && startOfDay(r.dueDate) <= asOf).reduce((s, r) => s + Math.max(0, r.unpaid || 0), 0)
+        sched.filter(r => r.dueDate && startOfDay(r.dueDate) <= asOf && (r.unpaid || 0) > 0).forEach(r => {
+          ur += r.unpaid
+          unpaidList.push({
+            propertyId: l.managedPropertyId, property: propTitleById[l.managedPropertyId] || '',
+            tenant: l.tenantName, roomLabel: l.roomLabel, kind: 'RENT',
+            amount: r.unpaid, dueDate: r.dueDate,
+            overdueDays: Math.max(0, Math.floor((todayStart - startOfDay(r.dueDate)) / 86400000)),
+          })
+        })
       } catch (e) { /* 單筆排程異常不影響整體 */ }
       unpaidRentByProp[l.managedPropertyId] = (unpaidRentByProp[l.managedPropertyId] || 0) + ur
     }
     for (const rd of readings) {
       if (rd.endDate && startOfDay(rd.endDate) > asOf) continue
       const u = Math.max(0, (rd.amount || 0) - (rd.paidAmount || 0))
-      if (u > 0) { const pid = leaseToProp[rd.leaseId]; unpaidUtilByProp[pid] = (unpaidUtilByProp[pid] || 0) + u }
+      if (u > 0) {
+        const pid = leaseToProp[rd.leaseId]; const l = leaseById[rd.leaseId] || {}
+        unpaidUtilByProp[pid] = (unpaidUtilByProp[pid] || 0) + u
+        const due = rd.dueDate || rd.endDate
+        unpaidList.push({
+          propertyId: pid, property: propTitleById[pid] || '',
+          tenant: l.tenantName, roomLabel: l.roomLabel, kind: 'UTILITY',
+          amount: u, dueDate: due,
+          overdueDays: due ? Math.max(0, Math.floor((todayStart - startOfDay(due)) / 86400000)) : 0,
+        })
+      }
     }
+    unpaidList.sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0))
 
     // ── 承租成本月數：固定期間＝期間月數（對齊今天）；全部＝各物業合約起日至今 ──
     const monthsBetween = (a, b) => {
@@ -647,8 +670,39 @@ router.get('/admin/api/managed-report', async (req, res) => {
     })
     const netCashflow = actualIncome - expenseTotal - paidOutTotal
 
+    // ── 收入分類（期間內，依 category）──
+    const CAT_LABEL = { RENT: '租金', UTILITY: '水電', PARKING: '車位', REPAIR: '維修', OTHER: '其他' }
+    const catMap = {}
+    props.forEach(p => p.incomes.filter(r => r.type === 'INCOME').forEach(r => {
+      const c = r.category || 'OTHER'
+      catMap[c] = (catMap[c] || 0) + r.amount
+    }))
+    const incomeByCategory = Object.keys(catMap).map(k => ({ category: k, label: CAT_LABEL[k] || k, amount: catMap[k] }))
+      .sort((a, b) => b.amount - a.amount)
+
+    // ── 近 12 個月趨勢（實收 / 支出，依 recordDate 月份）──
+    const trendStart = new Date(y, mo - 11, 1)
+    const trendRecords = propIds.length ? await prisma.managementRecord.findMany({
+      where: { managedPropertyId: { in: propIds }, recordDate: { gte: trendStart } },
+      select: { type: true, amount: true, recordDate: true },
+    }) : []
+    const trendMap = {}
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(y, mo - 11 + i, 1)
+      trendMap[d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')] = { income: 0, expense: 0 }
+    }
+    trendRecords.forEach(r => {
+      const d = new Date(r.recordDate)
+      const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+      if (trendMap[k]) { if (r.type === 'INCOME') trendMap[k].income += r.amount; else trendMap[k].expense += r.amount }
+    })
+    const trend = Object.keys(trendMap).sort().map(k => ({ month: k, income: trendMap[k].income, expense: trendMap[k].expense }))
+
     res.json({
       range, from: start, to: end,
+      incomeByCategory,
+      unpaidList: unpaidList.slice(0, 200),
+      trend,
       filters: { owners, properties: allProps, ownerName: req.query.ownerName || '', propertyId: req.query.propertyId || '' },
       summary: {
         count: props.length,
