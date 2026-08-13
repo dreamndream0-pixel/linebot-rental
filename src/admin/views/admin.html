@@ -380,7 +380,7 @@
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
     background: var(--charcoal); color: white; padding: 12px 24px;
     border-radius: 99px; font-size: 14px; opacity: 0;
-    transition: opacity .3s; pointer-events: none; z-index: 99;
+    transition: opacity .3s; pointer-events: none; z-index: 9999;
   }
   .toast.show { opacity: 1; }
   @media (max-width: 980px) {
@@ -7384,7 +7384,10 @@ function settleRentRefundCalc() {
   var thru = (document.getElementById('settle_refundPaidThru') || {}).value
   var settleD = (document.getElementById('settle_settledAt') || {}).value
   var box = document.getElementById('settleRentRefundResult')
-  if (!rent || !thru || !settleD) { if (box) box.innerHTML = ''; return { amt: 0, days: 0 } }
+  var warn = function(msg) { if (box) box.innerHTML = '<span style="color:#C0524A;">' + msg + '</span>' }
+  if (!rent) { warn('此合約月租為 0（或未設定），無法計算退租金'); return { amt: 0, days: 0 } }
+  if (!settleD) { warn('請先填「結算日期」'); return { amt: 0, days: 0 } }
+  if (!thru) { warn('請先填「已繳租金到期日」'); return { amt: 0, days: 0 } }
   var start = new Date(settleD), end = new Date(thru)
   var amt = 0, days = 0
   var d = new Date(start.getTime() + 86400000)  // 退租日隔天起算
@@ -7399,7 +7402,7 @@ function settleRentRefundCalc() {
   if (box) {
     box.innerHTML = days > 0
       ? '未住 <b>' + days + '</b> 天，按當月天數退還 <b style="color:#2E7D46;">' + leaseMoney(amt) + '</b>'
-      : '<span style="color:#999;">退租日已達或晚於已繳到期日，無可退天數</span>'
+      : '<span style="color:#C0524A;">退租日（' + settleD + '）已達或晚於已繳到期日（' + thru + '），無可退天數。請確認「已繳租金到期日」是否晚於退租日。</span>'
   }
   return { amt: amt, days: days }
 }
