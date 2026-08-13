@@ -109,7 +109,7 @@ function fmtYMD(d) {
 function remRow(label, value, opts) {
   opts = opts || {}
   // 用 horizontal（非 baseline）以支援文字換行，避免較長標籤（如「合約結束日」「－ 未收電費」）被截斷成「…」
-  return { type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'md', contents: [
+  return { type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm', contents: [
     { type: 'text', text: label, size: 'sm', color: '#A6A093', flex: 4, wrap: true },
     { type: 'text', text: String(value), size: 'sm', color: opts.color || '#4A473F', weight: opts.bold ? 'bold' : 'regular', flex: 8, align: 'end', wrap: true },
   ]}
@@ -121,11 +121,11 @@ function reminderBubble(o) {
     { type: 'text', text: o.tenant + ' 您好', weight: 'bold', size: 'md', color: '#2B2B2B' },
     { type: 'text', text: o.intro, size: 'sm', color: '#8C877D', wrap: true, margin: 'xs' },
     // 金額主視覺卡
-    { type: 'box', layout: 'vertical', backgroundColor: o.tint, cornerRadius: '14px', paddingAll: '16px', margin: 'lg', spacing: 'none', contents: [
+    { type: 'box', layout: 'vertical', backgroundColor: o.tint, cornerRadius: '12px', paddingAll: '13px', margin: 'md', spacing: 'none', contents: [
       { type: 'text', text: o.amountLabel, size: 'xs', color: o.deep },
       { type: 'text', text: 'NT$ ' + Number(o.amount || 0).toLocaleString(), size: 'xl', color: o.deep, weight: 'bold', margin: 'xs', wrap: true },
       o.dueStr
-        ? { type: 'box', layout: 'baseline', margin: 'md', contents: [
+        ? { type: 'box', layout: 'baseline', margin: 'sm', contents: [
             { type: 'text', text: '應繳日期', size: 'xs', color: o.deep, flex: 3 },
             { type: 'text', text: o.dueStr, size: 'sm', color: o.deep, weight: 'bold', flex: 6, align: 'end' },
           ]}
@@ -133,13 +133,13 @@ function reminderBubble(o) {
     ]},
   ]
   if (o.rows && o.rows.length) {
-    body.push({ type: 'text', text: o.detailTitle, size: 'xs', color: '#B0A891', weight: 'bold', margin: 'xl' })
+    body.push({ type: 'text', text: o.detailTitle, size: 'xs', color: '#B0A891', weight: 'bold', margin: 'lg' })
     body.push({ type: 'separator', margin: 'sm', color: '#ECE6DA' })
     o.rows.forEach(function (rw) { body.push(rw) })
   }
   // 匯款資訊區塊（房客轉帳用）
   if (o.payInfo) {
-    body.push({ type: 'box', layout: 'vertical', backgroundColor: '#F6F4EF', cornerRadius: '10px', paddingAll: '12px', margin: 'lg', spacing: 'xs', contents: [
+    body.push({ type: 'box', layout: 'vertical', backgroundColor: '#F6F4EF', cornerRadius: '10px', paddingAll: '10px', margin: 'md', spacing: 'xs', contents: [
       { type: 'text', text: '匯款資訊', size: 'xs', color: '#9A927F', weight: 'bold' },
       { type: 'text', text: String(o.payInfo), size: 'sm', color: '#43413B', wrap: true },
     ]})
@@ -150,15 +150,15 @@ function reminderBubble(o) {
     contents: {
       type: 'bubble', size: 'mega',
       header: {
-        type: 'box', layout: 'vertical', backgroundColor: o.accent, paddingAll: '20px', spacing: 'xs',
+        type: 'box', layout: 'vertical', backgroundColor: o.accent, paddingAll: '15px', spacing: 'xs',
         contents: [
           { type: 'text', text: o.title, color: '#FFFFFF', weight: 'bold', size: 'lg' },
           { type: 'text', text: o.subtitle, color: o.subColor, size: 'sm' },
         ],
       },
-      body: { type: 'box', layout: 'vertical', paddingAll: '20px', spacing: 'none', contents: body },
+      body: { type: 'box', layout: 'vertical', paddingAll: '15px', spacing: 'none', contents: body },
       footer: {
-        type: 'box', layout: 'vertical', paddingAll: '16px',
+        type: 'box', layout: 'vertical', paddingAll: '11px',
         contents: [{ type: 'text', text: o.footer, size: 'xs', color: '#AEA89C', wrap: true, align: 'center' }],
       },
       styles: { footer: { separator: true } },

@@ -8047,32 +8047,97 @@ async function saveUtilityPayment(leaseId, readingId, key) {
   })
 }
 
+// 將 LINE Flex 卡片近似渲染為 HTML（供傳送前預覽）
+var _FLEX_SZ = { xxs:10, xs:11, sm:13, md:15, lg:18, xl:22, xxl:28 }
+var _FLEX_SP = { none:0, xs:2, sm:4, md:8, lg:12, xl:16, xxl:20 }
+function _flexNode(node, inRow) {
+  if (!node || !node.type) return ''
+  var mt = 'margin-top:' + (_FLEX_SP[node.margin] || 0) + 'px;'
+  if (node.type === 'text') {
+    var fs = _FLEX_SZ[node.size] || 15
+    var fw = node.weight === 'bold' ? '700' : '400'
+    var ta = node.align === 'end' ? 'right' : (node.align === 'center' ? 'center' : 'left')
+    var ws = node.wrap ? 'white-space:normal;word-break:break-word;' : 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+    var fl = (inRow && node.flex != null) ? 'flex:' + node.flex + ';min-width:0;' : ''
+    return '<div style="font-size:' + fs + 'px;color:' + (node.color || '#333') + ';font-weight:' + fw + ';text-align:' + ta + ';line-height:1.35;' + ws + fl + mt + '">' + esc(node.text || '') + '</div>'
+  }
+  if (node.type === 'separator') return '<div style="height:1px;background:' + (node.color || '#eee') + ';' + mt + '"></div>'
+  if (node.type === 'filler') return ''
+  if (node.type === 'box') {
+    var isRow = (node.layout === 'horizontal' || node.layout === 'baseline')
+    var ai = node.layout === 'baseline' ? 'baseline' : (isRow ? 'center' : 'stretch')
+    var bg = node.backgroundColor ? 'background:' + node.backgroundColor + ';' : ''
+    var br = node.cornerRadius ? 'border-radius:' + (parseInt(node.cornerRadius) || 0) + 'px;' : ''
+    var pd = node.paddingAll ? 'padding:' + (parseInt(node.paddingAll) || 0) + 'px;' : ''
+    var fl = (inRow && node.flex != null) ? 'flex:' + node.flex + ';min-width:0;' : ''
+    var inner = (node.contents || []).map(function(c){ return _flexNode(c, isRow) }).join('')
+    return '<div style="display:flex;flex-direction:' + (isRow ? 'row' : 'column') + ';align-items:' + ai + ';gap:' + (_FLEX_SP[node.spacing] || 0) + 'px;' + bg + br + pd + fl + mt + '">' + inner + '</div>'
+  }
+  return ''
+}
+function linePreviewHtml(msg) {
+  var b = (msg && msg.contents) ? msg.contents : msg
+  if (!b || b.type !== 'bubble') return '<div style="padding:20px;color:#888;text-align:center;">無法預覽此訊息</div>'
+  return '<div style="width:300px;max-width:100%;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,0.15);margin:0 auto;">' +
+    (b.header ? _flexNode(b.header, false) : '') +
+    (b.body ? _flexNode(b.body, false) : '') +
+    (b.footer ? '<div style="border-top:1px solid #eee;">' + _flexNode(b.footer, false) + '</div>' : '') +
+  '</div>'
+}
+function showLinePreview(label, msg, onSend) {
+  var html = '<div id="linePreviewModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:400;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
+    '<div style="background:#EDE9E3;border-radius:16px;padding:18px;max-width:360px;width:100%;margin:auto;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+        '<h3 style="margin:0;font-size:16px;">📲 預覽 ' + label + ' 提醒</h3>' +
+        '<button onclick="var m=document.getElementById(\'linePreviewModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#7A756B;margin-bottom:12px;">以下為房客將收到的卡片，確認後傳送：</div>' +
+      linePreviewHtml(msg) +
+      '<div style="display:flex;gap:8px;margin-top:16px;">' +
+        '<button onclick="var m=document.getElementById(\'linePreviewModal\');if(m)m.remove()" style="flex:1;padding:12px;border:1px solid #D8D2C6;background:#fff;border-radius:10px;font-size:14px;cursor:pointer;">取消</button>' +
+        '<button id="linePreviewSend" class="spin-btn" style="flex:2;padding:12px;border:none;background:#06C755;color:#fff;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">確認傳送</button>' +
+      '</div>' +
+    '</div></div>'
+  var ex = document.getElementById('linePreviewModal'); if (ex) ex.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+  var btn = document.getElementById('linePreviewSend')
+  btn.onclick = function() {
+    btnLoad(btn, async function() {
+      await onSend()
+      var m = document.getElementById('linePreviewModal'); if (m) m.remove()
+    })
+  }
+}
 function sendLeasePaymentReminder(leaseId, kind, amount, dueDate, readingId, periodStart, periodEnd) {
   var label = kind === 'UTILITY' ? '水電' : '租金'
-  // 用頁內 modal（LINE / 手機瀏覽器的原生 confirm() 有時被封鎖 → 按了沒反應）
-  return new Promise(function(resolve) {
-    showConfirm({
-      icon: '📲', title: '發送 ' + label + ' LINE 提醒？',
-      msg: '將推播「' + label + '繳費提醒」給此租約綁定的 LINE 租客。' + (amount ? '\n金額 NT$ ' + Number(amount).toLocaleString() : ''),
-      okLabel: '確定發送',
-      onCancel: function() { resolve() },
-      onOk: async function() {
-        try {
-          var res = await fetch('/admin/api/managed/lease/' + leaseId + '/remind?key=' + encodeURIComponent(KEY), {
-            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ kind: kind, amount: amount, dueDate: dueDate, readingId: readingId || null, periodStart: periodStart || null, periodEnd: periodEnd || null })
-          })
-          if (!res.ok) {
-            var data = {}; try { data = await res.json() } catch(e) {}
-            showInfoModal('❌ LINE 提醒發送失敗', (data.error || ('HTTP ' + res.status)) + '\n\n若顯示 invalid（無效的 to），代表此房客尚未加入該 LINE Bot，或合約內的 LINE userID 有誤。')
-          } else {
-            var okd = {}; try { okd = await res.json() } catch(e) {}
-            showToast('✅ 已發送 LINE 提醒' + (okd.via ? '（' + okd.via + '）' : ''))
-          }
-        } catch (e) { showToast('❌ 發送失敗') }
-        resolve()
-      }
+  var payload = { kind: kind, amount: amount, dueDate: dueDate, readingId: readingId || null, periodStart: periodStart || null, periodEnd: periodEnd || null }
+  return (async function() {
+    // 先取得卡片預覽（不實際推播）
+    var preview = null
+    try {
+      var pres = await fetch('/admin/api/managed/lease/' + leaseId + '/remind?key=' + encodeURIComponent(KEY), {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({ preview: true }, payload))
+      })
+      var pd = {}; try { pd = await pres.json() } catch(e) {}
+      if (!pres.ok) { showInfoModal('❌ 無法產生預覽', pd.error || ('HTTP ' + pres.status)); return }
+      preview = pd.preview
+    } catch (e) { showToast('❌ 預覽失敗'); return }
+    // 顯示預覽 → 確認後才實際傳送
+    showLinePreview(label, preview, async function() {
+      try {
+        var res = await fetch('/admin/api/managed/lease/' + leaseId + '/remind?key=' + encodeURIComponent(KEY), {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+        })
+        if (!res.ok) {
+          var data = {}; try { data = await res.json() } catch(e) {}
+          showInfoModal('❌ LINE 提醒發送失敗', (data.error || ('HTTP ' + res.status)) + '\n\n若顯示 invalid（無效的 to），代表此房客尚未加入該 LINE Bot，或合約內的 LINE userID 有誤。')
+        } else {
+          var okd = {}; try { okd = await res.json() } catch(e) {}
+          showToast('✅ 已發送 LINE 提醒' + (okd.via ? '（' + okd.via + '）' : ''))
+        }
+      } catch (e) { showToast('❌ 發送失敗') }
     })
-  })
+  })()
 }
 
 async function addLeaseRecord(managedId, leaseId) {

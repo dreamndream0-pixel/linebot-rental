@@ -1447,6 +1447,8 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
       }
       message = rentReminderFlex(data)
     }
+    // 預覽模式：只回傳卡片 Flex 內容供前端預覽，不實際推播
+    if (req.body.preview) return res.json({ ok: true, preview: message })
     // 依序嘗試客服Bot→主Bot→系統Bot，任一成功即可（房客可能在客服 Bot 而非出租 Bot）
     const result = await pushToLeaseTenant(lease, message)
     res.json({ ok: true, via: result.via })
