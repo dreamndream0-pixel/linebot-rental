@@ -7657,31 +7657,37 @@ function saveSettle(leaseId, alreadySettled) {
           showToast('✅ 已結算')
           var m = document.getElementById('settleModal'); if (m) m.remove()
           await showLeaseList()
-          // 結算完成後，詢問是否傳送結算明細給房客
-          showConfirm({
-            icon: '📨',
-            title: '傳送結算明細給房客？',
-            msg: '將透過 LINE 傳送本次結算明細（押金、應扣費用、退款/補繳金額）給房客。',
-            okLabel: '傳送',
-            onCancel: function() {},
-            onOk: async function() { await settleNotify(leaseId) },
-          })
+          // 結算完成後，直接開啟結算明細預覽（可預覽後再確認傳送給房客）
+          settleNotify(leaseId)
         } catch (e) { showToast('❌ 結算失敗') }
         resolve()
       }
     })
   })
 }
-// 傳送結算明細給房客（LINE）
+// 傳送結算明細給房客（LINE）：先預覽卡片再確認送出
 async function settleNotify(leaseId) {
+  // 先取得卡片預覽（不實際推播）
+  var preview = null
   try {
-    var res = await fetch('/admin/api/managed/lease/' + leaseId + '/settle-notify?key=' + encodeURIComponent(KEY), {
-      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({})
+    var pres = await fetch('/admin/api/managed/lease/' + leaseId + '/settle-notify?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ preview: true })
     })
-    var d = {}; try { d = await res.json() } catch (e) {}
-    if (!res.ok) { showToast('❌ ' + (d.error || '傳送結算明細失敗')); return }
-    showToast('✅ 已傳送結算明細給房客' + (d.via ? '（' + d.via + '）' : ''))
-  } catch (e) { showToast('❌ 傳送結算明細失敗') }
+    var pd = {}; try { pd = await pres.json() } catch (e) {}
+    if (!pres.ok) { showInfoModal('❌ 無法產生預覽', pd.error || ('HTTP ' + pres.status)); return }
+    preview = pd.preview
+  } catch (e) { showToast('❌ 預覽失敗'); return }
+  // 顯示預覽 → 確認後才實際傳送
+  showLinePreview('結算明細', preview, async function() {
+    try {
+      var res = await fetch('/admin/api/managed/lease/' + leaseId + '/settle-notify?key=' + encodeURIComponent(KEY), {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({})
+      })
+      var d = {}; try { d = await res.json() } catch (e) {}
+      if (!res.ok) { showInfoModal('❌ 傳送結算明細失敗', (d.error || ('HTTP ' + res.status)) + '\n\n若顯示 invalid（無效的 to），代表此房客尚未加入該 LINE Bot，或合約內的 LINE userID 有誤。'); return }
+      showToast('✅ 已傳送結算明細給房客' + (d.via ? '（' + d.via + '）' : ''))
+    } catch (e) { showToast('❌ 傳送結算明細失敗') }
+  })
 }
 function paymentCycleLabel(v) {
   return { MONTHLY:'月繳', BIMONTHLY:'雙月繳', QUARTERLY:'季繳', SEMIANNUAL:'半年繳', YEARLY:'年繳' }[v] || '月繳'

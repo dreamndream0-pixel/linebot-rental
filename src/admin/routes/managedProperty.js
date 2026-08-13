@@ -1505,13 +1505,16 @@ router.post('/admin/api/managed/lease/:leaseId/settle-notify', express.json(), a
     const lease = await getOwnedLease(auth, req.params.leaseId)
     if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
     if (!lease.settledAt) return res.status(400).json({ error: '此合約尚未結算，無法傳送結算明細' })
-    if (!lease.lineUserId) return res.status(400).json({ error: '此租約尚未綁定 LINE 租客（合約內 LINE userID 為空）' })
+    const preview = req.body && req.body.preview
+    if (!preview && !lease.lineUserId) return res.status(400).json({ error: '此租約尚未綁定 LINE 租客（合約內 LINE userID 為空）' })
     const data = {
       ...lease,
       managedTitle: lease.managedProperty.title,
       settleDeductions: lease.settleDeductions ? safeParse(lease.settleDeductions) : [],
     }
     const message = settleReceiptFlex(data)
+    // 預覽模式：只回傳卡片內容，不實際推播
+    if (preview) return res.json({ ok: true, preview: message })
     const result = await pushToLeaseTenant(lease, message)
     res.json({ ok: true, via: result.via })
   } catch (e) {
