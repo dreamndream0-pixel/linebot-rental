@@ -1512,6 +1512,18 @@ router.post('/admin/api/managed/lease/:leaseId/settle-notify', express.json(), a
       managedTitle: lease.managedProperty.title,
       settleDeductions: lease.settleDeductions ? safeParse(lease.settleDeductions) : [],
     }
+    // 帶入結算抄表的電費明細供卡片顯示計算方式：取最新一筆抄表，
+    // 且其迄日接近結算日（結算當下建立的抄表），避免帶到很舊的月抄表。
+    try {
+      const latestReading = await prisma.utilityReading.findFirst({
+        where: { leaseId: lease.id },
+        orderBy: { endDate: 'desc' },
+      })
+      if (latestReading && latestReading.endDate && lease.settledAt) {
+        const gapDays = (startOfDay(lease.settledAt) - startOfDay(latestReading.endDate)) / 86400000
+        if (gapDays <= 7) data.reading = latestReading
+      }
+    } catch (e) { console.error('讀取結算電費明細失敗:', e.message) }
     const message = settleReceiptFlex(data)
     // 預覽模式：只回傳卡片內容，不實際推播
     if (preview) return res.json({ ok: true, preview: message })

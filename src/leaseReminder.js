@@ -285,6 +285,17 @@ function settleReceiptFlex(lease) {
   if (prepaid > 0) rows.push(moneyRow('預收費用', prepaid, '+'))
   refundItems.forEach(function (d) { rows.push(moneyRow(d.name || '退款', d.amount, '+')) })
   charges.forEach(function (d) { rows.push(moneyRow(d.name || '應扣費用', d.amount, '-')) })
+  // 電費明細（結算抄表）：起訖日/度數、使用度數、費率，讓房客了解電費如何計算
+  const r = lease.reading || null
+  if (r) {
+    rows.push({ type: 'separator', margin: 'lg', color: '#ECE6DA' })
+    rows.push({ type: 'text', text: '電費明細（結算抄表）', size: 'xs', color: '#B0A891', weight: 'bold', margin: 'sm' })
+    rows.push(remRow('抄表期間', fmtYMD(r.startDate) + ' → ' + fmtYMD(r.endDate)))
+    rows.push(remRow('度數', Number(r.startDegree || 0).toLocaleString() + ' → ' + Number(r.endDegree || 0).toLocaleString() + ' 度'))
+    rows.push(remRow('本期使用', Number(r.usedDegree || 0).toLocaleString() + ' 度', { bold: true, color: '#A9781E' }))
+    if (r.rate) rows.push(remRow('每度費率', 'NT$ ' + Number(r.rate).toLocaleString()))
+    if (r.amount) rows.push(remRow('電費金額', 'NT$ ' + Number(r.amount).toLocaleString(), { bold: true, color: '#B5544C' }))
+  }
   const positive = refund >= 0
   return reminderBubble({
     alt: '合約結算明細', title: '合約結算明細',
