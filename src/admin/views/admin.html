@@ -7168,7 +7168,9 @@ function renderLeaseList() {
     var nextRent = l.nextRentDate ? new Date(l.nextRentDate).toLocaleDateString('zh-TW') : '—'
     var rentHint = ''
     if (l.daysToRent != null) {
-      rentHint = l.daysToRent <= 0 ? ' · 今天繳租' : ' · ' + l.daysToRent + '天後繳租'
+      if (l.daysToRent < 0) rentHint = ' · <span style="color:#C0524A;font-weight:700;">逾期 ' + (-l.daysToRent) + ' 天未繳</span>'
+      else if (l.daysToRent === 0) rentHint = ' · <span style="color:#C0524A;font-weight:700;">今天繳租</span>'
+      else rentHint = ' · ' + l.daysToRent + '天後繳租'
     }
     var displayRent = l.nextRentAmount || l.rent
     var propLink = l.propertyId
@@ -7915,18 +7917,44 @@ async function deleteUtilityReading(leaseId, readingId) {
 
 async function uploadPaymentReceipt(input, targetId) {
   if (!input.files || !input.files[0]) return
+  var file = input.files[0]
+  // 更新按鈕文字（保留 input 節點，避免破壞再次選檔）
+  var label = input.closest ? input.closest('label') : null
+  var txt = (label && label.childNodes.length) ? label.childNodes[0] : null
+  var setLbl = function(s){ if (txt) txt.nodeValue = s }
+  // 檔案大小上限 10MB（與後端一致）
+  if (file.size > 10 * 1024 * 1024) {
+    showInfoModal('❌ 檔案過大', '匯款圖為 ' + (file.size/1048576).toFixed(1) + ' MB，超過 10MB 上限。\n請改用截圖，或壓縮後再上傳。')
+    input.value = ''
+    return
+  }
+  setLbl('⏳ 上傳中… ')
   var fd = new FormData()
-  fd.append('file', input.files[0])
+  fd.append('file', file)
   try {
     var res = await fetch('/admin/api/upload?key=' + encodeURIComponent(KEY), { method: 'POST', body: fd })
-    if (!res.ok) { showToast('❌ 匯款圖上傳失敗'); return }
-    var data = await res.json()
+    var data = {}; try { data = await res.json() } catch(e) {}
+    if (!res.ok || !data.url) {
+      setLbl('📎 上傳 ')
+      showInfoModal('❌ 匯款圖上傳失敗', (data.error || ('HTTP ' + res.status)) + '\n\n請確認網路連線；若持續失敗，可能是圖片格式不支援或伺服器圖床未設定。')
+      input.value = ''
+      return
+    }
     var target = document.getElementById(targetId)
-    if (target) target.value = data.url || ''
+    if (target) target.value = data.url
+    setLbl('✅ 已上傳 ')
+    // 於欄位顯示檢視連結（可點開確認）
+    var td = input.closest ? input.closest('td') : null
+    if (td) {
+      var prev = td.querySelector('.recv-thumb'); if (prev) prev.remove()
+      td.insertAdjacentHTML('beforeend', ' <a href="' + data.url + '" target="_blank" class="recv-thumb" style="font-size:12px;color:#0D5CB8;white-space:nowrap;">🔗 檢視</a>')
+    }
     showToast('✅ 匯款圖已上傳，請按儲存')
   } catch(e) {
-    showToast('❌ 匯款圖上傳失敗')
+    setLbl('📎 上傳 ')
+    showInfoModal('❌ 匯款圖上傳失敗', '網路連線異常，請稍後再試。')
   }
+  input.value = ''
 }
 
 async function saveRentPayment(leaseId, key, rentPaymentId) {

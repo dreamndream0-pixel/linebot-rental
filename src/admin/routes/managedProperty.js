@@ -146,9 +146,11 @@ function buildRentSchedule(lease, rentPayments) {
 }
 
 function nextUnpaidRentRow(lease, today = new Date()) {
-  const todayStart = startOfDay(today)
+  // 取「最早一筆未繳」期別（含已逾期未繳）：逾期未繳者其應繳日為過去日期，
+  // daysToRent 會是負數，前端顯示「逾期 N 天」；繳清後才會換到下一期，
+  // 藉此讓逾期租客留在「即將繳費」分類，直到繳費為止。
   return buildRentSchedule(lease, lease.rentPayments || [])
-    .filter(r => (r.unpaid || 0) > 0 && r.dueDate && startOfDay(r.dueDate) >= todayStart)
+    .filter(r => (r.unpaid || 0) > 0 && r.dueDate)
     .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0] || null
 }
 
