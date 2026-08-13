@@ -285,6 +285,7 @@ router.post('/admin/api/managed', express.json(), async (req, res) => {
         contractStart: b.contractStart ? new Date(b.contractStart) : null,
         contractEnd: b.contractEnd ? new Date(b.contractEnd) : null,
         feePercent: parseFloat(b.feePercent) || 0,
+        leaseCost: parseInt(b.leaseCost) || 0,
         subleaseFeeType: ['HALF_MONTH', 'ONE_MONTH', 'OTHER'].includes(b.subleaseFeeType) ? b.subleaseFeeType : null,
         subleaseFeeOther: parseInt(b.subleaseFeeOther) || 0,
         note: b.note || null,
@@ -318,6 +319,7 @@ router.post('/admin/api/managed/:id', express.json(), async (req, res) => {
     if (b.contractStart !== undefined) data.contractStart = b.contractStart ? new Date(b.contractStart) : null
     if (b.contractEnd !== undefined) data.contractEnd = b.contractEnd ? new Date(b.contractEnd) : null
     if (b.feePercent !== undefined) data.feePercent = parseFloat(b.feePercent) || 0
+    if (b.leaseCost !== undefined) data.leaseCost = parseInt(b.leaseCost) || 0
     if (b.subleaseFeeType !== undefined) data.subleaseFeeType = ['HALF_MONTH', 'ONE_MONTH', 'OTHER'].includes(b.subleaseFeeType) ? b.subleaseFeeType : null
     if (b.subleaseFeeOther !== undefined) data.subleaseFeeOther = parseInt(b.subleaseFeeOther) || 0
 
@@ -607,9 +609,17 @@ router.get('/admin/api/managed-report', async (req, res) => {
       if (u > 0) { const pid = leaseToProp[rd.leaseId]; unpaidUtilByProp[pid] = (unpaidUtilByProp[pid] || 0) + u }
     }
 
+    // ── 承租成本月數：固定期間＝期間月數（對齊今天）；全部＝各物業合約起日至今 ──
+    const monthsBetween = (a, b) => {
+      const A = new Date(a), B = new Date(b)
+      return Math.max(1, (B.getFullYear() * 12 + B.getMonth()) - (A.getFullYear() * 12 + A.getMonth()) + 1)
+    }
+    const costEnd = new Date(Math.min((end || now).getTime(), now.getTime()))
+    const fixedMonths = start ? monthsBetween(start, costEnd) : null
+
     // ── 逐物業彙總 ──
     let actualIncome = 0, expenseTotal = 0, mgmtFeeTotal = 0, paidOutTotal = 0, pendingPayout = 0
-    let unpaidRentTotal = 0, unpaidUtilTotal = 0, profitTotal = 0
+    let unpaidRentTotal = 0, unpaidUtilTotal = 0, profitTotal = 0, ownerCostTotal = 0
     const byProperty = props.map(p => {
       const income = p.incomes.filter(r => r.type === 'INCOME').reduce((s, r) => s + r.amount, 0)  // 期間實收
       const expense = p.incomes.filter(r => r.type === 'EXPENSE').reduce((s, r) => s + r.amount, 0)
@@ -618,19 +628,21 @@ router.get('/admin/api/managed-report', async (req, res) => {
       const pending = p.payouts.filter(r => r.status === 'PENDING').reduce((s, r) => s + r.payoutAmount, 0)
       const unpaidRent = unpaidRentByProp[p.id] || 0
       const unpaidUtil = unpaidUtilByProp[p.id] || 0
+      const isSublease = p.manageType !== 'TRUST'  // SUBLEASE / HYBRID 皆有承租成本
+      // 承租成本＝每月付屋主 × 月數（固定期間用期間月數；全部用合約起日至今）
+      const ownerMonths = fixedMonths != null ? fixedMonths : (p.contractStart ? monthsBetween(p.contractStart, now) : 1)
+      const ownerCost = isSublease ? (p.leaseCost || 0) * ownerMonths : 0
       // 平台利潤：代管=管理費；包租=實收-承租成本-支出
-      const profit = p.manageType === 'TRUST'
-        ? mgmtFee
-        : (income - (p.leaseCost * Math.max(p.payouts.length, 1)) - expense)
+      const profit = p.manageType === 'TRUST' ? mgmtFee : (income - ownerCost - expense)
 
       actualIncome += income; expenseTotal += expense; mgmtFeeTotal += mgmtFee
       paidOutTotal += paidOut; pendingPayout += pending
-      unpaidRentTotal += unpaidRent; unpaidUtilTotal += unpaidUtil; profitTotal += profit
+      unpaidRentTotal += unpaidRent; unpaidUtilTotal += unpaidUtil; profitTotal += profit; ownerCostTotal += ownerCost
 
       return {
         id: p.id, title: p.title, ownerName: p.ownerName, manageType: p.manageType,
         income, expense, mgmtFee, paidOut, pending, unpaidRent, unpaidUtil,
-        unpaid: unpaidRent + unpaidUtil, profit,
+        unpaid: unpaidRent + unpaidUtil, ownerCost, leaseCost: p.leaseCost || 0, ownerMonths, profit,
       }
     })
     const netCashflow = actualIncome - expenseTotal - paidOutTotal
@@ -642,6 +654,7 @@ router.get('/admin/api/managed-report', async (req, res) => {
         count: props.length,
         actualIncome, expense: expenseTotal, mgmtFee: mgmtFeeTotal,
         unpaidRent: unpaidRentTotal, unpaidUtil: unpaidUtilTotal, unpaidTotal: unpaidRentTotal + unpaidUtilTotal,
+        ownerCost: ownerCostTotal,
         paidOut: paidOutTotal, pendingPayout, profit: profitTotal, netCashflow,
         // 相容舊欄位
         totalIncome: actualIncome, totalExpense: expenseTotal, totalMgmtFee: mgmtFeeTotal,
