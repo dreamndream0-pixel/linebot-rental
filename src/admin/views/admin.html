@@ -7311,13 +7311,17 @@ function settleAddDeduction() {
 function settleRecalc() {
   var deposit = Number((document.getElementById('settle_deposit') || {}).value || 0)
   var prepaid = Number((document.getElementById('settle_prepaid') || {}).value || 0)
-  var total = 0
-  document.querySelectorAll('#settleDeductions .settle-ded-amt').forEach(function(el) { total += Number(el.value || 0) })
+  var charge = 0, refundBack = 0
+  document.querySelectorAll('#settleDeductions .settle-ded-amt').forEach(function(el) {
+    var v = Number(el.value || 0)
+    if (v >= 0) charge += v; else refundBack += -v   // 正數＝應扣；負數＝退款項
+  })
+  var total = charge - refundBack
   var refund = deposit + prepaid - total
   var box = document.getElementById('settleResult')
   if (!box) return
   var n2 = function(x){ return Number(x || 0).toLocaleString() }
-  var formula = '<div style="font-size:12px;color:#888;white-space:nowrap;">押金 ' + n2(deposit) + ' ＋ 預收 ' + n2(prepaid) + ' － 應扣 ' + n2(total) + '</div>'
+  var formula = '<div style="font-size:12px;color:#888;white-space:nowrap;">押金 ' + n2(deposit) + ' ＋ 預收 ' + n2(prepaid) + (refundBack ? ' ＋ 退款 ' + n2(refundBack) : '') + ' － 應扣 ' + n2(charge) + '</div>'
   if (refund >= 0) {
     box.innerHTML = formula +
       '<div style="font-size:19px;font-weight:800;color:#2E7D46;margin-top:4px;white-space:nowrap;">應退還房客 ' + leaseMoney(refund) + '</div>'
@@ -7371,6 +7375,57 @@ function settleMeterApply() {
   if (end === '' || end == null) { showToast('請先輸入本期度數'); return }
   var amt = settleMeterSync()
   showToast('✅ 已帶入電費 ' + leaseMoney(amt))
+}
+var SETTLE_RENT_REFUND_NAME = '按日退還租金'
+// 按日退租金：月租 ÷ 當月實際天數，退租日隔天起至已繳到期日（含）逐日累加
+function settleRentRefundCalc() {
+  var ctx = window.__settleCtx || {}
+  var rent = Number(ctx.monthlyRent || 0)
+  var thru = (document.getElementById('settle_refundPaidThru') || {}).value
+  var settleD = (document.getElementById('settle_settledAt') || {}).value
+  var box = document.getElementById('settleRentRefundResult')
+  if (!rent || !thru || !settleD) { if (box) box.innerHTML = ''; return { amt: 0, days: 0 } }
+  var start = new Date(settleD), end = new Date(thru)
+  var amt = 0, days = 0
+  var d = new Date(start.getTime() + 86400000)  // 退租日隔天起算
+  var guard = 0
+  while (d <= end && guard < 1000) {
+    var dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()  // 當月實際天數
+    amt += rent / dim
+    days++; guard++
+    d = new Date(d.getTime() + 86400000)
+  }
+  amt = Math.round(amt)
+  if (box) {
+    box.innerHTML = days > 0
+      ? '未住 <b>' + days + '</b> 天，按當月天數退還 <b style="color:#2E7D46;">' + leaseMoney(amt) + '</b>'
+      : '<span style="color:#999;">退租日已達或晚於已繳到期日，無可退天數</span>'
+  }
+  return { amt: amt, days: days }
+}
+function settleRentRefundSync(showTip) {
+  var r = settleRentRefundCalc()
+  var name = SETTLE_RENT_REFUND_NAME + '（未住' + r.days + '天）'
+  // 找出既有的退租金列（名稱前綴相符）
+  var found = null
+  document.querySelectorAll('#settleDeductions .settle-ded-row').forEach(function(row) {
+    var n = (row.querySelector('.settle-ded-name') || {}).value || ''
+    if (n.indexOf(SETTLE_RENT_REFUND_NAME) === 0) found = row
+  })
+  if (r.amt <= 0 || r.days <= 0) {
+    if (found) { found.remove(); settleRecalc() }
+    if (showTip) showToast('無可退天數')
+    return
+  }
+  // 退款以負數應扣表示（退款會加回退還金額）
+  if (found) {
+    found.querySelector('.settle-ded-name').value = name
+    found.querySelector('.settle-ded-amt').value = -r.amt
+  } else {
+    document.getElementById('settleDeductions').insertAdjacentHTML('beforeend', settleDedRow(name, -r.amt))
+  }
+  settleRecalc()
+  if (showTip) showToast('✅ 已帶入退租金 ' + leaseMoney(r.amt))
 }
 function settleToggleEarly() {
   var cb = document.getElementById('settle_early')
@@ -7430,7 +7485,8 @@ async function openSettleModal(leaseId) {
   var meterStart = p.lastMeterDegree || 0
   var meterStartDateStr = p.lastMeterDate ? leaseDate(p.lastMeterDate) : '—'
   var meterRateVal = p.meterRate || 0
-  window.__settleCtx = { leaseEnd: leaseEndStr, today: today, mode: 'settle', meterStart: meterStart, meterStartDateInput: leaseDateInput(p.lastMeterDate) }
+  var refundPaidThru = leaseDateInput(p.paidThroughDate || p.leaseEnd)
+  window.__settleCtx = { leaseEnd: leaseEndStr, today: today, mode: 'settle', meterStart: meterStart, meterStartDateInput: leaseDateInput(p.lastMeterDate), monthlyRent: Number(p.monthlyRent || 0) }
   var inp = 'width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;box-sizing:border-box;font-size:13px;'
   // 日期輸入框：白底、去除 iOS 灰色膠囊、固定高度，避免跑版
   var di = 'width:100%;box-sizing:border-box;height:40px;padding:0 10px;border:1px solid #E5E0D5;border-radius:8px;font-size:14px;color:#333;background:#fff;-webkit-appearance:none;appearance:none;'
@@ -7447,7 +7503,7 @@ async function openSettleModal(leaseId) {
   var settleBlock = '<div id="settleModeSettle">' +
     (alreadySettled ? '<div style="font-size:12px;color:#B07A2E;margin-bottom:12px;">此合約已結算，修改後將更新結算內容。</div>' : '<div style="font-size:12px;color:#888;margin-bottom:12px;">結算後合約將結束，門鎖綁定自動解除。</div>') +
     '<div style="display:flex;gap:10px;">' +
-      '<div style="flex:1;min-width:0;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">結算日期</label><input id="settle_settledAt" type="date" value="' + settleDate + '" onchange="if(document.getElementById(\'settle_early\').checked)settleToggleEarly()" style="' + di + 'margin-bottom:10px;"></div>' +
+      '<div style="flex:1;min-width:0;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">結算日期</label><input id="settle_settledAt" type="date" value="' + settleDate + '" onchange="if(document.getElementById(\'settle_early\').checked)settleToggleEarly();settleRentRefundSync()" style="' + di + 'margin-bottom:10px;"></div>' +
       '<div style="flex:1;min-width:0;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">合約結束日</label><input id="settle_endedAt" type="date" value="' + endDate + '" style="' + di + 'margin-bottom:10px;"></div>' +
     '</div>' +
     '<label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:12px;"><input type="checkbox" id="settle_early"' + (earlyChecked ? ' checked' : '') + ' onchange="settleToggleEarly()"> 提前終止合約<span style="font-size:11px;color:#999;">（不勾選＝結束日以原合約為主）</span></label>' +
@@ -7469,8 +7525,18 @@ async function openSettleModal(leaseId) {
       '</div>' +
       '<div id="settleMeterResult" style="font-size:13px;color:#4A6741;margin-top:8px;"></div>' +
     '</div>' +
+    // 🗓️ 按日退租金：提前退租退還未住天數（月租÷當月實際天數）
+    '<div style="border:1px dashed #CBD8CB;border-radius:12px;padding:12px;margin-bottom:12px;background:#F5F9F5;">' +
+      '<div style="font-size:13px;font-weight:700;color:#3E6144;margin-bottom:6px;">🗓️ 按日退租金（提前退租退還未住天數）</div>' +
+      '<div style="font-size:12px;color:#888;margin-bottom:8px;">月租：<b>NT$ ' + Number(p.monthlyRent || 0).toLocaleString() + '</b>　退租日以上方「結算日期」為準；退還隔日起至已繳到期日（含），日租按當月實際天數計。</div>' +
+      '<div style="display:flex;gap:8px;align-items:flex-end;">' +
+        '<div style="flex:1;min-width:0;"><label style="font-size:11px;color:#888;display:block;margin-bottom:3px;">已繳租金到期日</label><input id="settle_refundPaidThru" type="date" value="' + refundPaidThru + '" oninput="settleRentRefundSync()" style="' + di + '"></div>' +
+        '<button onclick="settleRentRefundSync(true)" style="flex:none;border:none;background:#3E6144;color:#fff;border-radius:8px;padding:0 14px;height:40px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">帶入退款</button>' +
+      '</div>' +
+      '<div id="settleRentRefundResult" style="font-size:13px;color:#3E6144;margin-top:8px;"></div>' +
+    '</div>' +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
-      '<label style="font-size:12px;color:#888;">應扣費用（建議值，可修改）</label>' +
+      '<label style="font-size:12px;color:#888;">應扣費用（建議值，可修改；退款項以負數表示）</label>' +
       '<button onclick="settleAddDeduction()" style="border:1px solid #E5E0D5;background:#FAF8F4;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;">＋ 新增項目</button>' +
     '</div>' +
     '<div id="settleDeductions">' + dedRows + '</div>' +

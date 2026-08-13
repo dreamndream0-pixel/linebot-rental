@@ -264,15 +264,22 @@ function settleReceiptFlex(lease) {
   const deductions = Array.isArray(lease.settleDeductions) ? lease.settleDeductions : []
   const deductTotal = deductions.reduce((s, d) => s + (Number(d.amount) || 0), 0)
   const refund = (lease.settleRefund != null) ? Number(lease.settleRefund) : (deposit + prepaid - deductTotal)
+  // 正數＝應扣費用；負數＝退款項（例如按日退租金）
+  const charges = deductions.filter(d => (Number(d.amount) || 0) >= 0)
+  const refundItems = deductions.filter(d => (Number(d.amount) || 0) < 0)
+  const chargeTotal = charges.reduce((s, d) => s + (Number(d.amount) || 0), 0)
   const rows = []
   if (lease.settledAt) rows.push(remRow('結算日期', fmtYMD(lease.settledAt)))
   if (lease.endedAt) rows.push(remRow('合約結束日', fmtYMD(lease.endedAt)))
   rows.push(remRow('押金', 'NT$ ' + deposit.toLocaleString()))
   if (prepaid > 0) rows.push(remRow('預收費用', 'NT$ ' + prepaid.toLocaleString()))
-  deductions.forEach(function (d) {
+  charges.forEach(function (d) {
     rows.push(remRow('－ ' + (d.name || '應扣費用'), 'NT$ ' + (Number(d.amount) || 0).toLocaleString(), { color: '#B5544C' }))
   })
-  if (deductions.length) rows.push(remRow('應扣合計', 'NT$ ' + deductTotal.toLocaleString(), { bold: true, color: '#B5544C' }))
+  if (charges.length) rows.push(remRow('應扣合計', 'NT$ ' + chargeTotal.toLocaleString(), { bold: true, color: '#B5544C' }))
+  refundItems.forEach(function (d) {
+    rows.push(remRow('＋ ' + (d.name || '退款'), 'NT$ ' + Math.abs(Number(d.amount) || 0).toLocaleString(), { color: '#2E7D46' }))
+  })
   const positive = refund >= 0
   return reminderBubble({
     alt: '合約結算明細', title: '合約結算明細',
