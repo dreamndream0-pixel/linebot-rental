@@ -276,7 +276,7 @@ function utilReminderFlex(lease) {
     subColor: '#F3E6C6', accent: '#C6982E', tint: '#FBF4E4', deep: '#A9781E',
     tenant: lease.tenantName, intro: '以下為本期水電費繳費明細',
     amountLabel: '本期應繳金額', amount: amount, dueStr: dueRaw ? fmtYMD(dueRaw) : null,
-    detailTitle: '用電明細', rows: rows,
+    detailTitle: '用電明細', rows: rows, payInfo: lease.rentPayInfo || null,
     footer: '請於期限前完成繳費，感謝您的配合',
   })
 }
@@ -291,13 +291,15 @@ async function checkLeaseReminders() {
 
   const leases = await prisma.lease.findMany({
     where: { status: 'ACTIVE', lineUserId: { not: null } },
-    include: { managedProperty: { select: { title: true, landlordId: true } } },
+    include: { managedProperty: { select: { title: true, landlordId: true, landlord: { select: { rentPayInfo: true } } } } },
   })
 
   for (const lease of leases) {
     const data = {
       ...lease,
       managedTitle: lease.managedProperty.title,
+      // 房東銀行收款帳號／匯款資訊（顯示於租金與水電費提醒卡片）
+      rentPayInfo: lease.managedProperty.landlord ? lease.managedProperty.landlord.rentPayInfo : null,
     }
 
     // 租金提醒：繳費日前 3 天
