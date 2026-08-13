@@ -62,6 +62,24 @@ function safeParse(s) {
   try { return JSON.parse(s) } catch { return null }
 }
 
+// 決定顯示於繳費卡片的「收款帳戶」：
+// 以委託物業的屋主匯款銀行＋帳號為主（房東委託該物業指定的收款帳戶）；
+// 若該物業未填，才退用房東共用的匯款資訊（rentPayInfo）。
+async function resolvePayInfo(managedProperty) {
+  if (!managedProperty) return null
+  const bank = (managedProperty.ownerBankName || '').trim()
+  const acct = (managedProperty.ownerBank || '').trim()
+  const propInfo = [bank, acct].filter(Boolean).join(' ')
+  if (propInfo) return propInfo
+  if (managedProperty.landlordId) {
+    try {
+      const ll = await prisma.landlord.findUnique({ where: { id: managedProperty.landlordId }, select: { rentPayInfo: true } })
+      if (ll && ll.rentPayInfo) return ll.rentPayInfo
+    } catch (e) { console.error('讀取房東匯款資訊失敗:', e.message) }
+  }
+  return null
+}
+
 async function getOwnedLease(auth, leaseId) {
   const lease = await prisma.lease.findUnique({
     where: { id: leaseId },
@@ -1389,11 +1407,10 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
     if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
     if (!lease.lineUserId) return res.status(400).json({ error: '此租約尚未綁定 LINE 租客（合約內 LINE userID 為空）' })
     const data = { ...lease, managedTitle: lease.managedProperty.title }
-    // 房東設定的銀行收款帳號／匯款資訊（顯示於租金與水電費繳費卡片，供房客轉帳）
+    // 收款帳戶：以「委託物業」設定的屋主匯款銀行＋帳號為主；若未填才退用房東共用匯款資訊
     try {
-      const ll = await prisma.landlord.findUnique({ where: { id: lease.managedProperty.landlordId }, select: { rentPayInfo: true } })
-      if (ll && ll.rentPayInfo) data.rentPayInfo = ll.rentPayInfo
-    } catch (e) { console.error('讀取匯款資訊失敗:', e.message) }
+      data.rentPayInfo = await resolvePayInfo(lease.managedProperty)
+    } catch (e) { console.error('讀取收款帳戶失敗:', e.message) }
     const kind = req.body.kind === 'UTILITY' ? 'UTILITY' : 'RENT'
     let message
     if (kind === 'UTILITY') {
