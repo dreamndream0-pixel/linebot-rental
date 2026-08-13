@@ -122,11 +122,15 @@ function buildRentSchedule(lease, rentPayments) {
     const nextStart = addMonths(periodStart, months)
     const periodEnd = new Date(Math.min(addMonths(periodStart, months).getTime() - 86400000, leaseEnd.getTime()))
     const due = lease.paymentDueMode === 'CONTRACT_START' ? new Date(periodStart) : fixedDueDate(periodStart, payDay)
-    const amount = effectiveRent(lease) * months
+    // 有停車費的合約：租金明細每期金額 ＝（折後租金 ＋ 停車費）× 期數
+    const parking = lease.parkingFee || 0
+    const amount = (effectiveRent(lease) + parking) * months
     rows.push({
       id: null,
       index: rows.length + 1,
-      label: `${ymd(periodStart)}~${ymd(periodEnd)}`,
+      label: parking > 0
+        ? `${ymd(periodStart)}~${ymd(periodEnd)}（含停車費 ${parking.toLocaleString()}）`
+        : `${ymd(periodStart)}~${ymd(periodEnd)}`,
       periodStart,
       periodEnd,
       amount,
@@ -135,7 +139,8 @@ function buildRentSchedule(lease, rentPayments) {
       paidDate: null,
       payMethod: null,
       receiptUrl: null,
-      note: null,
+      note: parking > 0 ? `含停車費 ${parking.toLocaleString()}/月` : null,
+      parkingFee: parking,
       locked: false,
       unpaid: amount,
     })

@@ -7656,6 +7656,7 @@ function renderRentBillingRows(rows, leaseId) {
     var statusCell = '<td style="padding:3px 6px;font-size:12px;text-align:right;white-space:nowrap;color:' + (unpaid > 0 ? '#C0524A' : '#2E7D32') + ';">' + leaseMoney(unpaid) + '</td>' +
       '<td style="padding:3px 6px;font-size:12px;text-align:center;white-space:nowrap;">' + (paid ? '<span style="color:#2E7D32;font-weight:700;">已收款</span>' : '<span style="color:#C0524A;font-weight:700;">未繳</span>') + '</td>'
     var unlockLabel = r.locked ? '<br><span style="font-size:11px;color:#E07B39;">已解鎖</span>' : ''
+    var parkNote = (r.note && !r.locked) ? '<br><span style="font-size:11px;color:#B07A2E;">🅿️ ' + esc(r.note) + '</span>' : ''
     return '<tr>' +
       '<td style="padding:4px 6px;font-size:12px;">' + r.index + '</td>' +
       '<td style="padding:3px;">' +
@@ -7663,7 +7664,7 @@ function renderRentBillingRows(rows, leaseId) {
           '<input id="' + key + '_start" type="date" value="' + leaseDateInput(r.periodStart) + '" style="' + di + 'width:118px;" title="期間開始">' +
           '<span style="font-size:11px;">~</span>' +
           '<input id="' + key + '_end" type="date" value="' + leaseDateInput(r.periodEnd) + '" style="' + di + 'width:118px;" title="期間結束">' +
-        '</div>' + unlockLabel +
+        '</div>' + unlockLabel + parkNote +
       '</td>' +
       '<td style="padding:3px;"><input id="' + key + '_amount" type="number" value="' + Number(r.amount || 0) + '" style="' + inp + 'width:70px;text-align:right;" title="應繳租金"></td>' +
       '<td style="padding:3px;"><input id="' + key + '_duedate" type="date" value="' + leaseDateInput(r.dueDate) + '" style="' + di + 'width:118px;" title="應繳日期"></td>' +
