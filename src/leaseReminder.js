@@ -115,6 +115,25 @@ function remRow(label, value, opts) {
   ]}
 }
 
+// 屋主姓名：第二個字以 O 隱藏（黃爵卿 → 黃O卿；王明 → 王O）
+function maskOwnerName(name) {
+  const s = String(name || '').trim()
+  if (s.length < 2) return s
+  return s[0] + 'O' + s.slice(2)
+}
+
+// 組出繳費卡片的收款帳戶資訊（戶名／銀行／帳號）：
+// 以委託物業的屋主匯款銀行＋帳號為主；未填則退用房東共用匯款資訊（純字串）。
+function buildPayInfo(mp, fallbackRaw) {
+  const bank = ((mp && mp.ownerBankName) || '').trim()
+  const account = ((mp && mp.ownerBank) || '').trim()
+  if (bank || account) {
+    return { name: maskOwnerName(mp && mp.ownerName), bank, account }
+  }
+  if (fallbackRaw) return { raw: String(fallbackRaw) }
+  return null
+}
+
 // 繳費提醒卡片：統一的高級排版（頭部色帶＋金額主視覺＋明細）
 function reminderBubble(o) {
   const body = [
@@ -137,12 +156,20 @@ function reminderBubble(o) {
     body.push({ type: 'separator', margin: 'sm', color: '#ECE6DA' })
     o.rows.forEach(function (rw) { body.push(rw) })
   }
-  // 匯款資訊區塊（房客轉帳用）
+  // 匯款資訊區塊（房客轉帳用）：戶名／銀行／帳號
   if (o.payInfo) {
-    body.push({ type: 'box', layout: 'vertical', backgroundColor: '#F6F4EF', cornerRadius: '10px', paddingAll: '10px', margin: 'md', spacing: 'xs', contents: [
-      { type: 'text', text: '匯款資訊', size: 'xs', color: '#9A927F', weight: 'bold' },
-      { type: 'text', text: String(o.payInfo), size: 'sm', color: '#43413B', wrap: true },
-    ]})
+    const pi = o.payInfo
+    const lines = [{ type: 'text', text: '匯款資訊', size: 'xs', color: '#9A927F', weight: 'bold' }]
+    if (typeof pi === 'string') {
+      lines.push({ type: 'text', text: pi, size: 'sm', color: '#43413B', wrap: true })
+    } else if (pi.raw) {
+      lines.push({ type: 'text', text: pi.raw, size: 'sm', color: '#43413B', wrap: true })
+    } else {
+      if (pi.name) lines.push({ type: 'text', text: '戶名：' + pi.name, size: 'sm', color: '#43413B', wrap: true })
+      if (pi.bank) lines.push({ type: 'text', text: '銀行：' + pi.bank, size: 'sm', color: '#43413B', wrap: true })
+      if (pi.account) lines.push({ type: 'text', text: '帳號：' + pi.account, size: 'sm', color: '#43413B', wrap: true })
+    }
+    body.push({ type: 'box', layout: 'vertical', backgroundColor: '#F6F4EF', cornerRadius: '10px', paddingAll: '10px', margin: 'md', spacing: 'xs', contents: lines })
   }
   return {
     type: 'flex',
@@ -291,17 +318,16 @@ async function checkLeaseReminders() {
 
   const leases = await prisma.lease.findMany({
     where: { status: 'ACTIVE', lineUserId: { not: null } },
-    include: { managedProperty: { select: { title: true, landlordId: true, ownerBankName: true, ownerBank: true, landlord: { select: { rentPayInfo: true } } } } },
+    include: { managedProperty: { select: { title: true, landlordId: true, ownerName: true, ownerBankName: true, ownerBank: true, landlord: { select: { rentPayInfo: true } } } } },
   })
 
   for (const lease of leases) {
     const mp = lease.managedProperty
     // 收款帳戶：以委託物業的屋主匯款銀行＋帳號為主，未填才退用房東共用匯款資訊
-    const propInfo = [(mp.ownerBankName || '').trim(), (mp.ownerBank || '').trim()].filter(Boolean).join(' ')
     const data = {
       ...lease,
       managedTitle: mp.title,
-      rentPayInfo: propInfo || (mp.landlord ? mp.landlord.rentPayInfo : null),
+      rentPayInfo: buildPayInfo(mp, mp.landlord ? mp.landlord.rentPayInfo : null),
     }
 
     // 租金提醒：繳費日前 3 天
@@ -343,4 +369,4 @@ function startLeaseReminders() {
   console.log('✅ 租約繳費提醒排程已啟動（每日 9:00 檢查）')
 }
 
-module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex, settleReceiptFlex }
+module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex, settleReceiptFlex, buildPayInfo }
