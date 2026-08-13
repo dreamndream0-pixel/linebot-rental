@@ -7976,12 +7976,18 @@ async function saveRentPayment(leaseId, key, rentPaymentId) {
     receiptUrl:  val(key + '_receipt')
   }
   if (!body.periodStart || !body.periodEnd || !body.dueDate) { showToast('❌ 請填寫期間起訖與應繳日期'); return }
-  if (!body.paidAmount || !body.paidDate) { showToast('❌ 請輸入已繳金額與繳費日期'); return }
+  var hasPaidAmt = !!(body.paidAmount && Number(body.paidAmount) > 0)
+  var hasPaidDate = !!body.paidDate
+  // 允許「僅修改應繳金額/應繳日期」而未收款：兩個已繳欄位可都留空；
+  // 但若只填其一則提醒補齊，避免半筆收款資料。
+  if (hasPaidAmt !== hasPaidDate) { showToast('❌ 請同時填寫已繳金額與繳款日期；若只是修改應繳金額/日期，兩者請留空'); return }
   var res = await fetch('/admin/api/managed/lease/' + leaseId + '/payment?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
   })
   var data = {}; try { data = await res.json() } catch(e) {}
   if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || res.status)); return }
+  // 未收款：僅儲存修改，不推播收款確認
+  if (!hasPaidAmt) { showToast('✅ 已儲存修改（尚未收款）'); openLeaseLedger(leaseId); return }
   showToast('✅ 租金繳費已儲存')
   // 詢問是否推播「收款確認」給房客
   showConfirm({
