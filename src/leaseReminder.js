@@ -115,6 +115,16 @@ function remRow(label, value, opts) {
   ]}
 }
 
+// 金額項目列（左：項目名稱，可換行；右：帶正負號與顏色的金額）
+function moneyRow(label, amount, sign) {
+  const color = sign === '-' ? '#B5544C' : '#2E7D46'
+  const txt = (sign || '') + ' NT$ ' + Number(Math.abs(amount) || 0).toLocaleString()
+  return { type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm', contents: [
+    { type: 'text', text: String(label), size: 'sm', color: '#6B6658', flex: 7, wrap: true },
+    { type: 'text', text: txt, size: 'sm', color: color, weight: 'bold', flex: 5, align: 'end', wrap: false },
+  ]}
+}
+
 // 屋主姓名：第二個字以 O 隱藏（黃爵卿 → 黃O卿；王明 → 王O）
 function maskOwnerName(name) {
   const s = String(name || '').trim()
@@ -267,19 +277,14 @@ function settleReceiptFlex(lease) {
   // 正數＝應扣費用；負數＝退款項（例如按日退租金）
   const charges = deductions.filter(d => (Number(d.amount) || 0) >= 0)
   const refundItems = deductions.filter(d => (Number(d.amount) || 0) < 0)
-  const chargeTotal = charges.reduce((s, d) => s + (Number(d.amount) || 0), 0)
   const rows = []
   if (lease.settledAt) rows.push(remRow('結算日期', fmtYMD(lease.settledAt)))
   if (lease.endedAt) rows.push(remRow('合約結束日', fmtYMD(lease.endedAt)))
-  rows.push(remRow('押金', 'NT$ ' + deposit.toLocaleString()))
-  if (prepaid > 0) rows.push(remRow('預收費用', 'NT$ ' + prepaid.toLocaleString()))
-  charges.forEach(function (d) {
-    rows.push(remRow('－ ' + (d.name || '應扣費用'), 'NT$ ' + (Number(d.amount) || 0).toLocaleString(), { color: '#B5544C' }))
-  })
-  if (charges.length) rows.push(remRow('應扣合計', 'NT$ ' + chargeTotal.toLocaleString(), { bold: true, color: '#B5544C' }))
-  refundItems.forEach(function (d) {
-    rows.push(remRow('＋ ' + (d.name || '退款'), 'NT$ ' + Math.abs(Number(d.amount) || 0).toLocaleString(), { color: '#2E7D46' }))
-  })
+  // 金額項目（＋押金／＋預收／＋退款；－應扣），正負號與顏色置於金額側，項目名稱獨佔左欄
+  rows.push(moneyRow('押金', deposit, '+'))
+  if (prepaid > 0) rows.push(moneyRow('預收費用', prepaid, '+'))
+  refundItems.forEach(function (d) { rows.push(moneyRow(d.name || '退款', d.amount, '+')) })
+  charges.forEach(function (d) { rows.push(moneyRow(d.name || '應扣費用', d.amount, '-')) })
   const positive = refund >= 0
   return reminderBubble({
     alt: '合約結算明細', title: '合約結算明細',

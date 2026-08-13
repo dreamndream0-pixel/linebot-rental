@@ -7376,7 +7376,7 @@ function settleMeterApply() {
   var amt = settleMeterSync()
   showToast('✅ 已帶入電費 ' + leaseMoney(amt))
 }
-var SETTLE_RENT_REFUND_NAME = '按日退還租金'
+var SETTLE_RENT_REFUND_NAME = '退還租金'
 // 按日退租金：月租 ÷ 當月實際天數，退租日隔天起至已繳到期日（含）逐日累加
 function settleRentRefundCalc() {
   var ctx = window.__settleCtx || {}
