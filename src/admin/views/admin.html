@@ -6897,9 +6897,15 @@ async function loadBroadcastRooms() {
       ;(ls||[]).forEach(function(l){ l._propId = id; l._propTitle = (BROADCAST.propsById[id]||{}).title || ''; all.push(l) })
     } catch(e) {}
   }))
-  all = all.filter(function(l){ return l.status !== 'ENDED' })
+  // 只保留「合約期間內」：排除已結束(ENDED)與已過期(leaseEnd 已過)的合約
+  var _t0 = new Date(); _t0.setHours(0,0,0,0); var _t0ms = _t0.getTime()
+  all = all.filter(function(l){
+    if (l.status === 'ENDED') return false
+    if (l.leaseEnd && new Date(l.leaseEnd).getTime() < _t0ms) return false
+    return true
+  })
   BROADCAST.leases = all
-  if (!all.length) { el.innerHTML = '<div style="color:#aaa;font-size:12px;text-align:center;padding:10px;">所選社區無承租中房客</div>'; return }
+  if (!all.length) { el.innerHTML = '<div style="color:#aaa;font-size:12px;text-align:center;padding:10px;">所選社區無合約期間內的房客</div>'; return }
   var groups = {}, order = []
   all.forEach(function(l){ var k = l._propTitle || '—'; if (!groups[k]) { groups[k] = []; order.push(k) } groups[k].push(l) })
   el.innerHTML = order.map(function(k){
