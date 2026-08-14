@@ -6753,7 +6753,7 @@ async function importTaipower() {
   showToast('讀取 Gmail 台電帳單中…')
   var res, data = {}
   try {
-    res = await fetch('/admin/api/managed/import-taipower?key=' + encodeURIComponent(KEY), {
+    res = await fetch('/admin/api/managed-import-taipower?key=' + encodeURIComponent(KEY), {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ apply: false })
     })
     try { data = await res.json() } catch(e) {}
@@ -6790,7 +6790,7 @@ async function importTaipower() {
 }
 async function confirmImportTaipower() {
   try {
-    var res = await fetch('/admin/api/managed/import-taipower?key=' + encodeURIComponent(KEY), {
+    var res = await fetch('/admin/api/managed-import-taipower?key=' + encodeURIComponent(KEY), {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ apply: true })
     })
     var d = {}; try { d = await res.json() } catch(e) {}
