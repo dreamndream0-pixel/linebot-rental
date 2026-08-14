@@ -95,13 +95,19 @@ async function fetchTaipowerEmails(sinceDays = 150, limit = 24) {
 // opts: { properties, apply }
 async function importTaipowerBills({ properties, apply = false }) {
   const emails = await fetchTaipowerEmails()
-  // 以「物業 + 期別」彙總同址各電號金額
-  const groups = {}   // key: propId|periodKey
+  // 依日期新到舊處理：同一期常有「通知」與「繳費憑證」兩封，保留較新那封、
+  // 且同一「電號＋期別」只計一次，避免金額被加倍。
+  const sorted = emails.slice().sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+  const seenBill = {}  // 電號|期別 → 已計入
+  const groups = {}    // key: propId|periodKey
   const unmatched = []
-  for (const em of emails) {
+  for (const em of sorted) {
     const { period, bills } = parseTaipowerText(em.text, em.subject)
     const pkey = period ? period.key : (em.date ? new Date(em.date).toISOString().slice(0, 7) : '未知')
     for (const b of bills) {
+      const dk = b.elecNo + '|' + pkey
+      if (seenBill[dk]) continue   // 同電號同期別只計一次
+      seenBill[dk] = true
       const prop = matchProperty(b.address, properties)
       if (!prop) { unmatched.push({ address: b.address, elecNo: b.elecNo, amount: b.amount, period: pkey }); continue }
       const gk = prop.id + '|' + pkey
