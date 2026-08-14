@@ -723,8 +723,9 @@ router.get('/admin/api/managed-report', async (req, res) => {
 })
 
 // ── 從 Gmail 匯入台電電費帳單 → 建立為委託物業支出 ──
+// 路由用連字號（managed-import-taipower）避免被 /admin/api/managed/:id 攔截
 // apply=false：預覽（解析＋對應，不建立）；apply=true：建立支出（防重複）
-router.post('/admin/api/managed/import-taipower', express.json(), async (req, res) => {
+router.post('/admin/api/managed-import-taipower', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
   try {
