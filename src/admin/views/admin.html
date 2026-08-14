@@ -6748,16 +6748,42 @@ async function showManagedReport() {
 function rangeLabel(r) {
   return { thisMonth:'本月', lastMonth:'上月', thisQuarter:'本季', thisYear:'本年', all:'全部' }[r] || '全部'
 }
+// 匯入進度條（讀信在後端一次完成，前端以分段動態進度條呈現）
+function showImportProgress(title, stages) {
+  stages = stages || ['連線 Gmail…', '讀取台電帳單…', '解析金額與地址…', '對應物業中…']
+  var html = '<div id="impProgModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:410;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:100%;">' +
+      '<div style="font-size:15px;font-weight:700;color:#B07A2E;margin-bottom:14px;">' + (title || '⚡ 匯入台電') + '</div>' +
+      '<div id="impProgText" style="font-size:13px;color:#666;margin-bottom:10px;">' + stages[0] + '</div>' +
+      '<div style="height:10px;background:#EFEBE3;border-radius:6px;overflow:hidden;"><div id="impProgBar" style="height:100%;width:6%;background:linear-gradient(90deg,#C6982E,#B07A2E);border-radius:6px;transition:width .35s ease;"></div></div>' +
+    '</div></div>'
+  var ex = document.getElementById('impProgModal'); if (ex) ex.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+  var pct = 6, si = 0
+  window._impProgTimer = setInterval(function(){
+    pct = Math.min(92, pct + Math.random() * 9 + 3)
+    var b = document.getElementById('impProgBar'); if (b) b.style.width = pct + '%'
+    var tx = document.getElementById('impProgText')
+    if (tx && si < stages.length - 1 && pct > (si + 1) * (90 / stages.length)) { si++; tx.textContent = stages[si] }
+  }, 420)
+}
+function finishImportProgress() {
+  clearInterval(window._impProgTimer)
+  var b = document.getElementById('impProgBar'); if (b) b.style.width = '100%'
+  var tx = document.getElementById('impProgText'); if (tx) tx.textContent = '完成 ✓'
+  setTimeout(function(){ var m = document.getElementById('impProgModal'); if (m) m.remove() }, 300)
+}
 // 從 Gmail 匯入台電帳單：先預覽，再確認建立支出
 async function importTaipower() {
-  showToast('讀取 Gmail 台電帳單中…')
+  showImportProgress('⚡ 匯入台電（預覽）')
   var res, data = {}
   try {
     res = await fetch('/admin/api/managed-import-taipower?key=' + encodeURIComponent(KEY), {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ apply: false })
     })
     try { data = await res.json() } catch(e) {}
-  } catch (e) { showInfoModal('❌ 匯入失敗', '連線異常，請稍後再試'); return }
+  } catch (e) { finishImportProgress(); showInfoModal('❌ 匯入失敗', '連線異常，請稍後再試'); return }
+  finishImportProgress()
   if (!res.ok) {
     showInfoModal('❌ 無法匯入台電帳單', (data.error || ('HTTP ' + res.status)) + '\n\n若顯示「Gmail 未設定」，代表伺服器尚未設定讀信帳號（GMAIL_IMAP_USER / GMAIL_IMAP_PASSWORD 環境變數）。')
     return
@@ -6789,16 +6815,18 @@ async function importTaipower() {
   document.body.insertAdjacentHTML('beforeend', html)
 }
 async function confirmImportTaipower() {
+  showImportProgress('⚡ 匯入台電（建立支出）', ['連線 Gmail…', '讀取台電帳單…', '建立支出中…'])
   try {
     var res = await fetch('/admin/api/managed-import-taipower?key=' + encodeURIComponent(KEY), {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ apply: true })
     })
     var d = {}; try { d = await res.json() } catch(e) {}
+    finishImportProgress()
     if (!res.ok) { showInfoModal('❌ 匯入失敗', d.error || ('HTTP ' + res.status)); return }
     var m = document.getElementById('taipowerModal'); if (m) m.remove()
     showToast('✅ 已匯入 ' + (d.createdCount||0) + ' 筆台電支出' + (d.skippedCount ? '（略過已匯入 ' + d.skippedCount + '）' : ''))
     showManagedReport()
-  } catch (e) { showToast('❌ 匯入失敗') }
+  } catch (e) { finishImportProgress(); showToast('❌ 匯入失敗') }
 }
 // 快速登記水電支出（台電/台水帳單）→ 建立 EXPENSE 收支，反映到報表支出
 function openUtilityExpenseModal() {
