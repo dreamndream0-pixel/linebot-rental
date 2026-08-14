@@ -4,6 +4,7 @@ const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
 const { getClientForLease, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex, settleReceiptFlex, buildPayInfo } = require('../../leaseReminder')
+const { importTaipowerBills } = require('../../utilityBillImport')
 const { findLineTenant } = require('../../tenantStore')
 
 // 權限過濾：super 看全部，房東只看自己的
@@ -718,6 +719,25 @@ router.get('/admin/api/managed-report', async (req, res) => {
   } catch (e) {
     console.error('報表失敗:', e.message)
     res.status(500).json({ error: e.message })
+  }
+})
+
+// ── 從 Gmail 匯入台電電費帳單 → 建立為委託物業支出 ──
+// apply=false：預覽（解析＋對應，不建立）；apply=true：建立支出（防重複）
+router.post('/admin/api/managed/import-taipower', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const properties = await prisma.managedProperty.findMany({
+      where: { ...ownFilter(auth), status: 'ACTIVE' },
+      select: { id: true, title: true, address: true },
+    })
+    const apply = req.body && (req.body.apply === true || req.body.apply === 'true')
+    const result = await importTaipowerBills({ properties, apply })
+    res.json(result)
+  } catch (e) {
+    console.error('台電匯入失敗:', e.message)
+    res.status(e.code === 'NO_CONFIG' ? 400 : 500).json({ error: e.message })
   }
 })
 
