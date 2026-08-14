@@ -6792,11 +6792,13 @@ async function importTaipower() {
   var toCreate = items.filter(function(i){ return !i.already })
   var rows = items.map(function(i){
     var st = i.already ? '<span style="color:#999;">已匯入</span>' : '<span style="color:#2E7D46;font-weight:700;">將新增</span>'
+    var fl = (i.floor ? esc(i.floor) + ' ' : '') + '<span style="color:#aaa;font-size:10px;">' + esc(i.elecNo || '') + '</span>'
     return '<tr><td style="padding:6px 8px;font-size:12px;white-space:nowrap;">' + esc(i.propertyTitle) + '</td>' +
+      '<td style="padding:6px 8px;font-size:12px;white-space:nowrap;">' + fl + '</td>' +
       '<td style="padding:6px 8px;font-size:12px;white-space:nowrap;">' + esc(i.period) + '</td>' +
       '<td style="padding:6px 8px;font-size:12px;text-align:right;color:#C0524A;white-space:nowrap;">' + Number(i.amount).toLocaleString() + '</td>' +
       '<td style="padding:6px 8px;font-size:12px;white-space:nowrap;">' + st + '</td></tr>'
-  }).join('') || '<tr><td colspan="4" style="padding:14px;text-align:center;color:#aaa;">沒有可匯入的台電帳單</td></tr>'
+  }).join('') || '<tr><td colspan="5" style="padding:14px;text-align:center;color:#aaa;">沒有可匯入的台電帳單</td></tr>'
   var unmatchedHtml = unmatched.length
     ? '<div style="margin-top:12px;font-size:12px;color:#C0524A;">⚠️ ' + unmatched.length + ' 筆地址對應不到物業（需手動處理）：<br>' + unmatched.slice(0,8).map(function(u){ return esc((u.address||'').replace(/[＊*]/g,'')) + '：' + Number(u.amount).toLocaleString() }).join('<br>') + '</div>'
     : ''
@@ -6807,7 +6809,7 @@ async function importTaipower() {
         '<button onclick="var m=document.getElementById(\'taipowerModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
       '</div>' +
       '<div style="font-size:12px;color:#888;margin-bottom:10px;">從 Gmail 讀到 ' + (data.emailCount||0) + ' 封台電信，解析並對應到物業如下。確認後才會建立支出（已匯入者自動略過）。</div>' +
-      '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;"><table style="width:100%;border-collapse:collapse;min-width:360px;"><thead><tr style="background:#FBF6EC;"><th style="padding:6px 8px;text-align:left;font-size:11px;">物業</th><th style="padding:6px 8px;text-align:left;font-size:11px;">期別</th><th style="padding:6px 8px;text-align:right;font-size:11px;">金額</th><th style="padding:6px 8px;text-align:left;font-size:11px;">狀態</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;"><table style="width:100%;border-collapse:collapse;min-width:420px;"><thead><tr style="background:#FBF6EC;"><th style="padding:6px 8px;text-align:left;font-size:11px;">物業</th><th style="padding:6px 8px;text-align:left;font-size:11px;">樓層/電號</th><th style="padding:6px 8px;text-align:left;font-size:11px;">期別</th><th style="padding:6px 8px;text-align:right;font-size:11px;">金額</th><th style="padding:6px 8px;text-align:left;font-size:11px;">狀態</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       unmatchedHtml +
       '<button id="taipowerConfirmBtn" class="btn spin-btn" style="width:100%;background:#B07A2E;padding:13px;font-size:15px;font-weight:700;margin-top:14px;"' + (toCreate.length ? '' : ' disabled') + ' onclick="btnLoad(this,function(){return confirmImportTaipower()})">確認匯入 ' + toCreate.length + ' 筆支出</button>' +
     '</div></div>'
