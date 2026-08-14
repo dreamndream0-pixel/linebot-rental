@@ -6926,10 +6926,9 @@ async function uploadBroadcastImage(input) {
   input.value=''
 }
 function previewBroadcast() {
-  if (!BROADCAST.propId) { showToast('❌ 請選擇社區'); return }
   var selected = []
   document.querySelectorAll('#bc_rooms .bc-room:checked').forEach(function(c){ selected.push(c.value) })
-  if (!selected.length) { showToast('❌ 請至少勾選一個房號'); return }
+  if (!selected.length) { showToast('❌ 請先勾選社區並勾選房號'); return }
   var text = (document.getElementById('bc_text')||{}).value || ''
   if (!text.trim() && !BROADCAST.imageUrl) { showToast('❌ 請輸入文字或上傳圖片'); return }
   // 收件人清單
@@ -6957,19 +6956,21 @@ function previewBroadcast() {
   btn.onclick = function(){ btnLoad(btn, function(){ return sendBroadcast(selected, text) }) }
 }
 async function sendBroadcast(leaseIds, text) {
+  var pm = document.getElementById('bcPreviewModal'); if (pm) pm.remove()
+  showImportProgress('📣 LINE 群發', ['準備發送…', '推播中…（共 ' + leaseIds.length + ' 位）', '收尾中…'])
   try {
     var res = await fetch('/admin/api/managed-broadcast?key='+encodeURIComponent(KEY), {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ leaseIds: leaseIds, text: text, imageUrl: BROADCAST.imageUrl || '' })
     })
     var d = {}; try { d = await res.json() } catch(e) {}
+    finishImportProgress()
     if (!res.ok) { showInfoModal('❌ 發送失敗', d.error || ('HTTP '+res.status)); return }
-    var m = document.getElementById('bcPreviewModal'); if (m) m.remove()
     var failList = (d.results||[]).filter(function(r){ return !r.ok })
     var body = '成功 '+ (d.sent||0) +' 人，失敗 '+ (d.failed||0) +' 人。'
     if (failList.length) body += '\n\n失敗名單：\n' + failList.map(function(r){ return (r.room||'')+' '+(r.tenant||'')+'：'+(r.error||'') }).join('\n')
     showInfoModal(d.failed ? '⚠️ 發送完成（部分失敗）' : '✅ 發送完成', body)
-  } catch(e) { showToast('❌ 發送失敗') }
+  } catch(e) { finishImportProgress(); showToast('❌ 發送失敗') }
 }
 // 快速登記水電支出（台電/台水帳單）→ 建立 EXPENSE 收支，反映到報表支出
 function openUtilityExpenseModal() {
