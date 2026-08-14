@@ -742,6 +742,42 @@ router.post('/admin/api/managed-import-taipower', express.json(), async (req, re
   }
 })
 
+// ── LINE 群發：對選定租約批次推播（圖片＋文字）──
+// 連字號路由避免被 /admin/api/managed/:id 攔截
+router.post('/admin/api/managed-broadcast', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const b = req.body || {}
+    const leaseIds = Array.isArray(b.leaseIds) ? b.leaseIds : []
+    const text = (b.text || '').trim()
+    const imageUrl = (b.imageUrl || '').trim()
+    if (!leaseIds.length) return res.status(400).json({ error: '請選擇發送對象' })
+    if (!text && !imageUrl) return res.status(400).json({ error: '請輸入文字或上傳圖片' })
+    // 組訊息（圖片在前、文字在後）
+    const messages = []
+    if (imageUrl) messages.push({ type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl })
+    if (text) messages.push({ type: 'text', text })
+    const results = []
+    for (const id of leaseIds) {
+      const lease = await getOwnedLease(auth, id)
+      if (!lease || lease === false) { results.push({ leaseId: id, ok: false, error: lease === false ? 'forbidden' : 'not found' }); continue }
+      const base = { leaseId: id, tenant: lease.tenantName, room: lease.roomLabel }
+      if (!lease.lineUserId) { results.push({ ...base, ok: false, error: '未綁定 LINE' }); continue }
+      try {
+        const r = await pushToLeaseTenant(lease, messages)
+        results.push({ ...base, ok: true, via: r.via })
+      } catch (e) {
+        results.push({ ...base, ok: false, error: e.message })
+      }
+    }
+    res.json({ ok: true, sent: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, results })
+  } catch (e) {
+    console.error('LINE 群發失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ── 編輯委託物業的合約條款（押金、付款方式、合約文件） ──────────
 router.post('/admin/api/managed/:id/contract', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)

@@ -1102,6 +1102,7 @@ var MENU_GROUPS = [
     { label: '\u59d4\u8a17\u5217\u8868', icon: 'clipboard', run: 'commission' },
     { label: '\u4ee3\u7ba1\u6e05\u55ae', icon: 'clipboard', run: 'lease' },
     { label: '\u6536\u652f\u5831\u8868', icon: 'chart', run: 'report' },
+    { label: 'LINE \u7fa4\u767c', icon: 'share', run: 'broadcast' },
     { label: '\u9580\u9396\u7ba1\u7406', icon: 'wrench', run: 'lock', feat: 'smartlock' },
     { label: '\u7dad\u4fee\u7ba1\u7406', icon: 'wrench', tab: 'repairs' },
   ] },
@@ -5646,6 +5647,7 @@ function navRun(key) {
   if (key === 'commission') showCommissionList()
   else if (key === 'lease') showLeaseList()
   else if (key === 'report') showManagedReport()
+  else if (key === 'broadcast') openBroadcastModal()
   else if (key === 'lock') openLockManager()
   else if (key === 'sync-contract' || key === 'sync-utility' || key === 'sync-rent') runSyncFromMenu(key)
 }
@@ -6829,6 +6831,124 @@ async function confirmImportTaipower() {
     showToast('✅ 已匯入 ' + (d.createdCount||0) + ' 筆台電支出' + (d.skippedCount ? '（略過已匯入 ' + d.skippedCount + '）' : ''))
     showManagedReport()
   } catch (e) { finishImportProgress(); showToast('❌ 匯入失敗') }
+}
+
+// ── LINE 群發：選社區/房號、圖片＋文字、批次發送（送出前預覽）──
+var BROADCAST = { propId: '', leases: [], imageUrl: '' }
+async function openBroadcastModal() {
+  var box = document.getElementById('managedReportBox')
+  box.innerHTML = '<div class="empty">載入委託物業…</div>'
+  var props = []
+  try { var res = await fetch('/admin/api/managed?key=' + encodeURIComponent(KEY)); props = await res.json() } catch(e) {}
+  if (!props || !props.length) { box.innerHTML=''; showToast('尚無委託物業'); return }
+  BROADCAST = { propId: '', leases: [], imageUrl: '' }
+  var propOpts = '<option value="">— 選擇社區 —</option>' + props.map(function(p){ return '<option value="'+p.id+'">'+esc(p.title)+'（'+esc(p.ownerName||'')+'）</option>' }).join('')
+  var inp = 'width:100%;box-sizing:border-box;padding:10px;border:1px solid #E5E0D5;border-radius:8px;font-size:14px;'
+  box.innerHTML =
+    '<div style="background:#fff;border:1px solid #E5E0D5;border-radius:14px;padding:20px;margin-bottom:18px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+      '<h3 style="margin:0;font-size:16px;">📣 LINE 群發</h3>' +
+      '<button onclick="document.getElementById(\'managedReportBox\').innerHTML=\'\'" style="border:none;background:none;font-size:18px;cursor:pointer;color:#999;">×</button>' +
+    '</div>' +
+    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">社區</label>' +
+    '<select id="bc_prop" onchange="loadBroadcastRooms(this.value)" style="'+inp+'margin-bottom:12px;">'+propOpts+'</select>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+      '<label style="font-size:12px;color:#888;">房號（勾選發送對象）</label>' +
+      '<span><button onclick="toggleAllBroadcast(true)" style="border:1px solid #E5E0D5;background:#FAF8F4;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;">全選</button> <button onclick="toggleAllBroadcast(false)" style="border:1px solid #E5E0D5;background:#FAF8F4;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;">全不選</button></span>' +
+    '</div>' +
+    '<div id="bc_rooms" style="border:1px solid #EEE;border-radius:8px;padding:8px;max-height:220px;overflow-y:auto;margin-bottom:12px;min-height:48px;"><div style="color:#aaa;font-size:12px;text-align:center;padding:10px;">請先選擇社區</div></div>' +
+    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">訊息文字</label>' +
+    '<textarea id="bc_text" rows="4" placeholder="輸入要發送的文字…" style="'+inp+'margin-bottom:12px;resize:vertical;"></textarea>' +
+    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">圖片（選填）</label>' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;"><label style="display:inline-block;padding:8px 14px;background:#EFEDE8;border:1px solid #E5E0D5;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap;">📎 上傳圖片<input type="file" accept="image/*" onchange="uploadBroadcastImage(this)" style="display:none;"></label><span id="bc_imgInfo" style="font-size:12px;color:#aaa;">未選擇</span></div>' +
+    '<button class="btn spin-btn" style="width:100%;background:var(--deep-sage,#4A6741);padding:13px;font-size:15px;font-weight:700;" onclick="previewBroadcast()">預覽並發送</button>' +
+    '</div>'
+}
+async function loadBroadcastRooms(propId) {
+  BROADCAST.propId = propId
+  var el = document.getElementById('bc_rooms')
+  if (!propId) { el.innerHTML = '<div style="color:#aaa;font-size:12px;text-align:center;padding:10px;">請先選擇社區</div>'; BROADCAST.leases = []; return }
+  el.innerHTML = '<div style="color:#aaa;font-size:12px;text-align:center;padding:10px;">載入房號…</div>'
+  var leases = []
+  try { var res = await fetch('/admin/api/managed/'+propId+'/leases?key='+encodeURIComponent(KEY)); leases = await res.json() } catch(e) {}
+  // 只保留承租中/在期間內；以房號排序
+  leases = (leases||[]).filter(function(l){ return l.status !== 'ENDED' })
+  BROADCAST.leases = leases
+  if (!leases.length) { el.innerHTML = '<div style="color:#aaa;font-size:12px;text-align:center;padding:10px;">此社區無承租中房客</div>'; return }
+  el.innerHTML = leases.map(function(l){
+    var bound = !!l.lineUserId
+    var dis = bound ? '' : 'disabled'
+    var tag = bound ? '<span style="color:#06C755;font-size:11px;">● LINE</span>' : '<span style="color:#ccc;font-size:11px;">未綁定</span>'
+    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:13px;'+(bound?'':'opacity:.5;')+'">'+
+      '<input type="checkbox" class="bc-room" value="'+l.id+'" '+(bound?'checked':'')+' '+dis+'>'+
+      '<span style="flex:1;">'+esc(l.roomLabel||'—')+' <span style="color:#999;">'+esc(l.tenantName||'')+'</span></span>'+tag+
+    '</label>'
+  }).join('')
+}
+function toggleAllBroadcast(on) {
+  document.querySelectorAll('#bc_rooms .bc-room:not([disabled])').forEach(function(c){ c.checked = on })
+}
+async function uploadBroadcastImage(input) {
+  if (!input.files || !input.files[0]) return
+  var file = input.files[0]
+  var info = document.getElementById('bc_imgInfo')
+  if (file.size > 10*1024*1024) { showInfoModal('❌ 檔案過大', '圖片為 '+(file.size/1048576).toFixed(1)+' MB，超過 10MB 上限。'); input.value=''; return }
+  if (info) info.textContent = '上傳中…'
+  var fd = new FormData(); fd.append('file', file)
+  try {
+    var res = await fetch('/admin/api/upload?key='+encodeURIComponent(KEY), { method:'POST', body: fd })
+    var d = {}; try { d = await res.json() } catch(e) {}
+    if (!res.ok || !d.url) { if(info) info.textContent='未選擇'; showInfoModal('❌ 圖片上傳失敗', d.error || ('HTTP '+res.status)); input.value=''; return }
+    BROADCAST.imageUrl = d.url
+    if (info) info.innerHTML = '✅ 已上傳 <a href="'+d.url+'" target="_blank" style="color:#0D5CB8;">檢視</a> <button onclick="BROADCAST.imageUrl=\'\';document.getElementById(\'bc_imgInfo\').textContent=\'未選擇\'" style="border:none;background:none;color:#C0524A;cursor:pointer;">移除</button>'
+  } catch(e) { if(info) info.textContent='未選擇'; showInfoModal('❌ 圖片上傳失敗','網路異常') }
+  input.value=''
+}
+function previewBroadcast() {
+  if (!BROADCAST.propId) { showToast('❌ 請選擇社區'); return }
+  var selected = []
+  document.querySelectorAll('#bc_rooms .bc-room:checked').forEach(function(c){ selected.push(c.value) })
+  if (!selected.length) { showToast('❌ 請至少勾選一個房號'); return }
+  var text = (document.getElementById('bc_text')||{}).value || ''
+  if (!text.trim() && !BROADCAST.imageUrl) { showToast('❌ 請輸入文字或上傳圖片'); return }
+  // 收件人清單
+  var byId = {}; BROADCAST.leases.forEach(function(l){ byId[l.id]=l })
+  var recips = selected.map(function(id){ return byId[id] }).filter(Boolean)
+  var recipHtml = recips.map(function(l){ return esc(l.roomLabel||'—')+' '+esc(l.tenantName||'') }).join('、')
+  // 訊息卡片
+  var card = '<div style="max-width:280px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 4px 14px rgba(0,0,0,0.12);overflow:hidden;">'+
+    (BROADCAST.imageUrl ? '<img src="'+BROADCAST.imageUrl+'" style="width:100%;display:block;">' : '')+
+    (text.trim() ? '<div style="padding:12px;font-size:14px;color:#333;white-space:pre-wrap;word-break:break-word;">'+esc(text)+'</div>' : '')+
+  '</div>'
+  var html = '<div id="bcPreviewModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:400;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">'+
+    '<div style="background:#EDE9E3;border-radius:16px;padding:18px;max-width:360px;width:100%;margin:auto;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><h3 style="margin:0;font-size:16px;">📣 發送預覽</h3><button onclick="var m=document.getElementById(\'bcPreviewModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button></div>'+
+      '<div style="font-size:12px;color:#7A756B;margin-bottom:12px;">將發送給 <b>'+recips.length+'</b> 位房客：'+recipHtml+'</div>'+
+      card +
+      '<div style="display:flex;gap:8px;margin-top:16px;">'+
+        '<button onclick="var m=document.getElementById(\'bcPreviewModal\');if(m)m.remove()" style="flex:1;padding:12px;border:1px solid #D8D2C6;background:#fff;border-radius:10px;font-size:14px;cursor:pointer;">取消</button>'+
+        '<button id="bcSendBtn" class="spin-btn" style="flex:2;padding:12px;border:none;background:#06C755;color:#fff;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">確認發送給 '+recips.length+' 人</button>'+
+      '</div>'+
+    '</div></div>'
+  var ex = document.getElementById('bcPreviewModal'); if (ex) ex.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+  var btn = document.getElementById('bcSendBtn')
+  btn.onclick = function(){ btnLoad(btn, function(){ return sendBroadcast(selected, text) }) }
+}
+async function sendBroadcast(leaseIds, text) {
+  try {
+    var res = await fetch('/admin/api/managed-broadcast?key='+encodeURIComponent(KEY), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ leaseIds: leaseIds, text: text, imageUrl: BROADCAST.imageUrl || '' })
+    })
+    var d = {}; try { d = await res.json() } catch(e) {}
+    if (!res.ok) { showInfoModal('❌ 發送失敗', d.error || ('HTTP '+res.status)); return }
+    var m = document.getElementById('bcPreviewModal'); if (m) m.remove()
+    var failList = (d.results||[]).filter(function(r){ return !r.ok })
+    var body = '成功 '+ (d.sent||0) +' 人，失敗 '+ (d.failed||0) +' 人。'
+    if (failList.length) body += '\n\n失敗名單：\n' + failList.map(function(r){ return (r.room||'')+' '+(r.tenant||'')+'：'+(r.error||'') }).join('\n')
+    showInfoModal(d.failed ? '⚠️ 發送完成（部分失敗）' : '✅ 發送完成', body)
+  } catch(e) { showToast('❌ 發送失敗') }
 }
 // 快速登記水電支出（台電/台水帳單）→ 建立 EXPENSE 收支，反映到報表支出
 function openUtilityExpenseModal() {
