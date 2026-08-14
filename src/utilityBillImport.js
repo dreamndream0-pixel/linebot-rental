@@ -39,9 +39,16 @@ function parseTaipowerText(text, subject) {
       }
       if (ln === '用電地址' && lines[j + 1]) { address = lines[j + 1]; break }
     }
-    if (amount != null) bills.push({ elecNo, amount, address: address || '' })
+    if (amount != null) bills.push({ elecNo, amount, address: address || '', floor: extractFloor(address || '') })
   }
   return { period, bills }
+}
+
+// 從用電地址取樓層（號之後的部分，如「3樓」）
+function extractFloor(addr) {
+  const a = normAddr(addr)
+  const m = a.match(/號(.+)$/)
+  return m ? m[1] : ''
 }
 
 // 從地址取門牌號（巷XX號 的 XX；支援 25-21 這種）
@@ -99,28 +106,27 @@ async function importTaipowerBills({ properties, apply = false }) {
   // 且同一「電號＋期別」只計一次，避免金額被加倍。
   const sorted = emails.slice().sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
   const seenBill = {}  // 電號|期別 → 已計入
-  const groups = {}    // key: propId|periodKey
+  const items = []     // 每個「電號＋期別」一筆（逐樓層分開）
   const unmatched = []
   for (const em of sorted) {
     const { period, bills } = parseTaipowerText(em.text, em.subject)
     const pkey = period ? period.key : (em.date ? new Date(em.date).toISOString().slice(0, 7) : '未知')
     for (const b of bills) {
       const dk = b.elecNo + '|' + pkey
-      if (seenBill[dk]) continue   // 同電號同期別只計一次
+      if (seenBill[dk]) continue   // 同電號同期別只計一次（通知＋憑證去重）
       seenBill[dk] = true
       const prop = matchProperty(b.address, properties)
       if (!prop) { unmatched.push({ address: b.address, elecNo: b.elecNo, amount: b.amount, period: pkey }); continue }
-      const gk = prop.id + '|' + pkey
-      if (!groups[gk]) groups[gk] = { propertyId: prop.id, propertyTitle: prop.title, period: pkey, periodObj: period, amount: 0, elecNos: [] }
-      groups[gk].amount += b.amount
-      groups[gk].elecNos.push(b.elecNo)
+      items.push({
+        propertyId: prop.id, propertyTitle: prop.title,
+        floor: b.floor || '', elecNo: b.elecNo, period: pkey, amount: b.amount,
+      })
     }
   }
-  const items = Object.values(groups)
-  // 標記是否已匯入（依 description 前綴防重複）
+  // 標記是否已匯入（依 description 前綴防重複；每個電號＋期別各自一筆）
   const results = []
   for (const it of items) {
-    const marker = '[台電匯入 ' + it.period + ']'
+    const marker = '[台電匯入 ' + it.period + ' ' + it.elecNo + ']'
     const existing = await prisma.managementRecord.findFirst({
       where: { managedPropertyId: it.propertyId, type: 'EXPENSE', category: 'UTILITY', description: { startsWith: marker } },
       select: { id: true },
@@ -134,14 +140,14 @@ async function importTaipowerBills({ properties, apply = false }) {
         data: {
           managedPropertyId: it.propertyId, leaseId: null,
           type: 'EXPENSE', category: 'UTILITY', amount: it.amount, recordDate,
-          description: marker + ' 台電電費（電號 ' + it.elecNos.join('、') + '）',
+          description: marker + ' 台電電費 ' + it.propertyTitle + (it.floor ? ' ' + it.floor : '') + '（電號 ' + it.elecNo + '）',
         },
       })
       created = true
     }
     results.push({ ...it, already, created })
   }
-  results.sort((a, b) => (a.propertyTitle + a.period).localeCompare(b.propertyTitle + b.period))
+  results.sort((a, b) => (a.propertyTitle + a.period + a.floor + a.elecNo).localeCompare(b.propertyTitle + b.period + b.floor + b.elecNo))
   return {
     ok: true, emailCount: emails.length,
     items: results, unmatched,
