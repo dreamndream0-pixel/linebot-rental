@@ -640,14 +640,6 @@ router.get('/admin/api/managed-report', async (req, res) => {
     const costEnd = new Date(Math.min((end || now).getTime(), now.getTime()))
     const fixedMonths = start ? monthsBetween(start, costEnd) : null
 
-    // ── 承租成本月數：固定期間＝期間月數（對齊今天）；全部＝各物業合約起日至今 ──
-    const monthsBetween = (a, b) => {
-      const A = new Date(a), B = new Date(b)
-      return Math.max(1, (B.getFullYear() * 12 + B.getMonth()) - (A.getFullYear() * 12 + A.getMonth()) + 1)
-    }
-    const costEnd = new Date(Math.min((end || now).getTime(), now.getTime()))
-    const fixedMonths = start ? monthsBetween(start, costEnd) : null
-
     // ── 逐物業彙總 ──
     let actualIncome = 0, expenseTotal = 0, mgmtFeeTotal = 0, paidOutTotal = 0, pendingPayout = 0
     let unpaidRentTotal = 0, unpaidUtilTotal = 0, profitTotal = 0, ownerCostTotal = 0
