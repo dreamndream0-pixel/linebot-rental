@@ -747,34 +747,49 @@ router.post('/admin/api/managed-import-taipower', express.json(), async (req, re
 router.post('/admin/api/managed-broadcast', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  const b = req.body || {}
+  const leaseIds = Array.isArray(b.leaseIds) ? b.leaseIds : []
+  const text = (b.text || '').trim()
+  const imageUrl = (b.imageUrl || '').trim()
+  if (!leaseIds.length) return res.status(400).json({ error: '請選擇發送對象' })
+  if (!text && !imageUrl) return res.status(400).json({ error: '請輸入文字或上傳圖片' })
+  // 以 NDJSON 串流逐筆回報進度（前端顯示即時發送人數/百分比）
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('X-Accel-Buffering', 'no')
+  const send = (obj) => { try { res.write(JSON.stringify(obj) + '\n') } catch (_) {} }
+  // 組訊息（圖片在前、文字在後）
+  const messages = []
+  if (imageUrl) messages.push({ type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl })
+  if (text) messages.push({ type: 'text', text })
   try {
-    const b = req.body || {}
-    const leaseIds = Array.isArray(b.leaseIds) ? b.leaseIds : []
-    const text = (b.text || '').trim()
-    const imageUrl = (b.imageUrl || '').trim()
-    if (!leaseIds.length) return res.status(400).json({ error: '請選擇發送對象' })
-    if (!text && !imageUrl) return res.status(400).json({ error: '請輸入文字或上傳圖片' })
-    // 組訊息（圖片在前、文字在後）
-    const messages = []
-    if (imageUrl) messages.push({ type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl })
-    if (text) messages.push({ type: 'text', text })
+    const total = leaseIds.length
+    send({ type: 'start', total })
     const results = []
-    for (const id of leaseIds) {
+    let sent = 0, failed = 0
+    for (let i = 0; i < leaseIds.length; i++) {
+      const id = leaseIds[i]
       const lease = await getOwnedLease(auth, id)
-      if (!lease || lease === false) { results.push({ leaseId: id, ok: false, error: lease === false ? 'forbidden' : 'not found' }); continue }
-      const base = { leaseId: id, tenant: lease.tenantName, room: lease.roomLabel }
-      if (!lease.lineUserId) { results.push({ ...base, ok: false, error: '未綁定 LINE' }); continue }
-      try {
-        const r = await pushToLeaseTenant(lease, messages)
-        results.push({ ...base, ok: true, via: r.via })
-      } catch (e) {
-        results.push({ ...base, ok: false, error: e.message })
+      if (!lease || lease === false) {
+        failed++; results.push({ leaseId: id, ok: false, error: lease === false ? 'forbidden' : 'not found' })
+      } else if (!lease.lineUserId) {
+        failed++; results.push({ leaseId: id, tenant: lease.tenantName, room: lease.roomLabel, ok: false, error: '未綁定 LINE' })
+      } else {
+        try {
+          const r = await pushToLeaseTenant(lease, messages)
+          sent++; results.push({ leaseId: id, tenant: lease.tenantName, room: lease.roomLabel, ok: true, via: r.via })
+        } catch (e) {
+          failed++; results.push({ leaseId: id, tenant: lease.tenantName, room: lease.roomLabel, ok: false, error: e.message })
+        }
       }
+      send({ type: 'progress', current: i + 1, total, sent, failed })
     }
-    res.json({ ok: true, sent: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, results })
+    send({ type: 'done', sent, failed, results })
+    res.end()
   } catch (e) {
     console.error('LINE 群發失敗:', e.message)
-    res.status(500).json({ error: e.message })
+    send({ type: 'done', sent: 0, failed: leaseIds.length, results: [], error: e.message })
+    res.end()
   }
 })
 
