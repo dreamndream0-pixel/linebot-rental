@@ -23,12 +23,26 @@ setInterval(() => {
 }, 3_600_000)
 
 // ── Bot 靜音清單：這些 LINE userId 不觸發任何關鍵字/選單回覆（留言仍會記錄）──
-// 以環境變數 BOT_MUTED_USER_IDS 設定，可用逗號/空白/換行分隔多個 UID
-function isBotMuted(userId) {
-  if (!userId) return false
+// 來源：環境變數 BOT_MUTED_USER_IDS（逗號/空白/換行分隔）＋ 後台設定（SiteSetting key=bot_muted_user_ids）
+// 逐則訊息會呼叫，故加 30 秒快取避免頻繁查 DB
+let _muteCache = { set: null, exp: 0 }
+async function getMutedSet() {
+  const now = Date.now()
+  if (_muteCache.set && _muteCache.exp > now) return _muteCache.set
+  const set = new Set()
   const raw = process.env.BOT_MUTED_USER_IDS || ''
-  if (!raw.trim()) return false
-  return raw.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean).includes(userId)
+  raw.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean).forEach(u => set.add(u))
+  try {
+    const row = await prisma.siteSetting.findUnique({ where: { key: 'bot_muted_user_ids' } })
+    if (row && row.value) { try { JSON.parse(row.value).forEach(u => set.add(String(u).trim())) } catch (_) {} }
+  } catch (e) { console.error('讀取靜音名單失敗:', e.message) }
+  _muteCache = { set, exp: now + 30000 }
+  return set
+}
+async function isBotMuted(userId) {
+  if (!userId) return false
+  const set = await getMutedSet()
+  return set.has(userId)
 }
 
 // ── 通知房東（依房源歸屬，找不到則退回主帳號 OWNER） ────────────
@@ -480,7 +494,7 @@ const userState = new Map()
 async function handlePostback(event, client, landlordId = null, scope = 'all') {
   const userId = event.source.userId
   if (isRateLimited(userId)) return
-  if (isBotMuted(userId)) return  // 靜音清單用戶：不處理按鈕/選單回覆
+  if (await isBotMuted(userId)) return  // 靜音清單用戶：不處理按鈕/選單回覆
   const data = event.postback?.data || ''
   const { getBotText } = require('./botText')
   const t = await getBotText(landlordId)
@@ -653,7 +667,7 @@ async function handleMessage(event, client, landlordId = null, scope = 'all') {
   await recordIncomingMessage(event, client, landlordId)
 
   // 靜音清單用戶：只記錄留言，不觸發任何關鍵字/選單回覆
-  if (isBotMuted(userId)) return
+  if (await isBotMuted(userId)) return
 
   // 載入該房東的 Bot 文字設定 + 開關狀態
   const { getBotText } = require('./botText')

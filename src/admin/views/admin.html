@@ -6841,8 +6841,9 @@ async function openBroadcastModal() {
   var props = []
   try { var res = await fetch('/admin/api/managed?key=' + encodeURIComponent(KEY)); props = await res.json() } catch(e) {}
   if (!props || !props.length) { box.innerHTML=''; showToast('尚無委託物業'); return }
-  BROADCAST = { leases: [], imageUrl: '', propsById: {} }
+  BROADCAST = { leases: [], imageUrl: '', propsById: {}, muted: {} }
   props.forEach(function(p){ BROADCAST.propsById[p.id] = p })
+  try { var mr = await fetch('/admin/api/bot-mute?key='+encodeURIComponent(KEY)); var md = await mr.json(); (md.userIds||[]).forEach(function(u){ BROADCAST.muted[u] = true }) } catch(e) {}
   var propChecks = props.map(function(p){
     return '<label style="display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid #E5E0D5;border-radius:8px;font-size:13px;margin:0 6px 6px 0;cursor:pointer;background:#FAF8F4;">'+
       '<input type="checkbox" class="bc-prop" value="'+p.id+'" onchange="loadBroadcastRooms()">'+esc(p.title)+'</label>'
@@ -6852,7 +6853,8 @@ async function openBroadcastModal() {
     '<div style="background:#fff;border:1px solid #E5E0D5;border-radius:14px;padding:20px;margin-bottom:18px;">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
       '<h3 style="margin:0;font-size:16px;">📣 LINE 群發</h3>' +
-      '<button onclick="document.getElementById(\'managedReportBox\').innerHTML=\'\'" style="border:none;background:none;font-size:18px;cursor:pointer;color:#999;">×</button>' +
+      '<div style="display:flex;gap:8px;align-items:center;"><button onclick="openMuteListModal()" style="border:1px solid #C0524A;background:#fff;color:#C0524A;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">🔇 靜音名單</button>' +
+      '<button onclick="document.getElementById(\'managedReportBox\').innerHTML=\'\'" style="border:none;background:none;font-size:18px;cursor:pointer;color:#999;">×</button></div>' +
     '</div>' +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
       '<label style="font-size:12px;color:#888;">社區（可多選）</label>' +
@@ -6878,10 +6880,67 @@ function toggleAllBroadcastProps(on) {
 function bcRoomHtml(l) {
   var bound = !!l.lineUserId
   var tag = bound ? '<span style="color:#06C755;font-size:11px;">● LINE</span>' : '<span style="color:#ccc;font-size:11px;">未綁定</span>'
-  return '<label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:13px;'+(bound?'':'opacity:.5;')+'">'+
-    '<input type="checkbox" class="bc-room" value="'+l.id+'" '+(bound?'checked':'')+' '+(bound?'':'disabled')+'>'+
-    '<span style="flex:1;">'+esc(l.roomLabel||'—')+' <span style="color:#999;">'+esc(l.tenantName||'')+'</span></span>'+tag+
-  '</label>'
+  var muteBtn = ''
+  if (bound) {
+    var m = !!BROADCAST.muted[l.lineUserId]
+    muteBtn = '<button data-uid="'+esc(l.lineUserId)+'" onclick="toggleBotMute(this)" title="靜音＝此房客傳訊息 Bot 不回關鍵字" style="border:1px solid '+(m?'#C0524A':'#E5E0D5')+';background:'+(m?'#FBECEA':'#fff')+';color:'+(m?'#C0524A':'#999')+';border-radius:6px;padding:2px 7px;font-size:11px;cursor:pointer;white-space:nowrap;">'+(m?'🔇 已靜音':'🔔 靜音')+'</button>'
+  }
+  return '<div style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:13px;'+(bound?'':'opacity:.5;')+'">'+
+    '<label style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;cursor:pointer;">'+
+      '<input type="checkbox" class="bc-room" value="'+l.id+'" '+(bound?'checked':'')+' '+(bound?'':'disabled')+'>'+
+      '<span style="flex:1;min-width:0;">'+esc(l.roomLabel||'—')+' <span style="color:#999;">'+esc(l.tenantName||'')+'</span></span>'+tag+
+    '</label>'+muteBtn+
+  '</div>'
+}
+async function toggleBotMute(btn) {
+  var uid = btn.getAttribute('data-uid'); if (!uid) return
+  var willMute = !BROADCAST.muted[uid]
+  btn.disabled = true
+  try {
+    var res = await fetch('/admin/api/bot-mute?key='+encodeURIComponent(KEY), {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId: uid, muted: willMute })
+    })
+    var d = {}; try { d = await res.json() } catch(e) {}
+    if (!res.ok) { showToast('❌ '+(d.error||'設定失敗')); btn.disabled=false; return }
+    BROADCAST.muted = {}; (d.userIds||[]).forEach(function(u){ BROADCAST.muted[u]=true })
+    var m = !!BROADCAST.muted[uid]
+    btn.innerHTML = m ? '🔇 已靜音' : '🔔 靜音'
+    btn.style.border = '1px solid '+(m?'#C0524A':'#E5E0D5'); btn.style.background = m?'#FBECEA':'#fff'; btn.style.color = m?'#C0524A':'#999'
+    showToast(m ? '🔇 已靜音此房客' : '🔔 已取消靜音')
+  } catch(e) { showToast('❌ 設定失敗') }
+  btn.disabled = false
+}
+async function openMuteListModal() {
+  var userIds = []
+  try { var res = await fetch('/admin/api/bot-mute?key='+encodeURIComponent(KEY)); var d = await res.json(); userIds = d.userIds||[] } catch(e) {}
+  var rows = userIds.length ? userIds.map(function(u){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid #F0ECE4;font-size:12px;"><span style="flex:1;word-break:break-all;">'+esc(u)+'</span><button onclick="removeMute(this,\''+esc(u)+'\')" style="border:none;background:#F0E4E2;color:#C0524A;border-radius:6px;padding:3px 9px;font-size:12px;cursor:pointer;">移除</button></div>'
+  }).join('') : '<div style="color:#aaa;font-size:12px;text-align:center;padding:10px;">目前沒有靜音的 UID</div>'
+  var html = '<div id="muteListModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:410;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">'+
+    '<div style="background:#fff;border-radius:16px;padding:20px;max-width:400px;width:100%;margin:auto;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><h3 style="margin:0;font-size:16px;">🔇 Bot 靜音名單</h3><button onclick="var m=document.getElementById(\'muteListModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button></div>'+
+      '<div style="font-size:12px;color:#888;margin-bottom:10px;">名單內的 LINE 用戶傳訊息時，Bot 不會回覆任何關鍵字/選單（留言仍會記錄）。</div>'+
+      '<div style="display:flex;gap:8px;margin-bottom:12px;"><input id="muteAddInput" placeholder="貼上 LINE userID（U開頭）" style="flex:1;padding:8px 10px;border:1px solid #E5E0D5;border-radius:8px;font-size:13px;"><button onclick="addMute()" style="border:none;background:#C0524A;color:#fff;border-radius:8px;padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;">新增</button></div>'+
+      '<div id="muteListRows" style="border:1px solid #EEE;border-radius:8px;padding:6px 10px;max-height:280px;overflow-y:auto;">'+rows+'</div>'+
+    '</div></div>'
+  var ex = document.getElementById('muteListModal'); if (ex) ex.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+async function addMute() {
+  var el = document.getElementById('muteAddInput'); var uid = (el.value||'').trim()
+  if (!uid) { showToast('請貼上 userID'); return }
+  try {
+    var res = await fetch('/admin/api/bot-mute?key='+encodeURIComponent(KEY), { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId: uid, muted: true }) })
+    if (!res.ok) { var d={};try{d=await res.json()}catch(e){}; showToast('❌ '+(d.error||'新增失敗')); return }
+    showToast('🔇 已加入靜音名單'); openMuteListModal()
+  } catch(e) { showToast('❌ 新增失敗') }
+}
+async function removeMute(btn, uid) {
+  try {
+    var res = await fetch('/admin/api/bot-mute?key='+encodeURIComponent(KEY), { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId: uid, muted: false }) })
+    if (!res.ok) { showToast('❌ 移除失敗'); return }
+    showToast('🔔 已移除'); openMuteListModal()
+  } catch(e) { showToast('❌ 移除失敗') }
 }
 // 讀取所有已勾選社區的房號，依社區分組顯示
 async function loadBroadcastRooms() {
