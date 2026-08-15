@@ -7,11 +7,26 @@ const express = require('express')
 const path = require('path')
 const crypto = require('crypto')
 const prisma = require('./db')
+const { createLandlordSessionById, SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } = require('./admin/helpers')
 
 const router = express.Router()
 
 const MEMBER_COOKIE = 'xiaowo_member'
 const MEMBER_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 會員登入保留 30 天
+
+// 以會員 email 找出對應且啟用中的房東帳號（房東模式的授權依據）
+async function findLandlordByEmail(email) {
+  if (!email) return null
+  try {
+    return await prisma.landlord.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' }, isActive: true },
+      select: { id: true, name: true },
+    })
+  } catch (e) {
+    console.error('findLandlordByEmail 失敗:', e.message)
+    return null
+  }
+}
 
 function ssoSecret() {
   return process.env.SSO_SHARED_SECRET || ''
@@ -108,7 +123,8 @@ router.get('/member/api/me', async (req, res) => {
     })
     if (!user) return res.status(401).json({ error: 'unauthorized' })
     const favCount = await prisma.favorite.count({ where: { userId: user.id } })
-    res.json({ ok: true, user, favCount })
+    const landlord = await findLandlordByEmail(user.email)
+    res.json({ ok: true, user, favCount, isLandlord: !!landlord })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
@@ -160,6 +176,28 @@ router.delete('/member/api/favorites', express.json(), async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
+})
+
+// POST /member/api/switch-to-landlord — 房東模式：以 email 對應房東帳號 → 建立後台 session
+// 會員身分已由 SSO 登入證明（掌握該社群帳號）；email 相符且房東帳號啟用中才放行。
+router.post('/member/api/switch-to-landlord', async (req, res) => {
+  const m = currentMember(req)
+  if (!m) return res.status(401).json({ error: 'unauthorized' })
+  let user = null
+  try {
+    user = await prisma.user.findUnique({ where: { id: m.uid }, select: { email: true } })
+  } catch (e) {
+    return res.status(500).json({ error: e.message })
+  }
+  const landlord = await findLandlordByEmail(user && user.email)
+  if (!landlord) return res.status(403).json({ error: 'not_landlord' })
+  const session = await createLandlordSessionById(landlord.id)
+  if (!session) return res.status(403).json({ error: 'not_landlord' })
+  // 後台管理員 session cookie（Path=/admin，與 admin 端一致）
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
+  res.setHeader('Set-Cookie',
+    `${SESSION_COOKIE_NAME}=${encodeURIComponent(session.token)}; HttpOnly; Path=/admin; Max-Age=${Math.floor(SESSION_MAX_AGE_MS / 1000)}; SameSite=Lax${secure}`)
+  res.json({ ok: true, redirect: '/admin', name: session.name })
 })
 
 // GET /member — 會員中心頁面
