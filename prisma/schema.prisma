@@ -291,6 +291,25 @@ model SiteSetting {
   @@map("site_settings")
 }
 
+// ─────────────────────────────────────────────
+// 操作紀錄（審計軌跡）：後台每筆寫入操作留存
+// ─────────────────────────────────────────────
+model AuditLog {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  actorLabel String?
+  actorRole  String?
+  landlordId String?
+  method     String
+  path       String
+  action     String?
+  summary    String?  @db.Text
+  status     Int?
+
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
 enum PropertyType {
   SUITE
   ROOM

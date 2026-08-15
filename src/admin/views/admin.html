@@ -1107,7 +1107,7 @@ var MENU_GROUPS = [
     { label: '\u7dad\u4fee\u7ba1\u7406', icon: 'wrench', tab: 'repairs' },
   ] },
   { label: '\u793e\u7fa4\u7ba1\u7406', icon: 'share', tab: 'socialPosting' },
-  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings', { label: 'Ragic \u540c\u6b65', icon: 'share', run: 'ragic-menu', feat: 'ragic' }] },
+  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings', { label: '\u64cd\u4f5c\u7d00\u9304', icon: 'clipboard', run: 'audit' }, { label: 'Ragic \u540c\u6b65', icon: 'share', run: 'ragic-menu', feat: 'ragic' }] },
 ]
 
 function renderTabBar() {
@@ -5639,6 +5639,7 @@ var _navRunPending = false
 function navRun(key) {
   document.querySelectorAll('.nav-group.open').forEach(function(x){ x.classList.remove('open') })
   if (key === 'ragic-menu') { openRagicSyncMenu(); return }
+  if (key === 'audit') { openAuditLog(); return }
   _navRunPending = true
   if (currentTab !== 'managed') switchTab('managed')
   _navRunPending = false
@@ -5676,6 +5677,64 @@ function openRagicSyncMenu() {
       '<div style="font-size:11px;color:#999;margin-top:10px;">建議先「合約同步」，再跑電費、租金同步。</div>' +
     '</div></div>'
   document.body.insertAdjacentHTML('beforeend', html)
+}
+
+// ── 操作紀錄（審計軌跡）：檢視後台每筆寫入操作 ─────────────────────
+function auditStatusBadge(s) {
+  if (s == null) return ''
+  var ok = s >= 200 && s < 400
+  var color = ok ? '#4A7A6A' : '#c0392b'
+  var txt = ok ? '成功' : ('失敗 ' + s)
+  return '<span style="font-size:11px;color:' + color + ';border:1px solid ' + color + ';border-radius:4px;padding:1px 5px;margin-left:6px;">' + txt + '</span>'
+}
+function auditRoleLabel(r) {
+  return r === 'super' ? '總管理員' : (r === 'landlord' ? '房東' : (r || '—'))
+}
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]
+  })
+}
+function renderAuditRows(logs) {
+  if (!logs || !logs.length) return '<div class="empty" style="padding:24px;text-align:center;color:#999;">尚無操作紀錄</div>'
+  return logs.map(function(r) {
+    var d = new Date(r.createdAt)
+    var when = isNaN(d) ? '' : (d.getFullYear() + '/' + ('0'+(d.getMonth()+1)).slice(-2) + '/' + ('0'+d.getDate()).slice(-2) + ' ' + ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2))
+    var actor = escapeHtml(r.actorLabel || '未知') + '（' + auditRoleLabel(r.actorRole) + '）'
+    var summary = r.summary ? '<div style="font-size:11px;color:#888;margin-top:3px;word-break:break-all;">' + escapeHtml(r.summary) + '</div>' : ''
+    return '<div style="padding:10px 4px;border-bottom:1px solid #eee;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">' +
+        '<span style="font-weight:600;font-size:13px;">' + escapeHtml(r.action || r.path) + auditStatusBadge(r.status) + '</span>' +
+        '<span style="font-size:11px;color:#aaa;white-space:nowrap;">' + when + '</span>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#666;margin-top:2px;">' + actor + '　·　<span style="color:#999;">' + escapeHtml(r.method) + ' ' + escapeHtml(r.path) + '</span></div>' +
+      summary +
+    '</div>'
+  }).join('')
+}
+async function openAuditLog() {
+  var old = document.getElementById('auditLogModal'); if (old) old.remove()
+  var html = '<div id="auditLogModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:22px;max-width:520px;width:100%;max-height:82vh;display:flex;flex-direction:column;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+        '<h3 style="margin:0;font-size:16px;">📋 操作紀錄</h3>' +
+        '<button onclick="var m=document.getElementById(\'auditLogModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#999;margin-bottom:8px;">記錄後台每筆寫入操作（新增／更新／刪除／送出），方便追查誤操作。顯示最近 100 筆。</div>' +
+      '<div id="auditLogList" style="overflow-y:auto;flex:1;"><div class="empty" style="padding:24px;text-align:center;color:#999;">載入中…</div></div>' +
+    '</div></div>'
+  document.body.insertAdjacentHTML('beforeend', html)
+  try {
+    var res = await fetch('/admin/api/audit-logs?key=' + encodeURIComponent(KEY) + '&limit=100')
+    var data = await res.json()
+    var box = document.getElementById('auditLogList')
+    if (!box) return
+    if (!res.ok) { box.innerHTML = '<div class="empty" style="padding:24px;text-align:center;color:#c0392b;">載入失敗：' + escapeHtml(data.error || res.status) + '</div>'; return }
+    box.innerHTML = renderAuditRows(data.logs)
+  } catch (e) {
+    var box2 = document.getElementById('auditLogList')
+    if (box2) box2.innerHTML = '<div class="empty" style="padding:24px;text-align:center;color:#c0392b;">載入失敗：' + escapeHtml(e.message) + '</div>'
+  }
 }
 
 // ── Ragic 同步：進度直接顯示在按鈕上 ─────────────────────────────
