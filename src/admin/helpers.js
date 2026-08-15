@@ -79,6 +79,19 @@ async function createImpersonationSession(landlordId) {
   return { auth, token: makeSessionToken(auth), name: landlord.name, maxAgeMs: SESSION_MAX_AGE_MS }
 }
 
+// 建立「真正的房東登入 session」（給前站會員以 email 對應到房東帳號時使用）。
+// 注意：imp 一律為 false（makeSessionToken 內 imp: auth.imp === true），
+// 因此此 session 不能透過 /admin/api/switch-to-super 提權成總管理員。
+async function createLandlordSessionById(landlordId) {
+  let landlord = null
+  try {
+    landlord = await prisma.landlord.findUnique({ where: { id: landlordId } })
+  } catch (e) { console.error('createLandlordSessionById 查詢房東失敗:', e.message); return null }
+  if (!landlord || !landlord.isActive) return null
+  const auth = { role: 'landlord', landlordId: landlord.id, label: landlord.name, source: landlord.source }
+  return { auth, token: makeSessionToken(auth), name: landlord.name, maxAgeMs: SESSION_MAX_AGE_MS }
+}
+
 // ── 權限解析（含 60 秒記憶體快取，避免每個 API 請求都打 DB）────────
 const _roleCache = new Map() // key → { auth, exp }
 const ROLE_CACHE_TTL = 60_000
@@ -224,6 +237,7 @@ module.exports = {
   notifyBookingTenant,
   createAdminSession,
   createImpersonationSession,
+  createLandlordSessionById,
   hashAdminKey,
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_MS,
