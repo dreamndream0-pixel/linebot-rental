@@ -22,6 +22,15 @@ setInterval(() => {
   }
 }, 3_600_000)
 
+// ── Bot 靜音清單：這些 LINE userId 不觸發任何關鍵字/選單回覆（留言仍會記錄）──
+// 以環境變數 BOT_MUTED_USER_IDS 設定，可用逗號/空白/換行分隔多個 UID
+function isBotMuted(userId) {
+  if (!userId) return false
+  const raw = process.env.BOT_MUTED_USER_IDS || ''
+  if (!raw.trim()) return false
+  return raw.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean).includes(userId)
+}
+
 // ── 通知房東（依房源歸屬，找不到則退回主帳號 OWNER） ────────────
 // landlordId: 房源的歸屬房東；client: 該房東 Bot 的 client（可推給該房東）
 async function notifyLandlord(landlordId, message, fallbackClient) {
@@ -471,6 +480,7 @@ const userState = new Map()
 async function handlePostback(event, client, landlordId = null, scope = 'all') {
   const userId = event.source.userId
   if (isRateLimited(userId)) return
+  if (isBotMuted(userId)) return  // 靜音清單用戶：不處理按鈕/選單回覆
   const data = event.postback?.data || ''
   const { getBotText } = require('./botText')
   const t = await getBotText(landlordId)
@@ -641,6 +651,9 @@ async function handleMessage(event, client, landlordId = null, scope = 'all') {
 
   // 確保用戶存在 DB＋記錄最後一句留言（放最前面，Bot 關閉也要記錄）
   await recordIncomingMessage(event, client, landlordId)
+
+  // 靜音清單用戶：只記錄留言，不觸發任何關鍵字/選單回覆
+  if (isBotMuted(userId)) return
 
   // 載入該房東的 Bot 文字設定 + 開關狀態
   const { getBotText } = require('./botText')
