@@ -114,6 +114,11 @@ router.use((req, _res, next) => {
   next()
 })
 
+// 操作紀錄（審計軌跡）：記錄所有寫入類 /admin/api/* 操作。
+// 必須在 session-key 中介層之後（才讀得到 req.query.key），並在各業務 router 之前掛載。
+const auditRouter = require('./admin/routes/audit')
+router.use(auditRouter.auditMiddleware)
+
 // POST /admin/api/switch-to-broker — 僅總管理員：切換成仲介視角（建立 imp:true 的模擬 session）
 // 此路由必須在 session-key 中介層之後，才能從 cookie 取得 req.query.key
 router.post('/admin/api/switch-to-broker', async (req, res) => {
@@ -213,6 +218,7 @@ router.use(require('./admin/routes/social'))
 router.use(require('./admin/routes/fbUserToken'))
 router.use(require('./admin/routes/managedProperty'))
 router.use(require('./admin/routes/smartlock'))
+router.use(auditRouter)
 
 router.use('/admin/assets', express.static(path.join(__dirname, 'admin/assets')))
 

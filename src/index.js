@@ -198,6 +198,27 @@ prisma.$connect()
     } catch (e) {
       console.error('⚠️ 租約收支連動欄位確認失敗:', e.message)
     }
+    try {
+      // 操作紀錄（審計軌跡）：後台每筆寫入操作留存，方便追查誤操作。
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+          id           TEXT PRIMARY KEY,
+          "createdAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          "actorLabel" TEXT,
+          "actorRole"  TEXT,
+          "landlordId" TEXT,
+          method       TEXT NOT NULL,
+          path         TEXT NOT NULL,
+          action       TEXT,
+          summary      TEXT,
+          status       INTEGER
+        )
+      `)
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "audit_logs_createdAt_idx" ON audit_logs ("createdAt")`)
+      console.log('✅ 操作紀錄資料表已確認')
+    } catch (e) {
+      console.error('⚠️ 操作紀錄資料表確認失敗:', e.message)
+    }
     // Runtime DDL can be blocked by production DB locks/timeouts. Run it only when explicitly requested.
     if (process.env.RUN_SCHEMA_CHECK === 'true') {
       try {
