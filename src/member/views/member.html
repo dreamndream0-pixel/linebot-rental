@@ -139,22 +139,25 @@ function renderHero(data) {
   if (u.avatar) {
     document.getElementById('avatar').innerHTML = '<img src="' + esc(u.avatar) + '" alt="">'
   }
-  if (data.isLandlord) {
-    document.getElementById('landlordBtn').classList.remove('hidden')
+  if (data.canManage) {
+    var lb = document.getElementById('landlordBtn')
+    lb.classList.remove('hidden')
+    if (data.isSuper) lb.textContent = '🛠️ 進入總管理員後台'
   }
 }
 
 async function switchToLandlord() {
   var btn = document.getElementById('landlordBtn')
+  var orig = btn.textContent
   btn.disabled = true; btn.textContent = '切換中…'
   try {
     var res = await fetch('/member/api/switch-to-landlord', { method:'POST' })
     var data = await res.json()
     if (res.ok && data.redirect) { location.href = data.redirect; return }
-    btn.disabled = false; btn.textContent = '🏢 切換為房東模式（進入後台）'
-    alert(data.error === 'not_landlord' ? '此帳號的 Email 沒有對應的房東後台' : '切換失敗，請稍後再試')
+    btn.disabled = false; btn.textContent = orig
+    alert(data.error === 'not_landlord' ? '此帳號的 Email 沒有對應的後台帳號' : '切換失敗，請稍後再試')
   } catch (e) {
-    btn.disabled = false; btn.textContent = '🏢 切換為房東模式（進入後台）'
+    btn.disabled = false; btn.textContent = orig
     alert('連線失敗')
   }
 }

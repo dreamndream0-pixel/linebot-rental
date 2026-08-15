@@ -7,12 +7,21 @@ const express = require('express')
 const path = require('path')
 const crypto = require('crypto')
 const prisma = require('./db')
-const { createLandlordSessionById, SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } = require('./admin/helpers')
+const { createAdminSession, createLandlordSessionById, SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } = require('./admin/helpers')
 
 const router = express.Router()
 
 const MEMBER_COOKIE = 'xiaowo_member'
 const MEMBER_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 會員登入保留 30 天
+
+// 總管理員 email 允許清單（環境變數 SUPER_ADMIN_EMAILS，逗號分隔）。
+// 名單內的 email 以社群登入後，可切換進「總管理員」後台。
+function isSuperEmail(email) {
+  if (!email) return false
+  const list = String(process.env.SUPER_ADMIN_EMAILS || '')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+  return list.includes(String(email).trim().toLowerCase())
+}
 
 // 以會員 email 找出對應且啟用中的房東帳號（房東模式的授權依據）
 async function findLandlordByEmail(email) {
@@ -123,8 +132,10 @@ router.get('/member/api/me', async (req, res) => {
     })
     if (!user) return res.status(401).json({ error: 'unauthorized' })
     const favCount = await prisma.favorite.count({ where: { userId: user.id } })
-    const landlord = await findLandlordByEmail(user.email)
-    res.json({ ok: true, user, favCount, isLandlord: !!landlord })
+    const isSuper = isSuperEmail(user.email)
+    const landlord = isSuper ? null : await findLandlordByEmail(user.email)
+    const canManage = isSuper || !!landlord
+    res.json({ ok: true, user, favCount, isLandlord: !!landlord, isSuper, canManage })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
@@ -189,9 +200,16 @@ router.post('/member/api/switch-to-landlord', async (req, res) => {
   } catch (e) {
     return res.status(500).json({ error: e.message })
   }
-  const landlord = await findLandlordByEmail(user && user.email)
-  if (!landlord) return res.status(403).json({ error: 'not_landlord' })
-  const session = await createLandlordSessionById(landlord.id)
+  const email = user && user.email
+  let session = null
+  if (isSuperEmail(email)) {
+    // 總管理員 email 允許清單 → 建立總管理員 session
+    if (!process.env.ADMIN_KEY) return res.status(500).json({ error: 'ADMIN_KEY 未設定' })
+    session = await createAdminSession(process.env.ADMIN_KEY)
+  } else {
+    const landlord = await findLandlordByEmail(email)
+    if (landlord) session = await createLandlordSessionById(landlord.id)
+  }
   if (!session) return res.status(403).json({ error: 'not_landlord' })
   // 後台管理員 session cookie（Path=/admin，與 admin 端一致）
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
