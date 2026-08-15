@@ -751,8 +751,24 @@ async function readMutedList() {
 router.get('/admin/api/bot-mute', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
-  try { res.json({ userIds: await readMutedList() }) }
-  catch (e) { res.status(500).json({ error: e.message }) }
+  try {
+    const userIds = await readMutedList()
+    // 帶入 LINE 頭像與名字（從 Tenant 檔；同一 userId 可能多列，取有資料者）
+    const byUid = {}
+    if (userIds.length) {
+      const tenants = await prisma.tenant.findMany({
+        where: { lineUserId: { in: userIds } },
+        select: { lineUserId: true, name: true, customName: true, avatarUrl: true },
+      })
+      tenants.forEach(t => {
+        const cur = byUid[t.lineUserId] || (byUid[t.lineUserId] = { name: '', avatar: '' })
+        if (!cur.name && (t.customName || t.name)) cur.name = t.customName || t.name
+        if (!cur.avatar && t.avatarUrl) cur.avatar = t.avatarUrl
+      })
+    }
+    const list = userIds.map(u => ({ userId: u, name: (byUid[u] && byUid[u].name) || '', avatar: (byUid[u] && byUid[u].avatar) || '' }))
+    res.json({ userIds, list })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 router.post('/admin/api/bot-mute', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
