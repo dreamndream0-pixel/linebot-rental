@@ -6961,22 +6961,41 @@ function previewBroadcast() {
   var btn = document.getElementById('bcSendBtn')
   btn.onclick = function(){ btnLoad(btn, function(){ return sendBroadcast(selected, text) }) }
 }
+function showBroadcastProgress(total) {
+  var html = '<div id="bcProgModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:410;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:100%;">' +
+      '<div style="font-size:15px;font-weight:700;color:#06863F;margin-bottom:14px;">📣 LINE 群發中</div>' +
+      '<div id="bcProgText" style="font-size:14px;color:#333;margin-bottom:10px;font-weight:600;">已發送 0 / ' + total + '（0%）</div>' +
+      '<div style="height:12px;background:#EAF3EC;border-radius:6px;overflow:hidden;"><div id="bcProgBar" style="height:100%;width:0%;background:linear-gradient(90deg,#4CC470,#06C755);border-radius:6px;transition:width .2s ease;"></div></div>' +
+      '<div style="font-size:11px;color:#999;margin-top:8px;">請勿關閉此視窗，正在逐一發送…</div>' +
+    '</div></div>'
+  var ex = document.getElementById('bcProgModal'); if (ex) ex.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+function updateBroadcastProgress(current, total) {
+  var pct = total ? Math.round(current / total * 100) : 0
+  var t = document.getElementById('bcProgText'); if (t) t.textContent = '已發送 ' + current + ' / ' + total + '（' + pct + '%）'
+  var b = document.getElementById('bcProgBar'); if (b) b.style.width = pct + '%'
+}
+function hideBroadcastProgress() { var m = document.getElementById('bcProgModal'); if (m) m.remove() }
 async function sendBroadcast(leaseIds, text) {
   var pm = document.getElementById('bcPreviewModal'); if (pm) pm.remove()
-  showImportProgress('📣 LINE 群發', ['準備發送…', '推播中…（共 ' + leaseIds.length + ' 位）', '收尾中…'])
+  showBroadcastProgress(leaseIds.length)
   try {
     var res = await fetch('/admin/api/managed-broadcast?key='+encodeURIComponent(KEY), {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ leaseIds: leaseIds, text: text, imageUrl: BROADCAST.imageUrl || '' })
     })
-    var d = {}; try { d = await res.json() } catch(e) {}
-    finishImportProgress()
-    if (!res.ok) { showInfoModal('❌ 發送失敗', d.error || ('HTTP '+res.status)); return }
-    var failList = (d.results||[]).filter(function(r){ return !r.ok })
-    var body = '成功 '+ (d.sent||0) +' 人，失敗 '+ (d.failed||0) +' 人。'
+    if (!res.ok) { var d={}; try{d=await res.json()}catch(e){}; hideBroadcastProgress(); showInfoModal('❌ 發送失敗', d.error || ('HTTP '+res.status)); return }
+    var final = await readSyncStream(res, function(current, total){ updateBroadcastProgress(current, total) })
+    hideBroadcastProgress()
+    if (!final) { showToast('✅ 發送完成'); return }
+    var failList = (final.results||[]).filter(function(r){ return !r.ok })
+    var body = '成功 '+ (final.sent||0) +' 人，失敗 '+ (final.failed||0) +' 人。'
+    if (final.error) body += '\n（' + final.error + '）'
     if (failList.length) body += '\n\n失敗名單：\n' + failList.map(function(r){ return (r.room||'')+' '+(r.tenant||'')+'：'+(r.error||'') }).join('\n')
-    showInfoModal(d.failed ? '⚠️ 發送完成（部分失敗）' : '✅ 發送完成', body)
-  } catch(e) { finishImportProgress(); showToast('❌ 發送失敗') }
+    showInfoModal(final.failed ? '⚠️ 發送完成（部分失敗）' : '✅ 發送完成', body)
+  } catch(e) { hideBroadcastProgress(); showToast('❌ 發送失敗') }
 }
 // 快速登記水電支出（台電/台水帳單）→ 建立 EXPENSE 收支，反映到報表支出
 function openUtilityExpenseModal() {
