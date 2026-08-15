@@ -742,6 +742,43 @@ router.post('/admin/api/managed-import-taipower', express.json(), async (req, re
   }
 })
 
+// ── Bot 靜音名單管理（存 SiteSetting key=bot_muted_user_ids）──
+async function readMutedList() {
+  const row = await prisma.siteSetting.findUnique({ where: { key: 'bot_muted_user_ids' } })
+  if (row && row.value) { try { return JSON.parse(row.value) } catch (_) {} }
+  return []
+}
+router.get('/admin/api/bot-mute', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try { res.json({ userIds: await readMutedList() }) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+})
+router.post('/admin/api/bot-mute', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const b = req.body || {}
+    let set = new Set((await readMutedList()).map(u => String(u).trim()).filter(Boolean))
+    if (Array.isArray(b.userIds)) {
+      set = new Set(b.userIds.map(u => String(u).trim()).filter(Boolean))  // 整批覆寫
+    } else if (b.userId) {
+      const uid = String(b.userId).trim()
+      if (uid) { if (b.muted === false) set.delete(uid); else set.add(uid) }
+    }
+    const arr = [...set]
+    await prisma.siteSetting.upsert({
+      where: { key: 'bot_muted_user_ids' },
+      update: { value: JSON.stringify(arr) },
+      create: { key: 'bot_muted_user_ids', value: JSON.stringify(arr) },
+    })
+    res.json({ ok: true, userIds: arr })
+  } catch (e) {
+    console.error('更新靜音名單失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ── LINE 群發：對選定租約批次推播（圖片＋文字）──
 // 連字號路由避免被 /admin/api/managed/:id 攔截
 router.post('/admin/api/managed-broadcast', express.json(), async (req, res) => {
