@@ -24,6 +24,9 @@ app.set('trust proxy', 1)
 // ── 管理後台 ───────────────────────────────────────────────────
 app.use(adminRouter)
 
+// ── 會員中心（第三方登入 SSO 橋接 + 租客會員區） ───────────────
+app.use(require('./member'))
+
 // ── 其他官方帳號的輕量 Webhook（只抓 userId） ─────────────────
 registerExtraChannels(app)
 

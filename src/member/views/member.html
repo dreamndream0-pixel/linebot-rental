@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>小蝸出租 · 會員中心</title>
+<style>
+  :root { --sage:#4E7153; --sage-d:#3d5a42; --gold:#C79A3B; --bg:#f4f2ec; --card:#fff; --line:#ececec; --gray:#8a8a8a; }
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif; background:var(--bg); color:#2f2f2f; min-height:100vh; }
+  a { color:inherit; text-decoration:none; }
+  .wrap { max-width:520px; margin:0 auto; min-height:100vh; background:var(--bg); }
+
+  header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; background:#f7f6f1; border-bottom:1px solid var(--line); }
+  .logo { display:flex; align-items:center; gap:8px; font-weight:800; font-size:19px; letter-spacing:2px; color:var(--sage); }
+  .logo small { display:block; font-size:9px; letter-spacing:3px; color:#9aa89b; font-weight:600; }
+  .logout-btn { border:1px solid #d8d5cc; background:#fff; color:#666; border-radius:20px; padding:6px 14px; font-size:13px; cursor:pointer; }
+
+  .hero { background:linear-gradient(160deg,var(--sage),var(--sage-d)); color:#fff; padding:26px 20px 22px; }
+  .hero-top { display:flex; align-items:center; gap:16px; }
+  .avatar { width:74px; height:74px; border-radius:50%; background:#6d8f72; display:flex; align-items:center; justify-content:center; font-size:30px; overflow:hidden; flex-shrink:0; border:2px solid rgba(255,255,255,.4); }
+  .avatar img { width:100%; height:100%; object-fit:cover; }
+  .hero-name { font-size:26px; font-weight:800; }
+  .hero-email { font-size:13px; opacity:.85; margin-top:3px; word-break:break-all; }
+  .hero-stats { display:flex; gap:34px; margin-top:18px; padding-left:4px; }
+  .stat b { font-size:26px; font-weight:800; display:block; line-height:1; }
+  .stat span { font-size:12px; opacity:.8; }
+
+  .panel { background:var(--card); border-radius:20px 20px 0 0; margin-top:-14px; position:relative; min-height:56vh; padding-bottom:40px; }
+  .tabs { display:flex; border-bottom:1px solid var(--line); padding:0 6px; overflow-x:auto; }
+  .tab { flex:1; min-width:82px; text-align:center; padding:16px 6px; font-size:14px; color:var(--gray); cursor:pointer; white-space:nowrap; border-bottom:2px solid transparent; }
+  .tab.active { color:var(--sage); font-weight:700; border-bottom-color:var(--sage); }
+  .tab-body { padding:16px; }
+
+  .empty { text-align:center; color:#aaa; padding:48px 20px; }
+  .empty .ic { font-size:40px; display:block; margin-bottom:10px; }
+  .empty a { color:var(--sage); font-weight:700; }
+
+  .fav { display:flex; gap:12px; padding:12px; border:1px solid var(--line); border-radius:14px; margin-bottom:12px; background:#fff; }
+  .fav-img { width:88px; height:70px; border-radius:10px; object-fit:cover; background:#eee; flex-shrink:0; }
+  .fav-img.ph { display:flex; align-items:center; justify-content:center; color:#ccc; font-size:24px; }
+  .fav-info { flex:1; min-width:0; }
+  .fav-title { font-weight:700; font-size:15px; margin-bottom:4px; }
+  .fav-area { font-size:12px; color:var(--gray); }
+  .fav-price { color:var(--gold); font-weight:800; font-size:15px; margin-top:6px; }
+  .fav-x { border:none; background:none; color:#c9524a; font-size:13px; cursor:pointer; align-self:flex-start; }
+
+  .srow { display:flex; align-items:center; gap:14px; padding:16px; border:1px solid var(--line); border-radius:14px; margin-bottom:12px; }
+  .srow .ic { width:44px; height:44px; border-radius:50%; background:#eef3ee; display:flex; align-items:center; justify-content:center; font-size:20px; }
+  .srow .t { font-weight:700; font-size:15px; }
+  .srow .d { font-size:12px; color:var(--gray); margin-top:2px; }
+  .srow .arrow { margin-left:auto; color:#ccc; }
+
+  .loading { text-align:center; color:#aaa; padding:40px; }
+  #loginGate { text-align:center; padding:70px 24px; }
+  #loginGate .ic { font-size:52px; }
+  #loginGate h2 { font-size:19px; margin:16px 0 8px; }
+  #loginGate p { color:var(--gray); font-size:14px; margin-bottom:22px; }
+  .btn-primary { display:inline-block; background:var(--sage); color:#fff; border:none; border-radius:26px; padding:13px 30px; font-size:15px; font-weight:700; cursor:pointer; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 未登入：導引回前站登入 -->
+  <div id="loginGate" class="hidden">
+    <div class="ic">🐌</div>
+    <h2>會員中心</h2>
+    <p>請先以 Google、LINE 或 Facebook 登入</p>
+    <a id="loginLink" class="btn-primary" href="#">前往登入 →</a>
+  </div>
+
+  <!-- 已登入：會員中心 -->
+  <div id="app" class="hidden">
+    <header>
+      <div class="logo">小蝸出租<small>SNAIL RENTAL</small></div>
+      <button class="logout-btn" onclick="doLogout()">登出</button>
+    </header>
+
+    <div class="hero">
+      <div class="hero-top">
+        <div class="avatar" id="avatar">👤</div>
+        <div>
+          <div class="hero-name" id="uname">—</div>
+          <div class="hero-email" id="uemail"></div>
+        </div>
+      </div>
+      <div class="hero-stats">
+        <div class="stat"><b id="favCount">0</b><span>收藏</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="tabs">
+        <div class="tab active" data-tab="home" onclick="switchTab('home')">🏡 我的租屋處</div>
+        <div class="tab" data-tab="favorites" onclick="switchTab('favorites')">❤️ 收藏</div>
+        <div class="tab" data-tab="support" onclick="switchTab('support')">💬 客服</div>
+      </div>
+      <div class="tab-body" id="tabBody"><div class="loading">載入中…</div></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+var ME = null
+var FAVS = null
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}) }
+
+async function init() {
+  try {
+    var res = await fetch('/member/api/me')
+    if (res.status === 401) {
+      var d = await res.json().catch(function(){return {}})
+      document.getElementById('loginLink').href = d.loginUrl || '/'
+      document.getElementById('loginGate').classList.remove('hidden')
+      return
+    }
+    var data = await res.json()
+    ME = data.user
+    document.getElementById('app').classList.remove('hidden')
+    renderHero(data)
+    switchTab('home')
+  } catch (e) {
+    document.getElementById('loginGate').classList.remove('hidden')
+  }
+}
+
+function renderHero(data) {
+  var u = data.user
+  document.getElementById('uname').textContent = u.name || '小蝸用戶'
+  document.getElementById('uemail').textContent = u.email || ''
+  document.getElementById('favCount').textContent = data.favCount || 0
+  if (u.avatar) {
+    document.getElementById('avatar').innerHTML = '<img src="' + esc(u.avatar) + '" alt="">'
+  }
+}
+
+function switchTab(tab) {
+  var tabs = document.querySelectorAll('.tab')
+  for (var i=0;i<tabs.length;i++){ tabs[i].classList.toggle('active', tabs[i].getAttribute('data-tab')===tab) }
+  var body = document.getElementById('tabBody')
+  if (tab === 'support') { body.innerHTML = renderSupport(); return }
+  if (tab === 'home') { body.innerHTML = renderHome(); return }
+  if (tab === 'favorites') { renderFavorites(body); return }
+}
+
+function renderHome() {
+  return '<div class="empty"><span class="ic">🏡</span>此區將顯示您承租中的房源與繳費資訊<br><span style="font-size:12px;color:#bbb">（後續階段開放）</span></div>'
+}
+
+function renderSupport() {
+  return '' +
+    supportRow('💬','LINE 官方帳號','即時諮詢','https://line.me/R/ti/p/@xiaowo') +
+    supportRow('📞','客服電話','0800-899-969','tel:0800899969') +
+    supportRow('✉️','填寫諮詢表單','我們主動回覆','https://xiaowo-rental.vercel.app/contact')
+}
+function supportRow(ic,t,d,href){
+  return '<a class="srow" href="'+esc(href)+'"><span class="ic">'+ic+'</span><div><div class="t">'+esc(t)+'</div><div class="d">'+esc(d)+'</div></div><span class="arrow">›</span></a>'
+}
+
+async function renderFavorites(body) {
+  body.innerHTML = '<div class="loading">載入中…</div>'
+  try {
+    var res = await fetch('/member/api/favorites')
+    var data = await res.json()
+    FAVS = data.list || []
+    if (!FAVS.length) {
+      body.innerHTML = '<div class="empty"><span class="ic">❤️</span>尚無收藏<br><a href="https://xiaowo-rental.vercel.app/listings">去看看房源 →</a></div>'
+      return
+    }
+    body.innerHTML = FAVS.map(favCard).join('')
+  } catch (e) {
+    body.innerHTML = '<div class="empty">載入失敗</div>'
+  }
+}
+function favCard(p) {
+  var img = p.image
+    ? '<img class="fav-img" src="' + esc(p.image) + '" alt="">'
+    : '<div class="fav-img ph">🏠</div>'
+  return '<div class="fav" data-id="'+esc(p.id)+'">' + img +
+    '<div class="fav-info">' +
+      '<div class="fav-title">' + esc(p.title) + '</div>' +
+      '<div class="fav-area">' + esc(p.area) + '</div>' +
+      '<div class="fav-price">NT$ ' + Number(p.price||0).toLocaleString() + ' /月</div>' +
+    '</div>' +
+    '<button class="fav-x" onclick="removeFav(\'' + esc(p.id) + '\')">移除</button>' +
+  '</div>'
+}
+async function removeFav(id) {
+  try {
+    await fetch('/member/api/favorites', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ propertyId:id }) })
+    var el = document.querySelector('.fav[data-id="'+id+'"]'); if (el) el.remove()
+    var fc = document.getElementById('favCount'); if (fc) fc.textContent = Math.max(0,(parseInt(fc.textContent,10)||1)-1)
+    if (!document.querySelector('.fav')) switchTab('favorites')
+  } catch (e) {}
+}
+
+async function doLogout() {
+  try { await fetch('/member/api/logout', { method:'POST' }) } catch (e) {}
+  location.href = 'https://xiaowo-rental.vercel.app'
+}
+
+init()
+</script>
+</body>
+</html>
