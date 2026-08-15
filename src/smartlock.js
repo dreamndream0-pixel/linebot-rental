@@ -396,28 +396,46 @@ function isPasscodeRequest(text) {
 // 回傳：[{ key, type, ids, leaseId }]
 async function matchedRoomsForUser(landlord, lineUserId) {
   const rooms = parseRooms(landlord)
+  const uid = String(lineUserId).trim()
   let matched = Object.keys(rooms)
-    .filter(k => rooms[k] && rooms[k].userId && String(rooms[k].userId).trim() === String(lineUserId).trim())
+    .filter(k => rooms[k] && rooms[k].userId && String(rooms[k].userId).trim() === uid)
     .map(k => ({ key: k, type: rooms[k].type, ids: rooms[k].ids, leaseId: rooms[k].leaseId }))
+  if (!matched.length) return matched
+
+  // 以「合約現況」為準驗證每個房間（lockRooms 的 userId 只是快取，可能已過時）：
+  // 綁定的合約若不存在／已改綁他人／已解除綁定／已過期／已結束 → 排除該房，避免抓到舊資料。
+  const leaseIds = [...new Set(matched.map(r => r.leaseId).filter(Boolean))]
+  const byId = {}
+  if (leaseIds.length) {
+    try {
+      const leases = await prisma.lease.findMany({
+        where: { id: { in: leaseIds } },
+        select: { id: true, lineUserId: true, status: true, leaseStart: true, leaseEnd: true },
+      })
+      leases.forEach(l => { byId[l.id] = l })
+    } catch (e) { console.error('查合約現況失敗:', e.message) }
+  }
+  const nowD = new Date()
+  matched = matched.filter(r => {
+    if (!r.leaseId) return true                                   // 無合約綁定（手動）→ 保留
+    const l = byId[r.leaseId]
+    if (!l) return false                                          // 合約已刪除
+    if (String(l.lineUserId || '').trim() !== uid) return false   // 已改綁他人／解除綁定
+    if (l.status === 'ENDED') return false                        // 已結算結束
+    if (l.leaseEnd && new Date(l.leaseEnd) < nowD) return false   // 已過期
+    return true
+  })
+
+  // 多房仍有多筆 → 取合約起日最新的一筆（換房情境）
   if (matched.length > 1) {
-    const leaseIds = [...new Set(matched.map(r => r.leaseId).filter(Boolean))]
-    if (leaseIds.length) {
-      try {
-        const leases = await prisma.lease.findMany({ where: { id: { in: leaseIds } }, select: { id: true, status: true, leaseStart: true, leaseEnd: true } })
-        const byId = {}; leases.forEach(l => { byId[l.id] = l })
-        const nowD = new Date()
-        const isActive = l => l && l.status === 'ACTIVE' && !(l.leaseEnd && new Date(l.leaseEnd) < nowD)
-        const activeMatched = matched.filter(r => r.leaseId && isActive(byId[r.leaseId]))
-        if (activeMatched.length) {
-          let latestTime = -1, latestLeaseId = null
-          activeMatched.forEach(r => {
-            const l = byId[r.leaseId]
-            const tt = l.leaseStart ? new Date(l.leaseStart).getTime() : 0
-            if (tt > latestTime) { latestTime = tt; latestLeaseId = r.leaseId }
-          })
-          matched = activeMatched.filter(r => r.leaseId === latestLeaseId)
-        }
-      } catch (e) { console.error('多房合約判斷失敗:', e.message) }
+    const withLease = matched.filter(r => r.leaseId && byId[r.leaseId])
+    if (withLease.length) {
+      let latestTime = -1, latestLeaseId = null
+      withLease.forEach(r => {
+        const tt = byId[r.leaseId].leaseStart ? new Date(byId[r.leaseId].leaseStart).getTime() : 0
+        if (tt > latestTime) { latestTime = tt; latestLeaseId = r.leaseId }
+      })
+      matched = withLease.filter(r => r.leaseId === latestLeaseId)
     }
   }
   return matched
