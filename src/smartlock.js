@@ -112,6 +112,37 @@ const DEFAULT_LOCK_DB = {
   'QY_402':{ type:'keypad' },
 }
 
+// 內建的 BUILDINGS / DEFAULT_LOCK_DB 是「原始小蝸（仲介）房東」自 rubyclean 移植的資料，
+// 只屬於該房東。其他房東的門鎖管理必須以「自己的代管物件」為準，不可看到這份硬編清單。
+const BROKER_LANDLORD_ID = process.env.BROKER_LANDLORD_ID || 'cmqbys4qr0004keruq1niq5xz'
+function isBrokerLandlord(landlordId) { return landlordId === BROKER_LANDLORD_ID }
+
+// 依房東取得建物清單：原始仲介房東用內建 BUILDINGS；其他房東由自己的代管物件推導。
+async function buildingsForLandlord(landlordId) {
+  if (isBrokerLandlord(landlordId)) return BUILDINGS
+  try {
+    const mps = await prisma.managedProperty.findMany({
+      where: { landlordId },
+      select: { id: true, title: true, leases: { select: { roomLabel: true } } },
+    })
+    return mps
+      .map(mp => {
+        const rooms = [...new Set((mp.leases || []).map(l => String(l.roomLabel || '').trim()).filter(Boolean))]
+          .sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }))
+        return { id: 'MP' + mp.id, label: mp.title || '(未命名)', rooms }
+      })
+      .filter(b => b.rooms.length)
+  } catch (e) {
+    console.error('buildingsForLandlord 失敗:', e.message)
+    return []
+  }
+}
+
+// 依房東取得預設門鎖對照表：只有原始仲介房東才套用內建 DEFAULT_LOCK_DB，其他房東為空。
+function defaultLockDbFor(landlordId) {
+  return isBrokerLandlord(landlordId) ? DEFAULT_LOCK_DB : {}
+}
+
 // 名稱正規化（比對代管物件 title 與門鎖建物 label 用）
 function _normName(s) {
   return String(s || '').replace(/\s|　|號|棟|樓/g, '').toLowerCase()
@@ -728,6 +759,9 @@ module.exports = {
   handleTenantPasscode,
   BUILDINGS,
   DEFAULT_LOCK_DB,
+  buildingsForLandlord,
+  defaultLockDbFor,
+  isBrokerLandlord,
   buildingLabelOf,
   FREE_QUOTA,
   CHARGE_AMOUNT,
