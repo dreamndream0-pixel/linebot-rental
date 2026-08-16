@@ -795,6 +795,33 @@ router.post('/admin/api/bot-mute', express.json(), async (req, res) => {
   }
 })
 
+// ── 自動租金提醒模式（off＝關閉／auto＝自動發送／confirm＝先確認再送）：全域設定，僅總管理員 ──
+router.get('/admin/api/managed-rent-reminder-mode', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  if (auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  try {
+    const row = await prisma.siteSetting.findUnique({ where: { key: 'auto_rent_reminder_mode' } })
+    const v = row && row.value
+    res.json({ ok: true, mode: (v === 'off' || v === 'confirm' || v === 'auto') ? v : 'auto' })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+router.post('/admin/api/managed-rent-reminder-mode', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  if (auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  const mode = req.body && req.body.mode
+  if (!['off', 'auto', 'confirm'].includes(mode)) return res.status(400).json({ error: 'mode 需為 off/auto/confirm' })
+  try {
+    await prisma.siteSetting.upsert({
+      where: { key: 'auto_rent_reminder_mode' },
+      update: { value: mode },
+      create: { key: 'auto_rent_reminder_mode', value: mode },
+    })
+    res.json({ ok: true, mode })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── LINE 群發：對選定租約批次推播（圖片＋文字）──
 // 連字號路由避免被 /admin/api/managed/:id 攔截
 router.post('/admin/api/managed-broadcast', express.json(), async (req, res) => {
