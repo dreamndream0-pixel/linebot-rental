@@ -1120,7 +1120,7 @@ var MENU_GROUPS = [
     { label: '\u7dad\u4fee\u7ba1\u7406', icon: 'wrench', tab: 'repairs' },
   ] },
   { label: '\u793e\u7fa4\u7ba1\u7406', icon: 'share', tab: 'socialPosting' },
-  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings', { label: '\u64cd\u4f5c\u7d00\u9304', icon: 'clipboard', run: 'audit' }, { label: '租金提醒設定', icon: 'clock', run: 'rent-reminder', super: true }, { label: 'Ragic \u540c\u6b65', icon: 'share', run: 'ragic-menu', feat: 'ragic' }] },
+  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings', { label: '\u64cd\u4f5c\u7d00\u9304', icon: 'clipboard', run: 'audit' }, { label: '租金提醒設定', icon: 'clock', run: 'rent-reminder' }, { label: 'Ragic \u540c\u6b65', icon: 'share', run: 'ragic-menu', feat: 'ragic' }] },
 ]
 
 function renderTabBar() {
@@ -5755,12 +5755,15 @@ async function openAuditLog() {
 // ── 自動租金提醒設定（off/auto/confirm）──────────────────────────
 async function openRentReminderSetting() {
   var old = document.getElementById('rentRemindModal'); if (old) old.remove()
-  var mode = 'auto'
+  var mode = 'auto', scope = 'landlord'
   try {
     var res = await fetch('/admin/api/managed-rent-reminder-mode?key=' + encodeURIComponent(KEY))
     var d = await res.json()
-    if (res.ok && d.mode) mode = d.mode
+    if (res.ok && d.mode) { mode = d.mode; scope = d.scope || scope }
   } catch (e) {}
+  var scopeNote = scope === 'global'
+    ? '此為全站預設（總管理員）。各房東可在自己的後台另外設定，會以房東自己的設定為主。'
+    : '此設定只會套用到「您自己的房客」。'
   function opt(val, title, desc) {
     return '<label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid ' + (mode===val?'#4A6741':'#E5E0D5') + ';border-radius:10px;margin-bottom:10px;cursor:pointer;background:' + (mode===val?'#F4F7F4':'#fff') + ';">' +
       '<input type="radio" name="rrmode" value="' + val + '"' + (mode===val?' checked':'') + ' style="margin-top:3px;">' +
@@ -5773,7 +5776,8 @@ async function openRentReminderSetting() {
         '<h3 style="margin:0;font-size:16px;">⏰ 自動租金提醒</h3>' +
         '<button onclick="var m=document.getElementById(\'rentRemindModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
       '</div>' +
-      '<div style="font-size:12px;color:#999;margin-bottom:14px;">系統會在應繳日前 7 天，對「尚未繳清」的房客處理租金提醒。已繳清者不會提醒。</div>' +
+      '<div style="font-size:12px;color:#999;margin-bottom:6px;">系統會在應繳日前 7 天，對「尚未繳清」的房客處理租金提醒。已繳清者不會提醒。</div>' +
+      '<div style="font-size:12px;color:#4A6741;background:#F4F7F4;border-radius:8px;padding:8px 10px;margin-bottom:14px;">' + scopeNote + '</div>' +
       opt('off', '關閉', '完全不自動提醒（只用手動送出）。') +
       opt('auto', '自動發送', '直接發送提醒給房客，並記錄在操作紀錄。') +
       opt('confirm', '先確認再送（推薦）', '先用 LINE 推播給房東（需設定房東的通知 LINE ID），你按「確認送出」才會發給房客。') +

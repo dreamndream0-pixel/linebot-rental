@@ -335,11 +335,18 @@ function utilReminderFlex(lease) {
 const REMIND_BEFORE = 7
 
 // 自動租金提醒模式：off＝關閉、auto＝直接發給房客、confirm＝先推播給房東確認再送
-async function getRentReminderMode() {
+// 每位房東各自設定（key: rent_reminder_mode:<landlordId>）；未設定時退回全域預設
+// （auto_rent_reminder_mode，由總管理員設定），再退回 'auto'。
+function normMode(v) { return (v === 'off' || v === 'confirm' || v === 'auto') ? v : null }
+async function getRentReminderMode(landlordId) {
   try {
-    const row = await prisma.siteSetting.findUnique({ where: { key: 'auto_rent_reminder_mode' } })
-    const v = row && row.value
-    return (v === 'off' || v === 'confirm' || v === 'auto') ? v : 'auto'
+    if (landlordId) {
+      const row = await prisma.siteSetting.findUnique({ where: { key: `rent_reminder_mode:${landlordId}` } })
+      const v = normMode(row && row.value)
+      if (v) return v
+    }
+    const g = await prisma.siteSetting.findUnique({ where: { key: 'auto_rent_reminder_mode' } })
+    return normMode(g && g.value) || 'auto'
   } catch (e) { return 'auto' }
 }
 
@@ -464,9 +471,17 @@ async function handleRentReminderApproval(leaseId, isConfirm) {
 // 主檢查：每天跑，找出今天該提醒的租約
 async function checkLeaseReminders() {
   const today = new Date().getDate()  // 今天幾號
-  const mode = await getRentReminderMode()
-  console.log(`📅 檢查租約繳費提醒（今天 ${today} 號，模式：${mode}）...`)
-  if (mode === 'off') { console.log('🔕 自動租金提醒已關閉，略過'); return }
+  console.log(`📅 檢查租約繳費提醒（今天 ${today} 號）...`)
+
+  // 每次執行內快取各房東的提醒模式（避免同房東重複打 DB）
+  const _modeCache = new Map()
+  const modeFor = async (landlordId) => {
+    const k = landlordId || '__none__'
+    if (_modeCache.has(k)) return _modeCache.get(k)
+    const m = await getRentReminderMode(landlordId)
+    _modeCache.set(k, m)
+    return m
+  }
 
   const leases = await prisma.lease.findMany({
     where: { status: 'ACTIVE', lineUserId: { not: null } },
@@ -483,7 +498,8 @@ async function checkLeaseReminders() {
     }
 
     // 租金提醒：繳費日前 N 天（只在「本期尚未繳清」時處理，金額以正確期別為準）
-    if (lease.rentRemindOn && lease.rentPayDay) {
+    const mode = await modeFor(mp ? mp.landlordId : null)
+    if (lease.rentRemindOn && lease.rentPayDay && mode !== 'off') {
       const remindDay = ((lease.rentPayDay - REMIND_BEFORE - 1 + 31) % 31) + 1
       if (today === remindDay && !alreadyRemindedThisMonth(lease.lastRentRemind)) {
         const dueRow = await findDueUnpaidRow(lease)

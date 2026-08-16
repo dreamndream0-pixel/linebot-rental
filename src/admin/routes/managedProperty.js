@@ -795,30 +795,37 @@ router.post('/admin/api/bot-mute', express.json(), async (req, res) => {
   }
 })
 
-// ── 自動租金提醒模式（off＝關閉／auto＝自動發送／confirm＝先確認再送）：全域設定，僅總管理員 ──
+// ── 自動租金提醒模式（off／auto／confirm）──
+// 權限控制：總管理員設定「全域預設」；一般房東設定「自己的」（只能改自己的）。
+function rentReminderSettingKey(auth) {
+  return auth.role === 'super' ? 'auto_rent_reminder_mode' : `rent_reminder_mode:${auth.landlordId}`
+}
 router.get('/admin/api/managed-rent-reminder-mode', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
-  if (auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  if (auth.role !== 'super' && !auth.landlordId) return res.status(403).json({ error: 'forbidden' })
   try {
-    const row = await prisma.siteSetting.findUnique({ where: { key: 'auto_rent_reminder_mode' } })
-    const v = row && row.value
-    res.json({ ok: true, mode: (v === 'off' || v === 'confirm' || v === 'auto') ? v : 'auto' })
+    const norm = v => (v === 'off' || v === 'confirm' || v === 'auto') ? v : null
+    const own = await prisma.siteSetting.findUnique({ where: { key: rentReminderSettingKey(auth) } })
+    let mode = norm(own && own.value)
+    // 房東未自訂 → 顯示全域預設（僅供參考），實際仍以自己設定為主
+    if (!mode && auth.role !== 'super') {
+      const g = await prisma.siteSetting.findUnique({ where: { key: 'auto_rent_reminder_mode' } })
+      mode = norm(g && g.value)
+    }
+    res.json({ ok: true, mode: mode || 'auto', scope: auth.role === 'super' ? 'global' : 'landlord' })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 router.post('/admin/api/managed-rent-reminder-mode', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
-  if (auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  if (auth.role !== 'super' && !auth.landlordId) return res.status(403).json({ error: 'forbidden' })
   const mode = req.body && req.body.mode
   if (!['off', 'auto', 'confirm'].includes(mode)) return res.status(400).json({ error: 'mode 需為 off/auto/confirm' })
   try {
-    await prisma.siteSetting.upsert({
-      where: { key: 'auto_rent_reminder_mode' },
-      update: { value: mode },
-      create: { key: 'auto_rent_reminder_mode', value: mode },
-    })
-    res.json({ ok: true, mode })
+    const key = rentReminderSettingKey(auth)
+    await prisma.siteSetting.upsert({ where: { key }, update: { value: mode }, create: { key, value: mode } })
+    res.json({ ok: true, mode, scope: auth.role === 'super' ? 'global' : 'landlord' })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -826,10 +833,14 @@ router.post('/admin/api/managed-rent-reminder-mode', express.json(), async (req,
 router.post('/admin/api/managed-rent-reminder-test', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
-  if (auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  if (auth.role !== 'super' && !auth.landlordId) return res.status(403).json({ error: 'forbidden' })
   try {
     const { sendRentReminderTest } = require('../../leaseReminder')
-    const result = await sendRentReminderTest(req.body && req.body.landlordId ? String(req.body.landlordId) : null)
+    // 房東只能測自己的；總管理員可指定或不限
+    const scopeLandlordId = auth.role === 'super'
+      ? (req.body && req.body.landlordId ? String(req.body.landlordId) : null)
+      : auth.landlordId
+    const result = await sendRentReminderTest(scopeLandlordId)
     if (!result.ok) return res.status(400).json(result)
     res.json(result)
   } catch (e) {
