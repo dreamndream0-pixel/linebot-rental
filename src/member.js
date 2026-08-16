@@ -137,7 +137,13 @@ router.get('/member/sso', async (req, res) => {
   }
   if (!user) return res.redirect(`/member?err=nouser`)
   setMemberCookie(res, makeToken({ uid: user.id }, secret, MEMBER_MAX_AGE_MS))
-  res.redirect('/member')
+  // 將 mode / tab 提示帶到會員中心（房東模式確認、開啟指定分頁）
+  const q = new URLSearchParams()
+  if (req.query.mode === 'landlord') q.set('mode', 'landlord')
+  const tab = String(req.query.tab || '')
+  if (['favorites', 'history', 'support', 'home'].includes(tab)) q.set('tab', tab)
+  const qs = q.toString()
+  res.redirect('/member' + (qs ? `?${qs}` : ''))
 })
 
 // POST /member/api/logout — 登出會員
