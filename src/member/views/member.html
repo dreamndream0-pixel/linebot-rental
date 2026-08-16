@@ -18,9 +18,9 @@
     color:var(--charcoal); min-height:100vh;
   }
   a { color:inherit; text-decoration:none; }
+  svg { display:block; }
   .wrap { max-width:840px; margin:0 auto; padding:0 16px 48px; }
 
-  /* Topbar：對齊後台 */
   .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:20px 4px 14px; flex-wrap:wrap; }
   .brand-logo { height:34px; width:auto; object-fit:contain; }
   .top-right { display:flex; align-items:center; gap:10px; }
@@ -28,34 +28,39 @@
   .uc-avatar { width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,#2C6B45,#4A9060); color:#fff; font-size:13px; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }
   .uc-avatar img { width:100%; height:100%; object-fit:cover; }
   .uc-name { font-size:14px; font-weight:800; color:var(--charcoal); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .action-btn { padding:8px 14px; border-radius:8px; border:1px solid var(--line); background:#fff; color:#1F2937; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .action-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 13px; border-radius:8px; border:1px solid var(--line); background:#fff; color:#1F2937; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; }
   .action-btn:hover { background:var(--soft-sage); color:var(--deep-sage); }
+  .action-btn svg { width:15px; height:15px; }
 
-  .page-head { padding:6px 4px 18px; }
+  .page-head { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:6px 4px 20px; }
   .page-head h1 { font-size:24px; font-weight:900; color:#111827; }
   .page-head .sub { font-size:13px; color:var(--muted); margin-top:4px; word-break:break-all; }
 
-  /* 統計卡：對齊後台 stat-card */
+  /* 租客/房東 滑塊切換 */
+  .mode-switch { position:relative; display:grid; grid-template-columns:1fr 1fr; background:#E8EEE8; border:1px solid var(--line); border-radius:12px; padding:4px; width:288px; max-width:100%; }
+  .mode-slider { position:absolute; top:4px; left:4px; width:calc(50% - 4px); height:calc(100% - 8px); background:#fff; border-radius:9px; box-shadow:0 3px 10px rgba(20,40,28,.14); transition:transform .3s cubic-bezier(.4,0,.2,1); }
+  .mode-switch.landlord .mode-slider { transform:translateX(100%); }
+  .mode-opt { position:relative; z-index:1; display:flex; align-items:center; justify-content:center; gap:7px; padding:10px 8px; border:none; background:transparent; font-size:14px; font-weight:800; color:var(--muted); cursor:pointer; font-family:inherit; transition:color .22s; }
+  .mode-opt.active { color:var(--deep-sage); }
+  .mode-opt svg { width:17px; height:17px; }
+
   .stats { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; margin-bottom:16px; }
   .stat-card { display:flex; align-items:center; gap:16px; background:var(--white); border-radius:8px; padding:20px 22px; box-shadow:var(--shadow); border:1px solid rgba(230,236,231,.8); }
-  .stat-icon { width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0; background:#DCEEDF; color:#3F7A4E; }
-  .stat-card .num { font-size:30px; line-height:1; font-weight:900; color:#111827; }
-  .stat-card .label { font-size:14px; color:#374151; margin-top:6px; }
 
-  .btn { background:var(--sage); color:#fff; border:none; padding:14px 22px; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; width:100%; font-family:inherit; transition:background .2s; margin-bottom:18px; }
-  .btn:hover { background:var(--deep-sage); }
-  .btn:active { transform:scale(.98); }
-
-  /* 分頁：對齊後台 user-tab */
-  .tabs-bar { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:18px; overflow-x:auto; }
-  .mtab { border:none; background:transparent; padding:12px 16px 11px; border-bottom:3px solid transparent; cursor:pointer; font-weight:900; font-size:14px; color:var(--muted); white-space:nowrap; font-family:inherit; }
+  /* 分頁 */
+  .tabs-bar { display:flex; gap:2px; border-bottom:1px solid var(--line); margin-bottom:18px; overflow-x:auto; }
+  .mtab { display:flex; align-items:center; gap:7px; border:none; background:transparent; padding:12px 15px 11px; border-bottom:3px solid transparent; cursor:pointer; font-weight:900; font-size:14px; color:var(--muted); white-space:nowrap; font-family:inherit; }
+  .mtab svg { width:18px; height:18px; }
   .mtab.active { color:var(--charcoal); border-bottom-color:var(--deep-sage); }
+  .mtab.active svg { color:var(--deep-sage); }
+  .tab-count { display:none; min-width:19px; height:19px; padding:0 5px; border-radius:999px; background:var(--soft-sage); color:var(--deep-sage); font-size:11px; font-weight:900; line-height:19px; text-align:center; }
+  .tab-count.show { display:inline-block; }
 
-  /* 內容卡：對齊後台 card */
   .card { background:var(--white); border-radius:8px; padding:16px; margin-bottom:12px; box-shadow:0 6px 20px rgba(20,40,28,.04); border:1px solid var(--line); }
   .fav { display:flex; gap:14px; align-items:center; }
   .fav-img { width:96px; height:74px; border-radius:8px; object-fit:cover; background:var(--cream); flex-shrink:0; }
-  .fav-img.ph { display:flex; align-items:center; justify-content:center; color:#c3ccc4; font-size:26px; }
+  .fav-img.ph { display:flex; align-items:center; justify-content:center; color:#b7c2b8; }
+  .fav-img.ph svg { width:34px; height:34px; }
   .fav-info { flex:1; min-width:0; }
   .fav-title { font-weight:800; font-size:15px; color:#111827; margin-bottom:4px; }
   .fav-area { font-size:13px; color:var(--muted); }
@@ -64,75 +69,105 @@
   .fav .action-btn.danger:hover { background:var(--danger); color:#fff; }
 
   .srow { display:flex; align-items:center; gap:14px; }
-  .srow .ic { width:48px; height:48px; border-radius:50%; background:var(--soft-sage); display:flex; align-items:center; justify-content:center; font-size:21px; flex-shrink:0; }
+  .srow .ic { width:46px; height:46px; border-radius:50%; background:var(--soft-sage); color:var(--deep-sage); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .srow .ic svg { width:20px; height:20px; }
   .srow .t { font-weight:800; font-size:15px; color:#111827; }
   .srow .d { font-size:13px; color:var(--muted); margin-top:2px; }
-  .srow .arrow { margin-left:auto; color:#c3ccc4; font-size:20px; }
+  .srow .arrow { margin-left:auto; color:#c3ccc4; }
+  .srow .arrow svg { width:18px; height:18px; }
 
-  .empty { text-align:center; color:#9aa2a0; padding:52px 20px; background:var(--white); border-radius:8px; border:1px solid var(--line); }
-  .empty .ic { font-size:40px; display:block; margin-bottom:12px; }
+  .empty { display:flex; flex-direction:column; align-items:center; text-align:center; color:#9aa2a0; padding:52px 20px; background:var(--white); border-radius:8px; border:1px solid var(--line); }
+  .empty .ic { color:#cfd8d0; margin-bottom:14px; }
+  .empty .ic svg { width:44px; height:44px; }
   .empty a { color:var(--deep-sage); font-weight:800; }
   .loading { text-align:center; color:#9aa2a0; padding:44px; }
 
-  #loginGate { text-align:center; padding:90px 24px; }
-  #loginGate .ic { font-size:52px; }
-  #loginGate h2 { font-size:20px; margin:16px 0 8px; color:#111827; }
+  #loginGate { display:flex; flex-direction:column; align-items:center; text-align:center; padding:90px 24px; }
+  #loginGate .ic { color:var(--sage); margin-bottom:12px; }
+  #loginGate .ic svg { width:56px; height:56px; }
+  #loginGate h2 { font-size:20px; margin:6px 0 8px; color:#111827; }
   #loginGate p { color:var(--muted); font-size:14px; margin-bottom:24px; }
   .btn-primary { display:inline-block; background:var(--sage); color:#fff; border:none; border-radius:8px; padding:13px 30px; font-size:15px; font-weight:700; cursor:pointer; }
   .btn-primary:hover { background:var(--deep-sage); }
+
+  #toast { position:fixed; left:50%; bottom:32px; transform:translateX(-50%) translateY(20px); background:#17211C; color:#fff; padding:12px 20px; border-radius:10px; font-size:14px; font-weight:700; box-shadow:0 10px 30px rgba(0,0,0,.25); opacity:0; pointer-events:none; transition:opacity .25s, transform .25s; max-width:88vw; text-align:center; z-index:9999; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   .hidden { display:none !important; }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <!-- 未登入：導引回前站登入 -->
   <div id="loginGate" class="hidden">
-    <div class="ic">🐌</div>
+    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg></div>
     <h2>會員中心</h2>
     <p>請先以 Google、LINE 或 Facebook 登入</p>
-    <a id="loginLink" class="btn-primary" href="#">前往登入 →</a>
+    <a id="loginLink" class="btn-primary" href="#">前往登入</a>
   </div>
 
-  <!-- 已登入 -->
   <div id="app" class="hidden">
     <div class="topbar">
       <img class="brand-logo" src="/admin/assets/xiaowo-logo.png" alt="小蝸出租">
       <div class="top-right">
-        <div class="user-chip"><span class="uc-avatar" id="avatar">👤</span><span class="uc-name" id="uname">—</span></div>
-        <button class="action-btn" onclick="doLogout()">登出</button>
+        <div class="user-chip"><span class="uc-avatar" id="avatar"></span><span class="uc-name" id="uname">—</span></div>
+        <button class="action-btn" onclick="doLogout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3"/><path d="M10 8l-4 4 4 4"/><path d="M6 12h11"/></svg>登出</button>
       </div>
     </div>
 
     <div class="page-head">
-      <h1>會員中心</h1>
-      <div class="sub" id="uemail"></div>
-    </div>
-
-    <div class="stats">
-      <div class="stat-card">
-        <div class="stat-icon">❤️</div>
-        <div><div class="num" id="favCount">0</div><div class="label">收藏房源</div></div>
+      <div>
+        <h1>會員中心</h1>
+        <div class="sub" id="uemail"></div>
+      </div>
+      <div class="mode-switch" id="modeSwitch">
+        <div class="mode-slider"></div>
+        <button class="mode-opt active" data-mode="tenant" onclick="setMode('tenant')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>租客模式
+        </button>
+        <button class="mode-opt" data-mode="landlord" onclick="setMode('landlord')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/></svg>房東模式
+        </button>
       </div>
     </div>
 
-    <button id="landlordBtn" class="btn hidden" onclick="switchToLandlord()">🏢 切換為房東模式（進入後台）</button>
-
     <div class="tabs-bar">
-      <button class="mtab active" data-tab="home" onclick="switchTab('home')">🏡 我的租屋處</button>
-      <button class="mtab" data-tab="favorites" onclick="switchTab('favorites')">❤️ 收藏</button>
-      <button class="mtab" data-tab="support" onclick="switchTab('support')">💬 客服</button>
+      <button class="mtab active" data-tab="home" onclick="switchTab('home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg>我的租屋處
+      </button>
+      <button class="mtab" data-tab="favorites" onclick="switchTab('favorites')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.35-9.3-8.5C1.3 8.8 2.6 5.6 5.7 5.2 7.9 4.9 9.5 6.2 12 8.6c2.5-2.4 4.1-3.7 6.3-3.4 3.1.4 4.4 3.6 3 6.3C19 15.65 12 20 12 20z"/></svg>
+        收藏<span class="tab-count" id="favCountTab"></span>
+      </button>
+      <button class="mtab" data-tab="history" onclick="switchTab('history')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 12S5 5.5 12 5.5 22.2 12 22.2 12 19 18.5 12 18.5 1.8 12 1.8 12z"/><circle cx="12" cy="12" r="3.2"/></svg>瀏覽記錄
+      </button>
+      <button class="mtab" data-tab="support" onclick="switchTab('support')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a8 8 0 0 1-11.2 7.3L4 20.5l1.8-5.1A8 8 0 1 1 20.5 11.5z"/></svg>客服
+      </button>
     </div>
     <div id="tabBody"><div class="loading">載入中…</div></div>
   </div>
 
 </div>
+<div id="toast"></div>
 
 <script>
-var ME = null
+var ME = null, CAN_MANAGE = false, IS_SUPER = false
 var FAVS = null
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}) }
+
+var ICON = {
+  house:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg>',
+  heart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.35-9.3-8.5C1.3 8.8 2.6 5.6 5.7 5.2 7.9 4.9 9.5 6.2 12 8.6c2.5-2.4 4.1-3.7 6.3-3.4 3.1.4 4.4 3.6 3 6.3C19 15.65 12 20 12 20z"/></svg>',
+  eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 12S5 5.5 12 5.5 22.2 12 22.2 12 19 18.5 12 18.5 1.8 12 1.8 12z"/><circle cx="12" cy="12" r="3.2"/></svg>',
+  line:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a8 8 0 0 1-11.2 7.3L4 20.5l1.8-5.1A8 8 0 1 1 20.5 11.5z"/></svg>',
+  phone:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4h3l1.6 4-2 1.3a12 12 0 0 0 5.6 5.6l1.3-2 4 1.6v3a1.5 1.5 0 0 1-1.6 1.5A15.5 15.5 0 0 1 3 5.6 1.5 1.5 0 0 1 4.5 4z"/></svg>',
+  mail:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 7l8.5 6 8.5-6"/></svg>',
+  chevron:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>'
+}
+
+function toast(msg){ var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove('show')},2600) }
 
 async function init() {
   try {
@@ -144,7 +179,7 @@ async function init() {
       return
     }
     var data = await res.json()
-    ME = data.user
+    ME = data.user; CAN_MANAGE = !!data.canManage; IS_SUPER = !!data.isSuper
     document.getElementById('app').classList.remove('hidden')
     renderHero(data)
     switchTab('home')
@@ -157,33 +192,34 @@ function renderHero(data) {
   var u = data.user
   document.getElementById('uname').textContent = u.name || '小蝸用戶'
   document.getElementById('uemail').textContent = u.email || ''
-  document.getElementById('favCount').textContent = data.favCount || 0
-  if (u.avatar) {
-    document.getElementById('avatar').innerHTML = '<img src="' + esc(u.avatar) + '" alt="">'
-  } else {
-    document.getElementById('avatar').textContent = (u.name || 'U').slice(0,1).toUpperCase()
-  }
-  if (data.canManage) {
-    var lb = document.getElementById('landlordBtn')
-    lb.classList.remove('hidden')
-    if (data.isSuper) lb.textContent = '🛠️ 進入總管理員後台'
-  }
+  if (u.avatar) document.getElementById('avatar').innerHTML = '<img src="' + esc(u.avatar) + '" alt="">'
+  else document.getElementById('avatar').textContent = (u.name || 'U').slice(0,1).toUpperCase()
+  var n = data.favCount || 0
+  var tc = document.getElementById('favCountTab')
+  if (n > 0) { tc.textContent = n; tc.classList.add('show') } else { tc.classList.remove('show') }
 }
 
-async function switchToLandlord() {
-  var btn = document.getElementById('landlordBtn')
-  var orig = btn.textContent
-  btn.disabled = true; btn.textContent = '切換中…'
+// 租客 / 房東 滑塊
+function setMode(mode) {
+  var sw = document.getElementById('modeSwitch')
+  var opts = document.querySelectorAll('.mode-opt')
+  for (var i=0;i<opts.length;i++){ opts[i].classList.toggle('active', opts[i].getAttribute('data-mode')===mode) }
+  if (mode === 'landlord') { sw.classList.add('landlord'); goLandlord() }
+  else { sw.classList.remove('landlord') }
+}
+function snapTenant(){ setTimeout(function(){ setMode('tenant') }, 150) }
+async function goLandlord() {
+  if (!CAN_MANAGE) {
+    toast('您尚未是房東，請洽管理員於「房東管理」新增房東帳號')
+    snapTenant(); return
+  }
   try {
     var res = await fetch('/member/api/switch-to-landlord', { method:'POST' })
     var data = await res.json()
     if (res.ok && data.redirect) { location.href = data.redirect; return }
-    btn.disabled = false; btn.textContent = orig
-    alert(data.error === 'not_landlord' ? '此帳號的 Email 沒有對應的後台帳號' : '切換失敗，請稍後再試')
-  } catch (e) {
-    btn.disabled = false; btn.textContent = orig
-    alert('連線失敗')
-  }
+    toast(data.error === 'not_landlord' ? '此帳號的 Email 沒有對應的後台帳號' : '切換失敗，請稍後再試')
+    snapTenant()
+  } catch (e) { toast('連線失敗'); snapTenant() }
 }
 
 function switchTab(tab) {
@@ -191,22 +227,25 @@ function switchTab(tab) {
   for (var i=0;i<tabs.length;i++){ tabs[i].classList.toggle('active', tabs[i].getAttribute('data-tab')===tab) }
   var body = document.getElementById('tabBody')
   if (tab === 'support') { body.innerHTML = renderSupport(); return }
-  if (tab === 'home') { body.innerHTML = renderHome(); return }
+  if (tab === 'home') { body.innerHTML = emptyState(ICON.house, '此區將顯示您承租中的房源與繳費資訊', '後續階段開放'); return }
+  if (tab === 'history') { body.innerHTML = emptyState(ICON.eye, '尚無瀏覽記錄', '瀏覽房源後會顯示在這裡'); return }
   if (tab === 'favorites') { renderFavorites(body); return }
 }
 
-function renderHome() {
-  return '<div class="empty"><span class="ic">🏡</span>此區將顯示您承租中的房源與繳費資訊<br><span style="font-size:12px;color:#bbb">（後續階段開放）</span></div>'
+function emptyState(icon, text, sub, linkHtml) {
+  return '<div class="empty"><span class="ic">'+icon+'</span><div style="font-weight:700;color:#6f7a72;">'+esc(text)+'</div>' +
+    (sub ? '<div style="font-size:12px;color:#b3bcb4;margin-top:6px;">'+esc(sub)+'</div>' : '') +
+    (linkHtml ? '<div style="margin-top:10px;">'+linkHtml+'</div>' : '') + '</div>'
 }
 
 function renderSupport() {
   return '' +
-    supportRow('💬','LINE 官方帳號','即時諮詢','https://line.me/R/ti/p/@xiaowo') +
-    supportRow('📞','客服電話','0800-899-969','tel:0800899969') +
-    supportRow('✉️','填寫諮詢表單','我們主動回覆','https://xiaowo-rental.vercel.app/contact')
+    supportRow(ICON.line,'LINE 官方帳號','即時諮詢','https://line.me/R/ti/p/@xiaowo') +
+    supportRow(ICON.phone,'客服電話','0800-899-969','tel:0800899969') +
+    supportRow(ICON.mail,'填寫諮詢表單','我們主動回覆','https://xiaowo-rental.vercel.app/contact')
 }
 function supportRow(ic,t,d,href){
-  return '<a class="card srow" href="'+esc(href)+'"><span class="ic">'+ic+'</span><div><div class="t">'+esc(t)+'</div><div class="d">'+esc(d)+'</div></div><span class="arrow">›</span></a>'
+  return '<a class="card srow" href="'+esc(href)+'"><span class="ic">'+ic+'</span><div><div class="t">'+esc(t)+'</div><div class="d">'+esc(d)+'</div></div><span class="arrow">'+ICON.chevron+'</span></a>'
 }
 
 async function renderFavorites(body) {
@@ -216,7 +255,7 @@ async function renderFavorites(body) {
     var data = await res.json()
     FAVS = data.list || []
     if (!FAVS.length) {
-      body.innerHTML = '<div class="empty"><span class="ic">❤️</span>尚無收藏<br><a href="https://xiaowo-rental.vercel.app/listings">去看看房源 →</a></div>'
+      body.innerHTML = emptyState(ICON.heart, '尚無收藏', null, '<a href="https://xiaowo-rental.vercel.app/listings">去看看房源</a>')
       return
     }
     body.innerHTML = FAVS.map(favCard).join('')
@@ -227,7 +266,7 @@ async function renderFavorites(body) {
 function favCard(p) {
   var img = p.image
     ? '<img class="fav-img" src="' + esc(p.image) + '" alt="">'
-    : '<div class="fav-img ph">🏠</div>'
+    : '<div class="fav-img ph">'+ICON.house+'</div>'
   return '<div class="card fav" data-id="'+esc(p.id)+'">' + img +
     '<div class="fav-info">' +
       '<div class="fav-title">' + esc(p.title) + '</div>' +
@@ -241,7 +280,9 @@ async function removeFav(id) {
   try {
     await fetch('/member/api/favorites', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ propertyId:id }) })
     var el = document.querySelector('.fav[data-id="'+id+'"]'); if (el) el.remove()
-    var fc = document.getElementById('favCount'); if (fc) fc.textContent = Math.max(0,(parseInt(fc.textContent,10)||1)-1)
+    var tc = document.getElementById('favCountTab')
+    var n = Math.max(0, (parseInt(tc.textContent,10)||1) - 1)
+    if (n > 0) { tc.textContent = n } else { tc.classList.remove('show') }
     if (!document.querySelector('.fav')) switchTab('favorites')
   } catch (e) {}
 }
