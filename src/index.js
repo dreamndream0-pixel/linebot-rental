@@ -222,6 +222,22 @@ prisma.$connect()
     } catch (e) {
       console.error('⚠️ 操作紀錄資料表確認失敗:', e.message)
     }
+    try {
+      // 會員瀏覽記錄
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS property_views (
+          id           TEXT PRIMARY KEY,
+          "userId"     TEXT NOT NULL,
+          "propertyId" TEXT NOT NULL,
+          "viewedAt"   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `)
+      await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "property_views_userId_propertyId_key" ON property_views ("userId","propertyId")`)
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "property_views_userId_viewedAt_idx" ON property_views ("userId","viewedAt")`)
+      console.log('✅ 會員瀏覽記錄資料表已確認')
+    } catch (e) {
+      console.error('⚠️ 會員瀏覽記錄資料表確認失敗:', e.message)
+    }
     // Runtime DDL can be blocked by production DB locks/timeouts. Run it only when explicitly requested.
     if (process.env.RUN_SCHEMA_CHECK === 'true') {
       try {
