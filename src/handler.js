@@ -494,6 +494,23 @@ const userState = new Map()
 async function handlePostback(event, client, landlordId = null, scope = 'all') {
   const userId = event.source.userId
   if (isRateLimited(userId)) return
+
+  // 房東對「租金提醒待確認」按下確認/略過（confirm 模式）——先於靜音檢查處理
+  const pbData = event.postback?.data || ''
+  if (pbData.startsWith('RR_CONFIRM_') || pbData.startsWith('RR_SKIP_')) {
+    const isConfirm = pbData.startsWith('RR_CONFIRM_')
+    const leaseId = pbData.replace(/^RR_(CONFIRM|SKIP)_/, '')
+    try {
+      const { handleRentReminderApproval } = require('./leaseReminder')
+      const replyText = await handleRentReminderApproval(leaseId, isConfirm)
+      await client.replyMessage(event.replyToken, { type: 'text', text: replyText })
+    } catch (e) {
+      console.error('租金提醒確認處理失敗:', e.message)
+      try { await client.replyMessage(event.replyToken, { type: 'text', text: '處理失敗，請稍後再試。' }) } catch (_) {}
+    }
+    return
+  }
+
   if (await isBotMuted(userId)) return  // 靜音清單用戶：不處理按鈕/選單回覆
   const data = event.postback?.data || ''
   const { getBotText } = require('./botText')

@@ -331,17 +331,123 @@ function utilReminderFlex(lease) {
   })
 }
 
+// 自動租金提醒：提前天數（繳費日前 N 天）
+const REMIND_BEFORE = 7
+
+// 自動租金提醒模式：off＝關閉、auto＝直接發給房客、confirm＝先推播給房東確認再送
+async function getRentReminderMode() {
+  try {
+    const row = await prisma.siteSetting.findUnique({ where: { key: 'auto_rent_reminder_mode' } })
+    const v = row && row.value
+    return (v === 'off' || v === 'confirm' || v === 'auto') ? v : 'auto'
+  } catch (e) { return 'auto' }
+}
+
+function mainReminderClient() {
+  return new Client({ channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN, channelSecret: process.env.LINE_CHANNEL_SECRET })
+}
+
+// 寫入操作紀錄（讓自動/確認送出的租金提醒也能在後台被查到）
+async function writeReminderAudit(lease, amount, actorLabel, actorRole, action) {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        actorLabel, actorRole,
+        landlordId: lease.managedProperty ? lease.managedProperty.landlordId : (lease.landlordId || null),
+        method: 'SYSTEM', path: '/auto/rent-reminder', action,
+        summary: JSON.stringify({ tenant: lease.tenantName || '', room: lease.roomLabel || '', amount, leaseId: lease.id }),
+        status: 200,
+      },
+    })
+  } catch (e) { console.error('租金提醒操作紀錄寫入失敗:', e.message) }
+}
+
+// 找出「本期尚未繳清」的租金期別（應繳日 15 天內或已逾期）；全繳清回傳 null
+async function findDueUnpaidRow(lease) {
+  try {
+    const { buildRentSchedule } = require('./admin/routes/managedProperty')
+    const rps = await prisma.rentPayment.findMany({ where: { leaseId: lease.id } })
+    const sched = buildRentSchedule(lease, rps)
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
+    return sched.find(s => {
+      if ((s.unpaid || 0) <= 0) return false
+      if (!s.dueDate) return true
+      const d = new Date(s.dueDate); d.setHours(0, 0, 0, 0)
+      return Math.round((d.getTime() - startOfToday.getTime()) / 86400000) <= 15
+    }) || null
+  } catch (e) {
+    console.error('租金排程計算失敗，改用合約月租金額:', e.message)
+    return { amount: Number(lease.rent || 0) }
+  }
+}
+
+// confirm 模式：把待發送的租金提醒先推播給房東（notifyLineUserId），附「確認送出／略過」按鈕
+async function sendRentApprovalToLandlord(lease, landlord, dueRow) {
+  if (!landlord || !landlord.notifyLineUserId) {
+    console.log(`⏭️ 房東未設定通知 LINE，略過確認推播：${lease.tenantName}`)
+    return false
+  }
+  const amount = Number((dueRow && dueRow.amount) || lease.rent || 0)
+  const due = dueRow && dueRow.dueDate ? new Date(dueRow.dueDate) : null
+  const dueStr = due ? `${due.getMonth() + 1}/${due.getDate()}` : (lease.rentPayDay ? `每月${lease.rentPayDay}號` : '')
+  const client = landlord.lineChannelToken
+    ? new Client({ channelAccessToken: landlord.lineChannelToken, channelSecret: landlord.lineChannelSecret || '' })
+    : mainReminderClient()
+  const msg = {
+    type: 'template',
+    altText: '租金提醒待確認',
+    template: {
+      type: 'buttons',
+      text: `📋 租金提醒待確認\n${lease.tenantName || ''} ${lease.roomLabel || ''}\n應繳 NT$${amount.toLocaleString()}｜到期 ${dueStr}\n要發送給房客嗎？`.slice(0, 160),
+      actions: [
+        { type: 'postback', label: '✅ 確認送出', data: `RR_CONFIRM_${lease.id}`, displayText: '確認送出租金提醒' },
+        { type: 'postback', label: '✕ 略過', data: `RR_SKIP_${lease.id}`, displayText: '略過' },
+      ],
+    },
+  }
+  try {
+    await client.pushMessage(landlord.notifyLineUserId, msg)
+    console.log(`📋 已推播租金提醒待確認給房東：${lease.tenantName}`)
+    return true
+  } catch (e) {
+    console.error(`租金提醒待確認推播失敗（${lease.tenantName}）:`, e.message)
+    return false
+  }
+}
+
+// 房東在 LINE 按下「確認送出／略過」時呼叫（由 handler.js 的 postback 觸發）
+async function handleRentReminderApproval(leaseId, isConfirm) {
+  if (!isConfirm) return '已略過，未發送給房客。'
+  const lease = await prisma.lease.findUnique({
+    where: { id: leaseId },
+    include: { managedProperty: { select: { title: true, landlordId: true, ownerName: true, ownerBankName: true, ownerBank: true, landlord: { select: { rentPayInfo: true } } } } },
+  })
+  if (!lease) return '找不到此租約。'
+  if (!lease.lineUserId) return '此租約未綁定 LINE 房客，無法發送。'
+  const dueRow = await findDueUnpaidRow(lease)
+  if (!dueRow) return `${lease.tenantName || '房客'} 本期已繳清，未發送提醒。`
+  const mp = lease.managedProperty
+  const data = {
+    ...lease, managedTitle: mp.title,
+    rentPayInfo: buildPayInfo(mp, mp.landlord ? mp.landlord.rentPayInfo : null),
+    rent: Number(dueRow.amount || lease.rent || 0),
+  }
+  await pushToLeaseTenant(lease, rentReminderFlex(data))
+  await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date() } })
+  await writeReminderAudit(lease, data.rent, '房東確認送出', 'landlord', '租金提醒（確認送出）')
+  return `✅ 已發送租金提醒給 ${lease.tenantName || '房客'}（NT$ ${Number(data.rent).toLocaleString()}）。`
+}
+
 // 主檢查：每天跑，找出今天該提醒的租約
 async function checkLeaseReminders() {
   const today = new Date().getDate()  // 今天幾號
-  console.log(`📅 檢查租約繳費提醒（今天 ${today} 號）...`)
-
-  // 提前 3 天提醒（繳費日前 3 天推）
-  const REMIND_BEFORE = 3
+  const mode = await getRentReminderMode()
+  console.log(`📅 檢查租約繳費提醒（今天 ${today} 號，模式：${mode}）...`)
+  if (mode === 'off') { console.log('🔕 自動租金提醒已關閉，略過'); return }
 
   const leases = await prisma.lease.findMany({
     where: { status: 'ACTIVE', lineUserId: { not: null } },
-    include: { managedProperty: { select: { title: true, landlordId: true, ownerName: true, ownerBankName: true, ownerBank: true, landlord: { select: { rentPayInfo: true } } } } },
+    include: { managedProperty: { select: { title: true, landlordId: true, ownerName: true, ownerBankName: true, ownerBank: true, landlord: { select: { rentPayInfo: true, notifyLineUserId: true, lineChannelToken: true, lineChannelSecret: true, name: true } } } } },
   })
 
   for (const lease of leases) {
@@ -353,36 +459,24 @@ async function checkLeaseReminders() {
       rentPayInfo: buildPayInfo(mp, mp.landlord ? mp.landlord.rentPayInfo : null),
     }
 
-    // 租金提醒：繳費日前 3 天（只在「本期尚未繳清」時推，且金額以正確期別為準）
+    // 租金提醒：繳費日前 N 天（只在「本期尚未繳清」時處理，金額以正確期別為準）
     if (lease.rentRemindOn && lease.rentPayDay) {
       const remindDay = ((lease.rentPayDay - REMIND_BEFORE - 1 + 31) % 31) + 1
       if (today === remindDay && !alreadyRemindedThisMonth(lease.lastRentRemind)) {
-        // 用租金排程找出「本期（應繳日在 15 天內或已逾期）尚未繳清」的期別；
-        // 已繳清 → 不提醒。金額改用該期別（季繳＝季金額，非單月）。
-        let dueRow = null
-        try {
-          const { buildRentSchedule } = require('./admin/routes/managedProperty')
-          const rps = await prisma.rentPayment.findMany({ where: { leaseId: lease.id } })
-          const sched = buildRentSchedule(lease, rps)
-          const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
-          dueRow = sched.find(s => {
-            if ((s.unpaid || 0) <= 0) return false            // 已繳清的期別跳過
-            if (!s.dueDate) return true
-            const d = new Date(s.dueDate); d.setHours(0, 0, 0, 0)
-            const days = Math.round((d.getTime() - startOfToday.getTime()) / 86400000)
-            return days <= 15                                 // 15 天內到期或已逾期＝本期；更遠＝下一期（代表本期已繳）
-          }) || null
-        } catch (e) {
-          console.error('租金排程計算失敗，改用合約月租金額:', e.message)
-          dueRow = { amount: Number(lease.rent || 0) }
-        }
+        const dueRow = await findDueUnpaidRow(lease)
         if (!dueRow) {
           console.log(`⏭️ 本期已繳清，略過租金提醒：${lease.tenantName}`)
+        } else if (mode === 'confirm') {
+          // 先推播給房東確認，房東按「確認送出」才會發給房客
+          const ok = await sendRentApprovalToLandlord(lease, mp.landlord, dueRow)
+          if (ok) await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date() } })
         } else {
+          // auto：直接發給房客 + 寫操作紀錄
           const remindData = { ...data, rent: Number(dueRow.amount || lease.rent || 0) }
           try {
             await pushToLeaseTenant(lease, rentReminderFlex(remindData))
             await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date() } })
+            await writeReminderAudit(lease, remindData.rent, '系統自動', 'system', '租金提醒（自動發送）')
             console.log(`✅ 已推租金提醒：${lease.tenantName}`)
           } catch (e) {
             console.error(`租金提醒推播失敗（${lease.tenantName}）:`, e.message)
@@ -391,7 +485,7 @@ async function checkLeaseReminders() {
       }
     }
 
-    // 水電提醒：繳費日前 3 天
+    // 水電提醒：繳費日前 N 天
     if (lease.utilRemindOn && lease.utilPayDay) {
       const remindDay = ((lease.utilPayDay - REMIND_BEFORE - 1 + 31) % 31) + 1
       if (today === remindDay && !alreadyRemindedThisMonth(lease.lastUtilRemind)) {
@@ -416,4 +510,4 @@ function startLeaseReminders() {
   console.log('✅ 租約繳費提醒排程已啟動（每日 9:00 檢查）')
 }
 
-module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex, settleReceiptFlex, buildPayInfo }
+module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex, settleReceiptFlex, buildPayInfo, handleRentReminderApproval }

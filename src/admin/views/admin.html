@@ -1120,7 +1120,7 @@ var MENU_GROUPS = [
     { label: '\u7dad\u4fee\u7ba1\u7406', icon: 'wrench', tab: 'repairs' },
   ] },
   { label: '\u793e\u7fa4\u7ba1\u7406', icon: 'share', tab: 'socialPosting' },
-  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings', { label: '\u64cd\u4f5c\u7d00\u9304', icon: 'clipboard', run: 'audit' }, { label: 'Ragic \u540c\u6b65', icon: 'share', run: 'ragic-menu', feat: 'ragic' }] },
+  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings', { label: '\u64cd\u4f5c\u7d00\u9304', icon: 'clipboard', run: 'audit' }, { label: '租金提醒設定', icon: 'clock', run: 'rent-reminder', super: true }, { label: 'Ragic \u540c\u6b65', icon: 'share', run: 'ragic-menu', feat: 'ragic' }] },
 ]
 
 function renderTabBar() {
@@ -1136,6 +1136,7 @@ function renderTabBar() {
     var children = (g.children || []).filter(function(c) {
       if (typeof c === 'string') return avail[c]
       if (c.tab) return avail[c.tab]
+      if (c.super && !(DATA && DATA.role === 'super')) return false  // \u50c5\u7e3d\u7ba1\u7406\u54e1\u53ef\u898b
       if (c.feat && !feat(c.feat)) return false   // \u529f\u80fd\u6388\u6b0a\uff08\u9580\u9396/Ragic\uff09
       return true
     })
@@ -5653,6 +5654,7 @@ function navRun(key) {
   document.querySelectorAll('.nav-group.open').forEach(function(x){ x.classList.remove('open') })
   if (key === 'ragic-menu') { openRagicSyncMenu(); return }
   if (key === 'audit') { openAuditLog(); return }
+  if (key === 'rent-reminder') { openRentReminderSetting(); return }
   _navRunPending = true
   if (currentTab !== 'managed') switchTab('managed')
   _navRunPending = false
@@ -5748,6 +5750,49 @@ async function openAuditLog() {
     var box2 = document.getElementById('auditLogList')
     if (box2) box2.innerHTML = '<div class="empty" style="padding:24px;text-align:center;color:#c0392b;">載入失敗：' + escapeHtml(e.message) + '</div>'
   }
+}
+
+// ── 自動租金提醒設定（off/auto/confirm）──────────────────────────
+async function openRentReminderSetting() {
+  var old = document.getElementById('rentRemindModal'); if (old) old.remove()
+  var mode = 'auto'
+  try {
+    var res = await fetch('/admin/api/managed-rent-reminder-mode?key=' + encodeURIComponent(KEY))
+    var d = await res.json()
+    if (res.ok && d.mode) mode = d.mode
+  } catch (e) {}
+  function opt(val, title, desc) {
+    return '<label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid ' + (mode===val?'#4A6741':'#E5E0D5') + ';border-radius:10px;margin-bottom:10px;cursor:pointer;background:' + (mode===val?'#F4F7F4':'#fff') + ';">' +
+      '<input type="radio" name="rrmode" value="' + val + '"' + (mode===val?' checked':'') + ' style="margin-top:3px;">' +
+      '<span><span style="font-weight:800;font-size:14px;color:#26362D;">' + title + '</span>' +
+      '<span style="display:block;font-size:12px;color:#888;margin-top:3px;line-height:1.5;">' + desc + '</span></span></label>'
+  }
+  var html = '<div id="rentRemindModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:22px;max-width:420px;width:100%;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+        '<h3 style="margin:0;font-size:16px;">⏰ 自動租金提醒</h3>' +
+        '<button onclick="var m=document.getElementById(\'rentRemindModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#999;margin-bottom:14px;">系統會在應繳日前 7 天，對「尚未繳清」的房客處理租金提醒。已繳清者不會提醒。</div>' +
+      opt('off', '關閉', '完全不自動提醒（只用手動送出）。') +
+      opt('auto', '自動發送', '直接發送提醒給房客，並記錄在操作紀錄。') +
+      opt('confirm', '先確認再送（推薦）', '先用 LINE 推播給房東（需設定房東的通知 LINE ID），你按「確認送出」才會發給房客。') +
+      '<button class="btn" style="width:100%;margin-top:6px;" onclick="saveRentReminderSetting()">儲存</button>' +
+    '</div></div>'
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+async function saveRentReminderSetting() {
+  var sel = document.querySelector('input[name="rrmode"]:checked')
+  if (!sel) return
+  try {
+    var res = await fetch('/admin/api/managed-rent-reminder-mode?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: sel.value })
+    })
+    var d = await res.json()
+    if (!res.ok) { showToast('❌ ' + (d.error || '儲存失敗')); return }
+    var m = document.getElementById('rentRemindModal'); if (m) m.remove()
+    showToast('✅ 已儲存')
+  } catch (e) { showToast('❌ 連線失敗') }
 }
 
 // ── Ragic 同步：進度直接顯示在按鈕上 ─────────────────────────────
