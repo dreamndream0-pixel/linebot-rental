@@ -1103,7 +1103,7 @@ function availableTabs() {
   if (DATA.role === 'super' || feat('social')) add('socialPosting', '\u793e\u7fa4\u7ba1\u7406', 'share')
   if (DATA.role === 'super' || feat('heroSlides')) add('heroSettings', '\u9996\u9801\u8a2d\u5b9a', 'image')
   if (DATA.role === 'super') add('footerSettings', '\u9801\u5c3e\u8a2d\u5b9a', 'clipboard')
-  if (DATA.role === 'landlord' && feat('bot')) add('botSettings', '\u7cfb\u7d71\u8a2d\u5b9a', 'wrench')
+  if (DATA.role === 'landlord' && feat('bot')) add('botSettings', 'linebot\u9078\u55ae\u8a2d\u5b9a', 'wrench')
   return t
 }
 
@@ -1115,12 +1115,12 @@ var MENU_GROUPS = [
     { label: '\u59d4\u8a17\u5217\u8868', icon: 'clipboard', run: 'commission' },
     { label: '\u4ee3\u7ba1\u6e05\u55ae', icon: 'clipboard', run: 'lease' },
     { label: '\u6536\u652f\u5831\u8868', icon: 'chart', run: 'report' },
-    { label: 'LINE \u7fa4\u767c', icon: 'share', run: 'broadcast' },
+    { label: 'LINE \u7fa4\u767c', icon: 'share', run: 'broadcast', feat: 'broadcast' },
     { label: '\u9580\u9396\u7ba1\u7406', icon: 'wrench', run: 'lock', feat: 'smartlock' },
     { label: '\u7dad\u4fee\u7ba1\u7406', icon: 'wrench', tab: 'repairs' },
   ] },
   { label: '\u793e\u7fa4\u7ba1\u7406', icon: 'share', tab: 'socialPosting' },
-  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings', { label: '\u64cd\u4f5c\u7d00\u9304', icon: 'clipboard', run: 'audit' }, { label: '租金提醒設定', icon: 'clock', run: 'rent-reminder' }, { label: 'Ragic \u540c\u6b65', icon: 'share', run: 'ragic-menu', feat: 'ragic' }] },
+  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings', { label: '\u64cd\u4f5c\u7d00\u9304', icon: 'clipboard', run: 'audit' }, { label: '租金提醒設定', icon: 'clock', run: 'rent-reminder', feat: 'rentReminder' }, { label: 'Ragic \u540c\u6b65', icon: 'share', run: 'ragic-menu', feat: 'ragic' }] },
 ]
 
 function renderTabBar() {
@@ -3249,6 +3249,8 @@ var FEATURE_MODULES = [
   { key: 'csvImport',  label: '📊 CSV 匯出/匯入',      desc: '批次新增、更新房源資料' },
   { key: 'social',     label: '📣 社群發布',           desc: '房源一鍵發文到 Facebook／Instagram／Threads' },
   { key: 'managed',   label: '🏢 包租代管',           desc: '包租代管委託、租約管理、繳費明細追蹤' },
+  { key: 'broadcast', label: '📢 LINE 群發',          desc: '包租代管：對租客批次推播圖片／文字訊息' },
+  { key: 'rentReminder', label: '⏰ 自動租金提醒',     desc: '應繳日前自動提醒租客繳租（可設先確認再送）' },
   { key: 'ragic',     label: '🔗 Ragic 同步',         desc: '從 Ragic 同步合約、電費、租金資料（進階功能，預設關閉）', def: false },
   { key: 'smartlock', label: '🔐 智慧門鎖',           desc: '包租代管內的 TTLock 門鎖：房客用 LINE 自助取當日密碼（進階功能，預設關閉）', def: false },
 ]

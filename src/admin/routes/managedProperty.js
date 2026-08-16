@@ -24,6 +24,20 @@ async function hasRagicFeature(auth) {
   } catch (_) { return false }
 }
 
+// 通用功能授權：super 一律可用；房東依「功能模組」設定（defaultOn 決定未設定時預設）
+async function hasFeature(auth, key, defaultOn) {
+  if (!auth) return false
+  if (auth.role === 'super') return true
+  if (!auth.landlordId) return false
+  try {
+    const rows = await prisma.$queryRawUnsafe(`SELECT features FROM landlords WHERE id = $1`, auth.landlordId)
+    const f = rows[0] && rows[0].features ? JSON.parse(rows[0].features) : {}
+    if (f[key] === false) return false
+    if (f[key] === true) return true
+    return !!defaultOn
+  } catch (_) { return !!defaultOn }
+}
+
 function addMonths(date, months) {
   const d = new Date(date)
   const day = d.getDate()
@@ -804,6 +818,7 @@ router.get('/admin/api/managed-rent-reminder-mode', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
   if (auth.role !== 'super' && !auth.landlordId) return res.status(403).json({ error: 'forbidden' })
+  if (!(await hasFeature(auth, 'rentReminder', true))) return res.status(403).json({ error: 'feature_disabled' })
   try {
     const norm = v => (v === 'off' || v === 'confirm' || v === 'auto') ? v : null
     const own = await prisma.siteSetting.findUnique({ where: { key: rentReminderSettingKey(auth) } })
@@ -820,6 +835,7 @@ router.post('/admin/api/managed-rent-reminder-mode', express.json(), async (req,
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
   if (auth.role !== 'super' && !auth.landlordId) return res.status(403).json({ error: 'forbidden' })
+  if (!(await hasFeature(auth, 'rentReminder', true))) return res.status(403).json({ error: 'feature_disabled' })
   const mode = req.body && req.body.mode
   if (!['off', 'auto', 'confirm'].includes(mode)) return res.status(400).json({ error: 'mode 需為 off/auto/confirm' })
   try {
@@ -834,6 +850,7 @@ router.post('/admin/api/managed-rent-reminder-test', express.json(), async (req,
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
   if (auth.role !== 'super' && !auth.landlordId) return res.status(403).json({ error: 'forbidden' })
+  if (!(await hasFeature(auth, 'rentReminder', true))) return res.status(403).json({ error: 'feature_disabled' })
   try {
     const { sendRentReminderTest } = require('../../leaseReminder')
     // 房東只能測自己的；總管理員可指定或不限
@@ -854,6 +871,7 @@ router.post('/admin/api/managed-rent-reminder-test', express.json(), async (req,
 router.post('/admin/api/managed-broadcast', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  if (!(await hasFeature(auth, 'broadcast', true))) return res.status(403).json({ error: 'feature_disabled' })
   const b = req.body || {}
   const leaseIds = Array.isArray(b.leaseIds) ? b.leaseIds : []
   const text = (b.text || '').trim()

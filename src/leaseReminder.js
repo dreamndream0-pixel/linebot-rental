@@ -413,15 +413,22 @@ async function sendRentApprovalToLandlord(lease, landlord, dueRow) {
     return false
   }
   const amount = Number((dueRow && dueRow.amount) || lease.rent || 0)
-  const due = dueRow && dueRow.dueDate ? new Date(dueRow.dueDate) : null
-  const dueStr = due ? `${due.getMonth() + 1}/${due.getDate()}` : (lease.rentPayDay ? `每月${lease.rentPayDay}號` : '')
   const client = new Client({ channelAccessToken: ch.token, channelSecret: ch.secret })
-  const msg = {
+  // 預覽卡片：與實際發給房客的內容完全一致（同一個 rentReminderFlex）
+  const mp = lease.managedProperty
+  const cardData = {
+    ...lease,
+    managedTitle: mp ? mp.title : (lease.managedTitle || ''),
+    rentPayInfo: buildPayInfo(mp || {}, mp && mp.landlord ? mp.landlord.rentPayInfo : null),
+    rent: amount,
+  }
+  const previewCard = rentReminderFlex(cardData)
+  const confirmMsg = {
     type: 'template',
     altText: '租金提醒待確認',
     template: {
       type: 'buttons',
-      text: `📋 租金提醒待確認\n${lease.tenantName || ''} ${lease.roomLabel || ''}\n應繳 NT$${amount.toLocaleString()}｜到期 ${dueStr}\n要發送給房客嗎？`.slice(0, 160),
+      text: `☝️ 以上為將發送給「${lease.tenantName || '房客'}」的租金提醒，確認送出？`.slice(0, 160),
       actions: [
         { type: 'postback', label: '✅ 確認送出', data: `RR_CONFIRM_${lease.id}`, displayText: '確認送出租金提醒' },
         { type: 'postback', label: '✕ 略過', data: `RR_SKIP_${lease.id}`, displayText: '略過' },
@@ -429,7 +436,7 @@ async function sendRentApprovalToLandlord(lease, landlord, dueRow) {
     },
   }
   try {
-    await client.pushMessage(ch.target, msg)
+    await client.pushMessage(ch.target, [previewCard, confirmMsg])
     console.log(`📋 已推播租金提醒待確認給房東（${ch.via}）：${lease.tenantName}`)
     return true
   } catch (e) {
