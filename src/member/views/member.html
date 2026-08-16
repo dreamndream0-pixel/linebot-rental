@@ -197,7 +197,11 @@ async function init() {
     ME = data.user; CAN_MANAGE = !!data.canManage; IS_SUPER = !!data.isSuper
     document.getElementById('app').classList.remove('hidden')
     renderHero(data)
-    switchTab('home')
+    // 依網址參數開啟指定分頁 / 直接進房東模式確認
+    var qp = new URLSearchParams(location.search)
+    var tab = qp.get('tab')
+    switchTab(['favorites','history','support','home'].indexOf(tab) !== -1 ? tab : 'home')
+    if (qp.get('mode') === 'landlord') setTimeout(function(){ setMode('landlord') }, 300)
   } catch (e) {
     document.getElementById('loginGate').classList.remove('hidden')
   }
