@@ -1063,8 +1063,8 @@ async function logout() {
   sessionStorage.removeItem('adminKey')
   KEY = ''
   DATA = null
-  // 同步登出前站（NextAuth）後，導回後台登入畫面
-  location.href = 'https://xiaowo-rental.vercel.app/api/logout?next=' + encodeURIComponent(location.origin + '/admin')
+  // 同步登出前站（NextAuth）後，直接回前站首頁（不再回到金鑰登入畫面）
+  location.href = 'https://xiaowo-rental.vercel.app/api/logout'
 }
 
 // 返回租客模式（會員中心）；保留後台 session，之後可再從會員中心切回
