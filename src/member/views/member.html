@@ -32,17 +32,18 @@
   .action-btn:hover { background:var(--soft-sage); color:var(--deep-sage); }
   .action-btn svg { width:15px; height:15px; }
 
-  .page-head { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:6px 4px 20px; }
+  .page-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:nowrap; padding:6px 4px 20px; }
+  .page-head .head-l { flex:1; min-width:0; }
   .page-head h1 { font-size:24px; font-weight:900; color:#111827; }
-  .page-head .sub { font-size:13px; color:var(--muted); margin-top:4px; word-break:break-all; }
+  .page-head .sub { font-size:13px; color:var(--muted); margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-  /* 租客/房東 滑塊切換 */
-  .mode-switch { position:relative; display:grid; grid-template-columns:1fr 1fr; background:#E8EEE8; border:1px solid var(--line); border-radius:12px; padding:4px; width:288px; max-width:100%; }
-  .mode-slider { position:absolute; top:4px; left:4px; width:calc(50% - 4px); height:calc(100% - 8px); background:#fff; border-radius:9px; box-shadow:0 3px 10px rgba(20,40,28,.14); transition:transform .3s cubic-bezier(.4,0,.2,1); }
+  /* 租客/房東 滑塊切換（精簡版，置於標題右側） */
+  .mode-switch { position:relative; display:grid; grid-template-columns:1fr 1fr; background:#E8EEE8; border:1px solid var(--line); border-radius:10px; padding:3px; width:184px; flex-shrink:0; }
+  .mode-slider { position:absolute; top:3px; left:3px; width:calc(50% - 3px); height:calc(100% - 6px); background:#fff; border-radius:8px; box-shadow:0 3px 10px rgba(20,40,28,.14); transition:transform .3s cubic-bezier(.4,0,.2,1); }
   .mode-switch.landlord .mode-slider { transform:translateX(100%); }
-  .mode-opt { position:relative; z-index:1; display:flex; align-items:center; justify-content:center; gap:7px; padding:10px 8px; border:none; background:transparent; font-size:14px; font-weight:800; color:var(--muted); cursor:pointer; font-family:inherit; transition:color .22s; }
+  .mode-opt { position:relative; z-index:1; display:flex; align-items:center; justify-content:center; gap:5px; padding:7px 4px; border:none; background:transparent; font-size:12.5px; font-weight:800; color:var(--muted); cursor:pointer; font-family:inherit; transition:color .22s; white-space:nowrap; }
   .mode-opt.active { color:var(--deep-sage); }
-  .mode-opt svg { width:17px; height:17px; }
+  .mode-opt svg { width:14px; height:14px; }
 
   .stats { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; margin-bottom:16px; }
   .stat-card { display:flex; align-items:center; gap:16px; background:var(--white); border-radius:8px; padding:20px 22px; box-shadow:var(--shadow); border:1px solid rgba(230,236,231,.8); }
@@ -128,7 +129,7 @@
     </div>
 
     <div class="page-head">
-      <div>
+      <div class="head-l">
         <h1>會員中心</h1>
         <div class="sub" id="uemail"></div>
       </div>
