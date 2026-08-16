@@ -642,6 +642,7 @@
           </div>
           <div class="mobile-account-menu" id="mobileAccountMenu">
             <div id="mobileSwitchItem"></div>
+            <button type="button" style="color:#26362D;border-bottom:1px solid var(--line);" onclick="backToMember()">🏠 返回租客模式</button>
             <button type="button" onclick="logout()">登出</button>
           </div>
         </div>
@@ -689,6 +690,7 @@
               </div>
             </div>
             <div id="umSwitchItem"></div>
+            <div class="um-item" onclick="backToMember()">🏠 返回租客模式</div>
             <div class="um-item um-danger" onclick="logout()">🚪 登出</div>
           </div>
         </div>
@@ -1065,6 +1067,11 @@ async function logout() {
   document.getElementById('loadingView').style.display = 'none'
   document.getElementById('loginView').style.display = 'flex'
   document.getElementById('keyInput').value = ''
+}
+
+// 返回租客模式（會員中心）；保留後台 session，之後可再從會員中心切回
+function backToMember() {
+  location.href = '/member'
 }
 
 async function reload() {
