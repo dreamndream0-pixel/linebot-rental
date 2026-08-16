@@ -388,7 +388,8 @@ async function removeFav(id) {
 
 async function doLogout() {
   try { await fetch('/member/api/logout', { method:'POST' }) } catch (e) {}
-  location.href = 'https://xiaowo-rental.vercel.app'
+  // 同步登出前站（清除 NextAuth session）→ 回前站首頁
+  location.href = 'https://xiaowo-rental.vercel.app/api/logout'
 }
 
 init()
