@@ -5778,8 +5778,21 @@ async function openRentReminderSetting() {
       opt('auto', '自動發送', '直接發送提醒給房客，並記錄在操作紀錄。') +
       opt('confirm', '先確認再送（推薦）', '先用 LINE 推播給房東（需設定房東的通知 LINE ID），你按「確認送出」才會發給房客。') +
       '<button class="btn" style="width:100%;margin-top:6px;" onclick="saveRentReminderSetting()">儲存</button>' +
+      '<button class="btn" style="width:100%;margin-top:8px;background:#fff;color:#4A6741;border:1.5px solid #4A6741;" onclick="testRentReminder(this)">🧪 發送測試確認訊息給房東</button>' +
+      '<div style="font-size:11px;color:#aaa;margin-top:6px;line-height:1.5;">測試會挑一筆「房東已設定通知 LINE ID」的承租中租約，立即推播一則「待確認」訊息到房東的 LINE，讓你實際測試按鈕。</div>' +
     '</div></div>'
   document.body.insertAdjacentHTML('beforeend', html)
+}
+async function testRentReminder(btn) {
+  var orig = btn.textContent
+  btn.disabled = true; btn.textContent = '發送中…'
+  try {
+    var res = await fetch('/admin/api/managed-rent-reminder-test?key=' + encodeURIComponent(KEY), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    var d = await res.json()
+    if (!res.ok) { showInfoModal('❌ 測試發送失敗', d.error || ('HTTP ' + res.status)); btn.disabled = false; btn.textContent = orig; return }
+    showInfoModal('✅ 已發送測試訊息', '已推播「租金提醒待確認」到房東「' + (d.landlordName || '') + '」的 LINE。\n\n對象房客：' + (d.tenant || '') + ' ' + (d.room || '') + '\n金額：NT$ ' + Number(d.amount || 0).toLocaleString() + '\n\n請到該房東的 LINE 查看，並試按「確認送出／略過」。')
+    btn.disabled = false; btn.textContent = orig
+  } catch (e) { showToast('❌ 連線失敗'); btn.disabled = false; btn.textContent = orig }
 }
 async function saveRentReminderSetting() {
   var sel = document.querySelector('input[name="rrmode"]:checked')
