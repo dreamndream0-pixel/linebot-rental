@@ -6782,7 +6782,7 @@ async function showManagedReport() {
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
       '<h3 style="margin:0;font-size:16px;">📊 收支報表</h3>' +
       '<div style="display:flex;gap:8px;align-items:center;">' +
-        '<button onclick="importTaipower()" style="border:1px solid #B07A2E;background:#fff;color:#B07A2E;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">⚡ 匯入台電</button>' +
+        ((DATA && DATA.isBroker) ? '<button onclick="importTaipower()" style="border:1px solid #B07A2E;background:#fff;color:#B07A2E;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">⚡ 匯入台電</button>' : '') +
         '<button onclick="openUtilityExpenseModal()" style="border:1px solid #C0524A;background:#fff;color:#C0524A;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">＋ 水電支出</button>' +
         '<button onclick="exportReportCSV()" style="border:1px solid #4A6741;background:#fff;color:#4A6741;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">⬇ 匯出 CSV</button>' +
         '<button onclick="document.getElementById(\'managedReportBox\').innerHTML=\'\'" style="border:none;background:none;font-size:18px;cursor:pointer;color:#999;">×</button>' +
@@ -7794,7 +7794,7 @@ function renderLeaseList() {
       '</select>' +
       '<span style="font-size:12px;color:#888;white-space:nowrap;">點表頭箭頭可排序</span>' +
       '<span style="font-size:12px;color:#888;white-space:nowrap;">共 ' + shownCount + ' 筆' + (LEASE_SEARCH.trim() ? '（跨所有狀態）' : '') + '</span>' +
-      '<button class="spin-btn" onclick="btnLoad(this,function(){return bulkSetPrepaid()})" style="padding:8px 12px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:#B07A2E;color:#fff;white-space:nowrap;">批次設定預收電費</button>' +
+      ((DATA && DATA.isBroker) ? '<button class="spin-btn" onclick="btnLoad(this,function(){return bulkSetPrepaid()})" style="padding:8px 12px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:#B07A2E;color:#fff;white-space:nowrap;">批次設定預收電費</button>' : '') +
     '</div>' +
     groupsHtml +
     '</div>'
