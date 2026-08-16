@@ -59,6 +59,7 @@
 
   .card { background:var(--white); border-radius:8px; padding:16px; margin-bottom:12px; box-shadow:0 6px 20px rgba(20,40,28,.04); border:1px solid var(--line); }
   .fav { display:flex; gap:14px; align-items:center; }
+  .fav-link { display:flex; gap:14px; align-items:center; flex:1; min-width:0; color:inherit; }
   .fav-img { width:96px; height:74px; border-radius:8px; object-fit:cover; background:var(--cream); flex-shrink:0; }
   .fav-img.ph { display:flex; align-items:center; justify-content:center; color:#b7c2b8; }
   .fav-img.ph svg { width:34px; height:34px; }
@@ -299,12 +300,14 @@ function favCard(p) {
   var img = p.image
     ? '<img class="fav-img" src="' + esc(p.image) + '" alt="">'
     : '<div class="fav-img ph">'+ICON.house+'</div>'
-  return '<div class="card fav" data-id="'+esc(p.id)+'">' + img +
-    '<div class="fav-info">' +
-      '<div class="fav-title">' + esc(p.title) + '</div>' +
-      '<div class="fav-area">' + esc(p.area) + '</div>' +
-      '<div class="fav-price">NT$ ' + Number(p.price||0).toLocaleString() + ' /月</div>' +
-    '</div>' +
+  return '<div class="card fav" data-id="'+esc(p.id)+'">' +
+    '<a class="fav-link" href="https://xiaowo-rental.vercel.app/property/' + esc(p.id) + '">' + img +
+      '<div class="fav-info">' +
+        '<div class="fav-title">' + esc(p.title) + '</div>' +
+        '<div class="fav-area">' + esc(p.area) + '</div>' +
+        '<div class="fav-price">NT$ ' + Number(p.price||0).toLocaleString() + ' /月</div>' +
+      '</div>' +
+    '</a>' +
     '<button class="action-btn danger" onclick="removeFav(\'' + esc(p.id) + '\')">移除</button>' +
   '</div>'
 }
