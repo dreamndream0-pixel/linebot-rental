@@ -2303,3 +2303,5 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
 })
 
 module.exports = router
+// 供自動繳費提醒排程（leaseReminder.js）重用租金排程計算
+module.exports.buildRentSchedule = buildRentSchedule
