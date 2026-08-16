@@ -7,7 +7,7 @@ const express = require('express')
 const path = require('path')
 const crypto = require('crypto')
 const prisma = require('./db')
-const { createAdminSession, createLandlordSessionById, SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } = require('./admin/helpers')
+const { createAdminSession, createLandlordSessionById, hashAdminKey, SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } = require('./admin/helpers')
 
 const router = express.Router()
 
@@ -33,6 +33,31 @@ async function findLandlordByEmail(email) {
     })
   } catch (e) {
     console.error('findLandlordByEmail 失敗:', e.message)
+    return null
+  }
+}
+
+// 自動以會員資料建立房東帳號（社群登入者確認開通房東後台時使用）
+async function autoCreateLandlord(user) {
+  if (!user || !user.email) return null
+  const key = 'LL-' + crypto.randomBytes(9).toString('base64url')
+  const pwd = crypto.randomBytes(12).toString('base64url')
+  const passwordHash = crypto.createHash('sha256').update(pwd).digest('hex')
+  try {
+    return await prisma.landlord.create({
+      data: {
+        name: user.name || user.email,
+        email: String(user.email).toLowerCase(),
+        passwordHash,
+        adminKey: null,
+        adminKeyHash: hashAdminKey(key),
+      },
+      select: { id: true, name: true },
+    })
+  } catch (e) {
+    // email 已存在（競態或大小寫差異）→ 直接取回既有房東
+    if (e.code === 'P2002') return findLandlordByEmail(user.email)
+    console.error('autoCreateLandlord 失敗:', e.message)
     return null
   }
 }
@@ -189,6 +214,44 @@ router.delete('/member/api/favorites', express.json(), async (req, res) => {
   }
 })
 
+// GET /member/api/history — 目前會員的瀏覽記錄（最近瀏覽的房源，去重、新到舊）
+router.get('/member/api/history', async (req, res) => {
+  const m = currentMember(req)
+  if (!m) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const views = await prisma.propertyView.findMany({
+      where: { userId: m.uid },
+      orderBy: { viewedAt: 'desc' },
+      take: 30,
+    })
+    const ids = views.map(v => v.propertyId)
+    if (!ids.length) return res.json({ ok: true, list: [] })
+    const props = await prisma.property.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: {
+        id: true, title: true, city: true, district: true, price: true, status: true,
+        images: { orderBy: [{ isCover: 'desc' }, { order: 'asc' }], take: 1, select: { url: true } },
+      },
+    })
+    const byId = {}
+    props.forEach(p => { byId[p.id] = p })
+    const list = ids
+      .map(id => byId[id])
+      .filter(Boolean)
+      .map(p => ({
+        id: p.id,
+        title: p.title,
+        area: `${p.city || ''}${p.district || ''}`,
+        price: p.price,
+        status: p.status,
+        image: p.images[0] ? p.images[0].url : null,
+      }))
+    res.json({ ok: true, list })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // POST /member/api/switch-to-landlord — 房東模式：以 email 對應房東帳號 → 建立後台 session
 // 會員身分已由 SSO 登入證明（掌握該社群帳號）；email 相符且房東帳號啟用中才放行。
 router.post('/member/api/switch-to-landlord', async (req, res) => {
@@ -196,7 +259,7 @@ router.post('/member/api/switch-to-landlord', async (req, res) => {
   if (!m) return res.status(401).json({ error: 'unauthorized' })
   let user = null
   try {
-    user = await prisma.user.findUnique({ where: { id: m.uid }, select: { email: true } })
+    user = await prisma.user.findUnique({ where: { id: m.uid }, select: { email: true, name: true } })
   } catch (e) {
     return res.status(500).json({ error: e.message })
   }
@@ -207,7 +270,9 @@ router.post('/member/api/switch-to-landlord', async (req, res) => {
     if (!process.env.ADMIN_KEY) return res.status(500).json({ error: 'ADMIN_KEY 未設定' })
     session = await createAdminSession(process.env.ADMIN_KEY)
   } else {
-    const landlord = await findLandlordByEmail(email)
+    // 已是房東 → 進自己的後台；還不是房東 → 自動建立房東帳號後進入
+    let landlord = await findLandlordByEmail(email)
+    if (!landlord) landlord = await autoCreateLandlord(user)
     if (landlord) session = await createLandlordSessionById(landlord.id)
   }
   if (!session) return res.status(403).json({ error: 'not_landlord' })

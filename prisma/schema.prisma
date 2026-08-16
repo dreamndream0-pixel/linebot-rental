@@ -310,6 +310,20 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// ─────────────────────────────────────────────
+// 會員瀏覽記錄（每位會員對每個房源保留最後一次瀏覽時間）
+// ─────────────────────────────────────────────
+model PropertyView {
+  id         String   @id @default(cuid())
+  userId     String
+  propertyId String
+  viewedAt   DateTime @default(now())
+
+  @@unique([userId, propertyId])
+  @@index([userId, viewedAt])
+  @@map("property_views")
+}
+
 enum PropertyType {
   SUITE
   ROOM

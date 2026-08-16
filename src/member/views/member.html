@@ -90,6 +90,19 @@
   .btn-primary { display:inline-block; background:var(--sage); color:#fff; border:none; border-radius:8px; padding:13px 30px; font-size:15px; font-weight:700; cursor:pointer; }
   .btn-primary:hover { background:var(--deep-sage); }
 
+  .modal-ov { position:fixed; inset:0; background:rgba(17,24,39,.5); display:flex; align-items:center; justify-content:center; padding:20px; z-index:9998; }
+  .modal-box { background:#fff; border-radius:16px; padding:26px 24px; max-width:346px; width:100%; text-align:center; box-shadow:0 24px 70px rgba(0,0,0,.28); }
+  .modal-box .m-ic { width:56px; height:56px; border-radius:50%; background:var(--soft-sage); color:var(--deep-sage); display:flex; align-items:center; justify-content:center; margin:0 auto 14px; }
+  .modal-box .m-ic svg { width:28px; height:28px; }
+  .modal-box h3 { font-size:17px; font-weight:900; color:#111827; margin-bottom:8px; }
+  .modal-box p { font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:22px; }
+  .modal-actions { display:flex; gap:10px; }
+  .modal-actions button { flex:1; padding:12px; border-radius:10px; font-size:15px; font-weight:800; cursor:pointer; font-family:inherit; border:1px solid var(--line); }
+  .modal-actions .btn-no { background:#fff; color:#374151; }
+  .modal-actions .btn-no:hover { background:#F5F7F5; }
+  .modal-actions .btn-yes { background:var(--sage); color:#fff; border-color:var(--sage); }
+  .modal-actions .btn-yes:hover { background:var(--deep-sage); }
+
   #toast { position:fixed; left:50%; bottom:32px; transform:translateX(-50%) translateY(20px); background:#17211C; color:#fff; padding:12px 20px; border-radius:10px; font-size:14px; font-weight:700; box-shadow:0 10px 30px rgba(0,0,0,.25); opacity:0; pointer-events:none; transition:opacity .25s, transform .25s; max-width:88vw; text-align:center; z-index:9999; }
   #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   .hidden { display:none !important; }
@@ -204,20 +217,38 @@ function setMode(mode) {
   var sw = document.getElementById('modeSwitch')
   var opts = document.querySelectorAll('.mode-opt')
   for (var i=0;i<opts.length;i++){ opts[i].classList.toggle('active', opts[i].getAttribute('data-mode')===mode) }
-  if (mode === 'landlord') { sw.classList.add('landlord'); goLandlord() }
+  if (mode === 'landlord') { sw.classList.add('landlord'); askLandlord() }
   else { sw.classList.remove('landlord') }
 }
-function snapTenant(){ setTimeout(function(){ setMode('tenant') }, 150) }
+function snapTenant(){ setTimeout(function(){ setMode('tenant') }, 120) }
+
+// 滑到房東模式 → 先跳確認視窗
+function askLandlord() {
+  if (document.getElementById('landlordModal')) return
+  var html = '<div class="modal-ov" id="landlordModal">' +
+    '<div class="modal-box">' +
+      '<div class="m-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/></svg></div>' +
+      '<h3>開啟房東後台管理</h3>' +
+      '<p>確認後將以您的帳號開啟房東後台，可管理您的房源、租客與收支。<br>是否進入？</p>' +
+      '<div class="modal-actions">' +
+        '<button class="btn-no" onclick="confirmLandlord(false)">否，返回租客</button>' +
+        '<button class="btn-yes" onclick="confirmLandlord(true)">是，進入後台</button>' +
+      '</div>' +
+    '</div></div>'
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+function confirmLandlord(yes) {
+  var m = document.getElementById('landlordModal'); if (m) m.remove()
+  if (yes) goLandlord()
+  else setMode('tenant')
+}
+
 async function goLandlord() {
-  if (!CAN_MANAGE) {
-    toast('您尚未是房東，請洽管理員於「房東管理」新增房東帳號')
-    snapTenant(); return
-  }
   try {
     var res = await fetch('/member/api/switch-to-landlord', { method:'POST' })
     var data = await res.json()
     if (res.ok && data.redirect) { location.href = data.redirect; return }
-    toast(data.error === 'not_landlord' ? '此帳號的 Email 沒有對應的後台帳號' : '切換失敗，請稍後再試')
+    toast(data.error === 'not_landlord' ? '此帳號缺少可用的 Email，無法開啟房東後台' : '切換失敗，請稍後再試')
     snapTenant()
   } catch (e) { toast('連線失敗'); snapTenant() }
 }
@@ -228,7 +259,7 @@ function switchTab(tab) {
   var body = document.getElementById('tabBody')
   if (tab === 'support') { body.innerHTML = renderSupport(); return }
   if (tab === 'home') { body.innerHTML = emptyState(ICON.house, '此區將顯示您承租中的房源與繳費資訊', '後續階段開放'); return }
-  if (tab === 'history') { body.innerHTML = emptyState(ICON.eye, '尚無瀏覽記錄', '瀏覽房源後會顯示在這裡'); return }
+  if (tab === 'history') { renderHistory(body); return }
   if (tab === 'favorites') { renderFavorites(body); return }
 }
 
@@ -276,6 +307,35 @@ function favCard(p) {
     '<button class="action-btn danger" onclick="removeFav(\'' + esc(p.id) + '\')">移除</button>' +
   '</div>'
 }
+async function renderHistory(body) {
+  body.innerHTML = '<div class="loading">載入中…</div>'
+  try {
+    var res = await fetch('/member/api/history')
+    var data = await res.json()
+    var list = data.list || []
+    if (!list.length) {
+      body.innerHTML = emptyState(ICON.eye, '尚無瀏覽記錄', '瀏覽房源後會顯示在這裡', '<a href="https://xiaowo-rental.vercel.app/listings">去看看房源</a>')
+      return
+    }
+    body.innerHTML = list.map(histCard).join('')
+  } catch (e) {
+    body.innerHTML = '<div class="empty">載入失敗</div>'
+  }
+}
+function histCard(p) {
+  var img = p.image
+    ? '<img class="fav-img" src="' + esc(p.image) + '" alt="">'
+    : '<div class="fav-img ph">'+ICON.house+'</div>'
+  return '<a class="card fav" href="https://xiaowo-rental.vercel.app/property/' + esc(p.id) + '">' + img +
+    '<div class="fav-info">' +
+      '<div class="fav-title">' + esc(p.title) + '</div>' +
+      '<div class="fav-area">' + esc(p.area) + '</div>' +
+      '<div class="fav-price">NT$ ' + Number(p.price||0).toLocaleString() + ' /月</div>' +
+    '</div>' +
+    '<span class="arrow" style="align-self:center;color:#c3ccc4;">'+ICON.chevron+'</span>' +
+  '</a>'
+}
+
 async function removeFav(id) {
   try {
     await fetch('/member/api/favorites', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ propertyId:id }) })
