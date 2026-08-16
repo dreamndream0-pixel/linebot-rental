@@ -5,7 +5,7 @@ const express = require('express')
 const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
-const { listLocks, parseCreds, BUILDINGS, DEFAULT_LOCK_DB, parseUsage, unpaidTotal, FREE_QUOTA, CHARGE_AMOUNT, syncLockRoomsFromLeases, listLandlordLeases } = require('../../smartlock')
+const { listLocks, parseCreds, buildingsForLandlord, defaultLockDbFor, parseUsage, unpaidTotal, FREE_QUOTA, CHARGE_AMOUNT, syncLockRoomsFromLeases, listLandlordLeases } = require('../../smartlock')
 
 // smartlock 功能授權：super 一律可用；房東需被授權 features.smartlock
 async function hasSmartlock(auth) {
@@ -51,7 +51,7 @@ router.get('/admin/api/smartlock/config', async (req, res) => {
       hasCreds: !!creds,
       username: creds ? creds.username : '',
       landlordId: ctx.landlordId,
-      buildings: BUILDINGS,
+      buildings: await buildingsForLandlord(ctx.landlordId),
     })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -97,7 +97,7 @@ router.get('/admin/api/smartlock/rooms', async (req, res) => {
       select: { lockRooms: true },
     })
     const leases = await listLandlordLeases(ctx.landlordId)
-    res.json({ buildings: BUILDINGS, rooms: parseRoomsJson(landlord && landlord.lockRooms), leases })
+    res.json({ buildings: await buildingsForLandlord(ctx.landlordId), rooms: parseRoomsJson(landlord && landlord.lockRooms), leases })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -108,9 +108,10 @@ router.post('/admin/api/smartlock/rooms', express.json(), async (req, res) => {
   const incoming = (req.body && req.body.rooms && typeof req.body.rooms === 'object') ? req.body.rooms : null
   if (!incoming) return res.status(400).json({ error: '缺少 rooms 資料' })
 
-  // 正規化 + 只保留合法的 roomKey（存在於 BUILDINGS）
+  // 正規化 + 只保留合法的 roomKey（存在於該房東自己的建物清單）
   const validKeys = new Set()
-  BUILDINGS.forEach(b => b.rooms.forEach(r => validKeys.add(b.id + '_' + r)))
+  const buildings = await buildingsForLandlord(ctx.landlordId)
+  buildings.forEach(b => b.rooms.forEach(r => validKeys.add(b.id + '_' + r)))
   const clean = {}
   for (const key of Object.keys(incoming)) {
     if (!validKeys.has(key)) continue
@@ -147,9 +148,14 @@ router.post('/admin/api/smartlock/seed', express.json(), async (req, res) => {
       select: { lockRooms: true },
     })
     const cur = parseRoomsJson(landlord && landlord.lockRooms)
+    const seedDb = defaultLockDbFor(ctx.landlordId)
+    // 非原始仲介房東沒有內建預設門鎖 → 不覆蓋，保留現有綁定
+    if (!Object.keys(seedDb).length) {
+      return res.json({ ok: true, count: Object.keys(cur).length, skipped: true })
+    }
     const merged = {}
-    for (const key of Object.keys(DEFAULT_LOCK_DB)) {
-      const def = DEFAULT_LOCK_DB[key]
+    for (const key of Object.keys(seedDb)) {
+      const def = seedDb[key]
       const entry = { type: def.type }
       if (def.type === 'ttlock' && Array.isArray(def.ids)) entry.ids = def.ids.slice()
       // 保留原本已填的房客 User ID 與綁定的合約（不覆蓋）
@@ -183,14 +189,16 @@ router.post('/admin/api/smartlock/import-ttlock', express.json(), async (req, re
     const liveIds = new Set(liveLocks.map(l => Number(l.lockId)))
     const cur = parseRoomsJson(landlord && landlord.lockRooms)
 
+    // 先保留房東現有的綁定（手動綁定的房間不可被洗掉）
     const merged = {}
+    for (const k of Object.keys(cur)) merged[k] = Object.assign({}, cur[k])
     const usedIds = new Set()
-    for (const key of Object.keys(DEFAULT_LOCK_DB)) {
-      const def = DEFAULT_LOCK_DB[key]
+    const seedDb = defaultLockDbFor(ctx.landlordId)
+    for (const key of Object.keys(seedDb)) {
+      const def = seedDb[key]
       let entry
       if (def.type === 'ttlock' && Array.isArray(def.ids)) {
         const ids = def.ids.map(Number).filter(id => liveIds.has(id))
-        ids.forEach(id => usedIds.add(id))
         entry = ids.length ? { type: 'ttlock', ids } : { type: 'keypad' }
       } else {
         entry = { type: def.type }
@@ -199,6 +207,13 @@ router.post('/admin/api/smartlock/import-ttlock', express.json(), async (req, re
       if (cur[key] && cur[key].userId) entry.userId = cur[key].userId
       if (cur[key] && cur[key].leaseId) entry.leaseId = cur[key].leaseId
       merged[key] = entry
+    }
+    // 計算所有已使用（且實際存在）的 lockId：涵蓋預設對照與既有手動綁定
+    for (const k of Object.keys(merged)) {
+      const e = merged[k]
+      if (e && e.type === 'ttlock' && Array.isArray(e.ids)) {
+        e.ids.forEach(id => { if (liveIds.has(Number(id))) usedIds.add(Number(id)) })
+      }
     }
     await prisma.landlord.update({
       where: { id: ctx.landlordId },
