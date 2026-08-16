@@ -822,6 +822,22 @@ router.post('/admin/api/managed-rent-reminder-mode', express.json(), async (req,
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── 測試：立即發送一則「租金提醒待確認」給房東（僅總管理員）──
+router.post('/admin/api/managed-rent-reminder-test', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  if (auth.role !== 'super') return res.status(403).json({ error: 'forbidden' })
+  try {
+    const { sendRentReminderTest } = require('../../leaseReminder')
+    const result = await sendRentReminderTest(req.body && req.body.landlordId ? String(req.body.landlordId) : null)
+    if (!result.ok) return res.status(400).json(result)
+    res.json(result)
+  } catch (e) {
+    console.error('租金提醒測試失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ── LINE 群發：對選定租約批次推播（圖片＋文字）──
 // 連字號路由避免被 /admin/api/managed/:id 攔截
 router.post('/admin/api/managed-broadcast', express.json(), async (req, res) => {

@@ -415,6 +415,29 @@ async function sendRentApprovalToLandlord(lease, landlord, dueRow) {
   }
 }
 
+// 測試：立即挑一筆「房東已設定通知 LINE ID」的承租中租約，推播一則「租金提醒待確認」給房東
+async function sendRentReminderTest(landlordId) {
+  const where = { status: 'ACTIVE', lineUserId: { not: null } }
+  if (landlordId) where.managedProperty = { landlordId }
+  const leases = await prisma.lease.findMany({
+    where,
+    include: { managedProperty: { select: { title: true, landlordId: true, ownerName: true, ownerBankName: true, ownerBank: true, landlord: { select: { rentPayInfo: true, notifyLineUserId: true, lineChannelToken: true, lineChannelSecret: true, name: true } } } } },
+    take: 100,
+  })
+  const lease = leases.find(l => l.managedProperty && l.managedProperty.landlord && l.managedProperty.landlord.notifyLineUserId)
+  if (!lease) return { ok: false, error: '找不到「房東已設定通知 LINE User ID」的承租中租約。請先到房東管理，為房東設定「通知 LINE User ID」。' }
+  const dueRow = (await findDueUnpaidRow(lease)) || { amount: Number(lease.rent || 0), dueDate: null }
+  const sent = await sendRentApprovalToLandlord(lease, lease.managedProperty.landlord, dueRow)
+  if (!sent) return { ok: false, error: '推播失敗：房東的通知 LINE ID 可能尚未加入該 Bot 好友，或設定有誤。' }
+  return {
+    ok: true,
+    tenant: lease.tenantName || '',
+    room: lease.roomLabel || '',
+    amount: Number(dueRow.amount || lease.rent || 0),
+    landlordName: lease.managedProperty.landlord.name || '',
+  }
+}
+
 // 房東在 LINE 按下「確認送出／略過」時呼叫（由 handler.js 的 postback 觸發）
 async function handleRentReminderApproval(leaseId, isConfirm) {
   if (!isConfirm) return '已略過，未發送給房客。'
@@ -510,4 +533,4 @@ function startLeaseReminders() {
   console.log('✅ 租約繳費提醒排程已啟動（每日 9:00 檢查）')
 }
 
-module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex, settleReceiptFlex, buildPayInfo, handleRentReminderApproval }
+module.exports = { startLeaseReminders, checkLeaseReminders, getClientForLease, getLeaseClients, pushToLeaseTenant, rentReminderFlex, utilReminderFlex, rentReceiptFlex, utilReceiptFlex, settleReceiptFlex, buildPayInfo, handleRentReminderApproval, sendRentReminderTest }
