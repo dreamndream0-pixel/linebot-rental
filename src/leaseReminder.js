@@ -388,18 +388,34 @@ async function findDueUnpaidRow(lease) {
   }
 }
 
-// confirm 模式：把待發送的租金提醒先推播給房東（notifyLineUserId），附「確認送出／略過」按鈕
+// 決定「租金提醒待確認」要用哪個 Bot 推播、推給哪個 LINE ID。
+// LINE 的 userId 是「各 Bot 各自」的，因此推播 Bot 必須與目標 ID 成對：
+// 優先用「客服 Bot → 客服通知 ID」，退回「出租 Bot → 通知 ID」，再退回系統 Bot。
+function pickApprovalChannel(landlord) {
+  if (!landlord) return null
+  if (landlord.supportChannelToken && landlord.supportBotEnabled !== false && landlord.supportNotifyLineUserId) {
+    return { token: landlord.supportChannelToken, secret: landlord.supportChannelSecret || '', target: landlord.supportNotifyLineUserId, via: '客服Bot' }
+  }
+  if (landlord.lineChannelToken && landlord.notifyLineUserId) {
+    return { token: landlord.lineChannelToken, secret: landlord.lineChannelSecret || '', target: landlord.notifyLineUserId, via: '出租Bot' }
+  }
+  if (landlord.notifyLineUserId) {
+    return { token: process.env.LINE_CHANNEL_ACCESS_TOKEN, secret: process.env.LINE_CHANNEL_SECRET, target: landlord.notifyLineUserId, via: '系統Bot' }
+  }
+  return null
+}
+
+// confirm 模式：把待發送的租金提醒先推播給房東（優先客服 Bot），附「確認送出／略過」按鈕
 async function sendRentApprovalToLandlord(lease, landlord, dueRow) {
-  if (!landlord || !landlord.notifyLineUserId) {
-    console.log(`⏭️ 房東未設定通知 LINE，略過確認推播：${lease.tenantName}`)
+  const ch = pickApprovalChannel(landlord)
+  if (!ch) {
+    console.log(`⏭️ 房東未設定客服/通知 LINE，略過確認推播：${lease.tenantName}`)
     return false
   }
   const amount = Number((dueRow && dueRow.amount) || lease.rent || 0)
   const due = dueRow && dueRow.dueDate ? new Date(dueRow.dueDate) : null
   const dueStr = due ? `${due.getMonth() + 1}/${due.getDate()}` : (lease.rentPayDay ? `每月${lease.rentPayDay}號` : '')
-  const client = landlord.lineChannelToken
-    ? new Client({ channelAccessToken: landlord.lineChannelToken, channelSecret: landlord.lineChannelSecret || '' })
-    : mainReminderClient()
+  const client = new Client({ channelAccessToken: ch.token, channelSecret: ch.secret })
   const msg = {
     type: 'template',
     altText: '租金提醒待確認',
@@ -413,8 +429,8 @@ async function sendRentApprovalToLandlord(lease, landlord, dueRow) {
     },
   }
   try {
-    await client.pushMessage(landlord.notifyLineUserId, msg)
-    console.log(`📋 已推播租金提醒待確認給房東：${lease.tenantName}`)
+    await client.pushMessage(ch.target, msg)
+    console.log(`📋 已推播租金提醒待確認給房東（${ch.via}）：${lease.tenantName}`)
     return true
   } catch (e) {
     console.error(`租金提醒待確認推播失敗（${lease.tenantName}）:`, e.message)
@@ -428,11 +444,11 @@ async function sendRentReminderTest(landlordId) {
   if (landlordId) where.managedProperty = { landlordId }
   const leases = await prisma.lease.findMany({
     where,
-    include: { managedProperty: { select: { title: true, landlordId: true, ownerName: true, ownerBankName: true, ownerBank: true, landlord: { select: { rentPayInfo: true, notifyLineUserId: true, lineChannelToken: true, lineChannelSecret: true, name: true } } } } },
+    include: { managedProperty: { select: { title: true, landlordId: true, ownerName: true, ownerBankName: true, ownerBank: true, landlord: { select: { rentPayInfo: true, notifyLineUserId: true, lineChannelToken: true, lineChannelSecret: true, name: true, supportChannelToken: true, supportChannelSecret: true, supportNotifyLineUserId: true, supportBotEnabled: true } } } } },
     take: 100,
   })
-  const lease = leases.find(l => l.managedProperty && l.managedProperty.landlord && l.managedProperty.landlord.notifyLineUserId)
-  if (!lease) return { ok: false, error: '找不到「房東已設定通知 LINE User ID」的承租中租約。請先到房東管理，為房東設定「通知 LINE User ID」。' }
+  const lease = leases.find(l => l.managedProperty && pickApprovalChannel(l.managedProperty.landlord))
+  if (!lease) return { ok: false, error: '找不到可推播確認訊息的承租中租約。請先為房東設定「客服 Bot 的通知 LINE ID」（supportNotifyLineUserId）或「通知 LINE User ID」。' }
   const dueRow = (await findDueUnpaidRow(lease)) || { amount: Number(lease.rent || 0), dueDate: null }
   const sent = await sendRentApprovalToLandlord(lease, lease.managedProperty.landlord, dueRow)
   if (!sent) return { ok: false, error: '推播失敗：房東的通知 LINE ID 可能尚未加入該 Bot 好友，或設定有誤。' }
@@ -485,7 +501,7 @@ async function checkLeaseReminders() {
 
   const leases = await prisma.lease.findMany({
     where: { status: 'ACTIVE', lineUserId: { not: null } },
-    include: { managedProperty: { select: { title: true, landlordId: true, ownerName: true, ownerBankName: true, ownerBank: true, landlord: { select: { rentPayInfo: true, notifyLineUserId: true, lineChannelToken: true, lineChannelSecret: true, name: true } } } } },
+    include: { managedProperty: { select: { title: true, landlordId: true, ownerName: true, ownerBankName: true, ownerBank: true, landlord: { select: { rentPayInfo: true, notifyLineUserId: true, lineChannelToken: true, lineChannelSecret: true, name: true, supportChannelToken: true, supportChannelSecret: true, supportNotifyLineUserId: true, supportBotEnabled: true } } } } },
   })
 
   for (const lease of leases) {
