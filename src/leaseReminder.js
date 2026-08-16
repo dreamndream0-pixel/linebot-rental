@@ -353,16 +353,40 @@ async function checkLeaseReminders() {
       rentPayInfo: buildPayInfo(mp, mp.landlord ? mp.landlord.rentPayInfo : null),
     }
 
-    // 租金提醒：繳費日前 3 天
+    // 租金提醒：繳費日前 3 天（只在「本期尚未繳清」時推，且金額以正確期別為準）
     if (lease.rentRemindOn && lease.rentPayDay) {
       const remindDay = ((lease.rentPayDay - REMIND_BEFORE - 1 + 31) % 31) + 1
       if (today === remindDay && !alreadyRemindedThisMonth(lease.lastRentRemind)) {
+        // 用租金排程找出「本期（應繳日在 15 天內或已逾期）尚未繳清」的期別；
+        // 已繳清 → 不提醒。金額改用該期別（季繳＝季金額，非單月）。
+        let dueRow = null
         try {
-          await pushToLeaseTenant(lease, rentReminderFlex(data))
-          await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date() } })
-          console.log(`✅ 已推租金提醒：${lease.tenantName}`)
+          const { buildRentSchedule } = require('./admin/routes/managedProperty')
+          const rps = await prisma.rentPayment.findMany({ where: { leaseId: lease.id } })
+          const sched = buildRentSchedule(lease, rps)
+          const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
+          dueRow = sched.find(s => {
+            if ((s.unpaid || 0) <= 0) return false            // 已繳清的期別跳過
+            if (!s.dueDate) return true
+            const d = new Date(s.dueDate); d.setHours(0, 0, 0, 0)
+            const days = Math.round((d.getTime() - startOfToday.getTime()) / 86400000)
+            return days <= 15                                 // 15 天內到期或已逾期＝本期；更遠＝下一期（代表本期已繳）
+          }) || null
         } catch (e) {
-          console.error(`租金提醒推播失敗（${lease.tenantName}）:`, e.message)
+          console.error('租金排程計算失敗，改用合約月租金額:', e.message)
+          dueRow = { amount: Number(lease.rent || 0) }
+        }
+        if (!dueRow) {
+          console.log(`⏭️ 本期已繳清，略過租金提醒：${lease.tenantName}`)
+        } else {
+          const remindData = { ...data, rent: Number(dueRow.amount || lease.rent || 0) }
+          try {
+            await pushToLeaseTenant(lease, rentReminderFlex(remindData))
+            await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date() } })
+            console.log(`✅ 已推租金提醒：${lease.tenantName}`)
+          } catch (e) {
+            console.error(`租金提醒推播失敗（${lease.tenantName}）:`, e.message)
+          }
         }
       }
     }
