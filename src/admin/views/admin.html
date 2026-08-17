@@ -3827,8 +3827,11 @@ function renderTenantTabs() {
   var webTab = DATA.role === 'super'
     ? '<button class="user-tab ' + (tenantUserTab === 'web' ? 'active' : '') + '" onclick="setTenantUserTab(\'web\')">網站註冊用戶' + (webUsersCache ? ' <span>(' + webUsersCache.length + ')</span>' : '') + '</button>'
     : ''
+  var rentalCount = (DATA.tenants || []).filter(function(t){ return t.botKind !== 'support' }).length
+  var supportCount = (DATA.tenants || []).filter(function(t){ return t.botKind === 'support' }).length
   return '<div class="user-tabs">' +
-    '<button class="user-tab ' + (tenantUserTab === 'line' ? 'active' : '') + '" onclick="setTenantUserTab(\'line\')">LINEBOT 用戶 <span>(' + DATA.tenants.length + ')</span></button>' +
+    '<button class="user-tab ' + (tenantUserTab === 'line' ? 'active' : '') + '" onclick="setTenantUserTab(\'line\')">租屋 LINE 用戶 <span>(' + rentalCount + ')</span></button>' +
+    '<button class="user-tab ' + (tenantUserTab === 'support' ? 'active' : '') + '" onclick="setTenantUserTab(\'support\')">客服 LINE 用戶 <span>(' + supportCount + ')</span></button>' +
     webTab +
     '</div>'
 }
@@ -3843,15 +3846,17 @@ function renderTenants() {
 }
 
 function renderLineTenantList() {
-  if (!DATA.tenants.length) return '<div class="empty">目前沒有 LINEBOT 用戶資料</div>'
-  var unnamedCount = DATA.tenants.filter(function(t){ return !t.name }).length
+  var isSupport = tenantUserTab === 'support'
+  var list = (DATA.tenants || []).filter(function(t){ return isSupport ? t.botKind === 'support' : t.botKind !== 'support' })
+  if (!list.length) return '<div class="empty">目前沒有' + (isSupport ? '客服' : '租屋') + ' LINE 用戶資料</div>'
+  var unnamedCount = list.filter(function(t){ return !t.name }).length
   var toolbar = unnamedCount
     ? '<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:10px;">' +
         '<span style="font-size:12px;color:#c0392b;">有 ' + unnamedCount + ' 位未命名用戶</span>' +
         '<button class="action-btn" onclick="btnLoad(this, refreshUnnamedTenants)" style="font-size:12px;">🔄 一鍵重抓名稱/頭像</button>' +
       '</div>'
     : ''
-  return toolbar + '<div class="user-panel">' + DATA.tenants.map(renderLineTenantCard).join('') + '</div>'
+  return toolbar + '<div class="user-panel">' + list.map(renderLineTenantCard).join('') + '</div>'
 }
 
 function renderLineTenantCard(t) {

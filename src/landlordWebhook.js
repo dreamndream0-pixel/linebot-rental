@@ -115,7 +115,7 @@ function makeWebhookHandler(kind) {
     const events = body.events || []
     events.forEach(async (event) => {
       try {
-        await recordIncomingMessage(event, client, landlord.id)
+        await recordIncomingMessage(event, client, landlord.id, bot.scope)
         if (!autoReply) return
 
         if (event.type === 'message' && event.message.type === 'text') {

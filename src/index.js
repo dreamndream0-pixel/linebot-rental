@@ -128,6 +128,7 @@ prisma.$connect()
     try {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "lastMessage" TEXT`)
       await prisma.$executeRawUnsafe(`ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "lastMessageAt" TIMESTAMPTZ`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "botKind" TEXT`)
       console.log('✅ 租客最後留言欄位已確認')
     } catch (e) {
       console.error('⚠️ 租客最後留言欄位確認失敗:', e.message)

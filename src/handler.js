@@ -638,9 +638,10 @@ async function handlePostback(event, client, landlordId = null, scope = 'all') {
 
 // 記錄 LINE 用戶（名稱／頭像）＋最後一句留言。
 // 與 Bot 是否開啟無關——即使房東把 Bot 關閉，收到的訊息也要記錄下來供辨識。
-async function recordIncomingMessage(event, client, landlordId = null) {
+async function recordIncomingMessage(event, client, landlordId = null, scope = 'all') {
   const userId = event.source && event.source.userId
   if (!userId) return null
+  const botKind = scope === 'support' ? 'support' : 'rental'
   const text = (event.message && event.message.type === 'text' && event.message.text)
     ? event.message.text.trim() : ''
 
@@ -656,7 +657,7 @@ async function recordIncomingMessage(event, client, landlordId = null) {
     console.log('無法取得用戶名稱:', e.message)
   }
 
-  const tenantRow = await upsertLineTenant({ lineUserId: userId, landlordId, data: { isActive: true, ...profileData } })
+  const tenantRow = await upsertLineTenant({ lineUserId: userId, landlordId, data: { isActive: true, botKind, ...profileData } })
   // 用剛 upsert 回傳的 tenant.id 更新，避免 source 比對不到；raw SQL 避開 Prisma 型別對應；獨立 try/catch。
   if (text && tenantRow && tenantRow.id) {
     try {
@@ -681,7 +682,7 @@ async function handleMessage(event, client, landlordId = null, scope = 'all') {
   const allowSupport = scope !== 'rental'
 
   // 確保用戶存在 DB＋記錄最後一句留言（放最前面，Bot 關閉也要記錄）
-  await recordIncomingMessage(event, client, landlordId)
+  await recordIncomingMessage(event, client, landlordId, scope)
 
   // 靜音清單用戶：只記錄留言，不觸發任何關鍵字/選單回覆
   if (await isBotMuted(userId)) return
