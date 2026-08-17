@@ -138,6 +138,7 @@ model Tenant {
   rentDue       Int       @default(5)        // 每月幾號繳租
   isActive      Boolean   @default(true)
   source        String    @default("main")   // Bot 來源鍵（主 Bot=main；房東 Bot=landlordId）
+  botKind       String?                       // 來自哪個 Bot：rental=出租 Bot、support=客服 Bot
   landlordId    String?                       // 歸屬房東
   createdAt     DateTime  @default(now())
 
