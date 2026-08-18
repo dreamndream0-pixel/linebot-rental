@@ -7,6 +7,8 @@ const { getClientForLease, pushToLeaseTenant, rentReminderFlex, utilReminderFlex
 const { importTaipowerBills } = require('../../utilityBillImport')
 const { findLineTenant } = require('../../tenantStore')
 
+const HIDDEN_RENT_PAYMENT_NOTE = '__HIDDEN_RENT_SCHEDULE_ROW__'
+
 // 權限過濾：super 看全部，房東只看自己的
 function ownFilter(auth) {
   return auth.role === 'super' ? {} : { landlordId: auth.landlordId }
@@ -124,11 +126,14 @@ function buildRentSchedule(lease, rentPayments) {
   const stored = (rentPayments || [])
     .slice()
     .sort((a, b) => new Date(a.periodStart) - new Date(b.periodStart))
-  stored.forEach((p, i) => {
+  let storedIndex = 0
+  stored.forEach((p) => {
+    if (p.note === HIDDEN_RENT_PAYMENT_NOTE) return
     const paidAmt = p.paidAmount || 0
+    storedIndex += 1
     rows.push({
       id: p.id,
-      index: i + 1,
+      index: storedIndex,
       label: `${ymd(p.periodStart)}~${ymd(p.periodEnd)}`,
       periodStart: p.periodStart,
       periodEnd: p.periodEnd,
@@ -1706,6 +1711,51 @@ router.delete('/admin/api/managed/lease/:leaseId/rent-payment/:paymentId', async
     res.json({ ok: true })
   } catch (e) {
     console.error('刪除租金記錄失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/admin/api/managed/lease/:leaseId/rent-payment/hide', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    const b = req.body || {}
+    const periodStart = b.periodStart ? startOfDay(b.periodStart) : null
+    const periodEnd = b.periodEnd ? startOfDay(b.periodEnd) : null
+    const dueDate = b.dueDate ? startOfDay(b.dueDate) : null
+    if (!periodStart || !periodEnd || !dueDate) return res.status(400).json({ error: '缺少租金期別資料' })
+
+    const existing = await prisma.rentPayment.findFirst({
+      where: { leaseId: lease.id, periodStart, dueDate },
+    })
+    if (existing) {
+      if (existing.recordId) {
+        await prisma.managementRecord.deleteMany({ where: { id: existing.recordId } })
+      }
+      await prisma.rentPayment.delete({ where: { id: existing.id } })
+      return res.json({ ok: true, deleted: true })
+    }
+
+    const hidden = await prisma.rentPayment.create({
+      data: {
+        leaseId: lease.id,
+        periodStart,
+        periodEnd,
+        dueDate,
+        amount: 0,
+        paidAmount: 0,
+        paidDate: null,
+        payMethod: null,
+        receiptUrl: null,
+        settled: true,
+        note: HIDDEN_RENT_PAYMENT_NOTE,
+      },
+    })
+    res.json({ ok: true, hidden: true, id: hidden.id })
+  } catch (e) {
+    console.error('隱藏租金期別失敗:', e.message)
     res.status(500).json({ error: e.message })
   }
 })

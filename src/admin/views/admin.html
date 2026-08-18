@@ -8369,7 +8369,7 @@ function renderRentBillingRows(rows, leaseId) {
       '</td>' +
       '<td style="padding:6px;text-align:center;"><button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'RENT\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate) + '\',\'\',\'' + leaseDateInput(r.periodStart) + '\',\'' + leaseDateInput(r.periodEnd) + '\')})">LINE提醒</button></td>' +
       '<td style="padding:6px;text-align:center;">' +
-        (r.id ? '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#C0524A;white-space:nowrap;" onclick="btnLoad(this,function(){return deleteRentPayment(\'' + leaseId + '\',\'' + r.id + '\')})">刪除</button>' : '<span style="font-size:12px;color:#bbb;">—</span>') +
+        (r.id ? '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#C0524A;white-space:nowrap;" onclick="btnLoad(this,function(){return deleteRentPayment(\'' + leaseId + '\',\'' + r.id + '\')})">刪除</button>' : '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#C0524A;white-space:nowrap;" onclick="btnLoad(this,function(){return hideGeneratedRentPeriod(\'' + leaseId + '\',\'' + key + '\')})">刪除</button>') +
       '</td>' +
     '</tr>'
   }).join('')
@@ -8598,6 +8598,28 @@ async function deleteRentPayment(leaseId, paymentId) {
   var res = await fetch('/admin/api/managed/lease/' + leaseId + '/rent-payment/' + paymentId + '?key=' + encodeURIComponent(KEY), { method: 'DELETE' })
   if (!res.ok) { showToast('❌ 刪除失敗'); return }
   showToast('✅ 已清除繳費記錄')
+  openLeaseLedger(leaseId)
+}
+
+async function hideGeneratedRentPeriod(leaseId, key) {
+  if (!confirm('這一期是系統自動產生的期別，確定要從租金明細隱藏嗎？')) return
+  var startEl = document.getElementById(key + '_start')
+  var endEl = document.getElementById(key + '_end')
+  var dueEl = document.getElementById(key + '_duedate')
+  var body = {
+    periodStart: startEl ? startEl.value : '',
+    periodEnd: endEl ? endEl.value : '',
+    dueDate: dueEl ? dueEl.value : ''
+  }
+  if (!body.periodStart || !body.periodEnd || !body.dueDate) { showToast('❌ 缺少期別日期，無法刪除'); return }
+  var res = await fetch('/admin/api/managed/lease/' + leaseId + '/rent-payment/hide?key=' + encodeURIComponent(KEY), {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  })
+  var data = {}; try { data = await res.json() } catch(e) {}
+  if (!res.ok) { showToast('❌ 刪除失敗：' + (data.error || res.status)); return }
+  showToast('✅ 已隱藏此期租金明細')
   openLeaseLedger(leaseId)
 }
 
