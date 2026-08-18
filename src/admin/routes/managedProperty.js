@@ -229,6 +229,156 @@ function calculateOwnerPayout(mp, records) {
   return { grossRent, expenses, mgmtFee, payoutAmount }
 }
 
+function rentReceiptMarker(paymentId) {
+  return `[租金收款 ${paymentId}]`
+}
+
+function utilityReceiptMarker(readingId) {
+  return `[水電收款 ${readingId}]`
+}
+
+function rentReceiptDescription(payment, lease) {
+  return [
+    rentReceiptMarker(payment.id),
+    `租金 ${ymd(payment.periodStart)}~${ymd(payment.periodEnd)}`,
+    lease.tenantName || '',
+    lease.roomLabel ? `(${lease.roomLabel})` : '',
+    payment.payMethod ? `(${payment.payMethod})` : '',
+  ].filter(Boolean).join(' ').trim()
+}
+
+function utilityReceiptDescription(reading, lease, payMethod) {
+  return [
+    utilityReceiptMarker(reading.id),
+    '水電費',
+    lease.tenantName || '',
+    lease.roomLabel ? `(${lease.roomLabel})` : '',
+    payMethod ? `(${payMethod})` : '',
+  ].filter(Boolean).join(' ').trim()
+}
+
+async function ensureLeaseLedgerRecords(lease) {
+  const [rentPayments, utilityReadings] = await Promise.all([
+    prisma.rentPayment.findMany({ where: { leaseId: lease.id } }),
+    prisma.utilityReading.findMany({ where: { leaseId: lease.id } }),
+  ])
+
+  let rentCreated = 0
+  let rentLinked = 0
+  let utilityCreated = 0
+  let utilityLinked = 0
+
+  for (const payment of rentPayments) {
+    if (!(payment.paidAmount > 0 && payment.paidDate)) continue
+    let record = payment.recordId
+      ? await prisma.managementRecord.findFirst({ where: { id: payment.recordId, leaseId: lease.id } })
+      : null
+    const marker = rentReceiptMarker(payment.id)
+    if (!record) {
+      record = await prisma.managementRecord.findFirst({
+        where: { leaseId: lease.id, type: 'INCOME', category: 'RENT', description: { startsWith: marker } },
+      })
+    }
+    if (!record) {
+      record = await prisma.managementRecord.findFirst({
+        where: {
+          leaseId: lease.id,
+          type: 'INCOME',
+          category: 'RENT',
+          amount: payment.paidAmount,
+          recordDate: payment.paidDate,
+        },
+        orderBy: { createdAt: 'asc' },
+      })
+    }
+    const data = {
+      managedPropertyId: lease.managedPropertyId,
+      leaseId: lease.id,
+      type: 'INCOME',
+      category: 'RENT',
+      amount: payment.paidAmount,
+      recordDate: payment.paidDate,
+      description: rentReceiptDescription(payment, lease),
+    }
+    if (record) {
+      if (!record.payoutId && (!record.description || !record.description.startsWith('[ragic-rent:'))) {
+        await prisma.managementRecord.update({ where: { id: record.id }, data })
+      }
+      if (payment.recordId !== record.id) {
+        await prisma.rentPayment.update({ where: { id: payment.id }, data: { recordId: record.id } })
+        rentLinked += 1
+      }
+    } else {
+      record = await prisma.managementRecord.create({ data })
+      await prisma.rentPayment.update({ where: { id: payment.id }, data: { recordId: record.id } })
+      rentCreated += 1
+    }
+  }
+
+  for (const reading of utilityReadings) {
+    if (!(reading.paidAmount > 0 && reading.paidDate)) continue
+    const marker = utilityReceiptMarker(reading.id)
+    let record = await prisma.managementRecord.findFirst({
+      where: { leaseId: lease.id, type: 'INCOME', category: 'UTILITY', description: { startsWith: marker } },
+    })
+    if (!record) {
+      record = await prisma.managementRecord.findFirst({
+        where: {
+          leaseId: lease.id,
+          type: 'INCOME',
+          category: 'UTILITY',
+          amount: reading.paidAmount,
+          recordDate: reading.paidDate,
+        },
+        orderBy: { createdAt: 'asc' },
+      })
+    }
+    if (!record) {
+      record = await prisma.managementRecord.findFirst({
+        where: {
+          leaseId: lease.id,
+          type: 'INCOME',
+          category: 'UTILITY',
+          amount: reading.amount,
+          description: { startsWith: '電費 ' },
+        },
+        orderBy: { createdAt: 'asc' },
+      })
+    }
+    const data = {
+      managedPropertyId: lease.managedPropertyId,
+      leaseId: lease.id,
+      type: 'INCOME',
+      category: 'UTILITY',
+      amount: reading.paidAmount,
+      recordDate: reading.paidDate,
+      description: utilityReceiptDescription(reading, lease, reading.payMethod),
+    }
+    if (record) {
+      if (!record.payoutId) await prisma.managementRecord.update({ where: { id: record.id }, data })
+      utilityLinked += 1
+    } else {
+      await prisma.managementRecord.create({ data })
+      utilityCreated += 1
+    }
+  }
+
+  return { rentCreated, rentLinked, utilityCreated, utilityLinked }
+}
+
+async function ensureManagedPropertyLedgerRecords(managedPropertyId) {
+  const leases = await prisma.lease.findMany({ where: { managedPropertyId } })
+  const total = { rentCreated: 0, rentLinked: 0, utilityCreated: 0, utilityLinked: 0 }
+  for (const lease of leases) {
+    const result = await ensureLeaseLedgerRecords(lease)
+    total.rentCreated += result.rentCreated
+    total.rentLinked += result.rentLinked
+    total.utilityCreated += result.utilityCreated
+    total.utilityLinked += result.utilityLinked
+  }
+  return total
+}
+
 // ── 委託物業列表 ──────────────────────────────────────────────
 router.get('/admin/api/managed', async (req, res) => {
   const auth = await resolveRole(req.query.key)
@@ -269,7 +419,18 @@ router.get('/admin/api/managed/:id', async (req, res) => {
     if (auth.role !== 'super' && item.landlordId !== auth.landlordId) {
       return res.status(403).json({ error: 'forbidden' })
     }
-    res.json(item)
+    const backfill = await ensureManagedPropertyLedgerRecords(item.id)
+    const fresh = await prisma.managedProperty.findUnique({
+      where: { id: req.params.id },
+      include: {
+        incomes: { orderBy: { recordDate: 'desc' } },
+        payouts: {
+          orderBy: { period: 'desc' },
+          include: { records: { orderBy: { recordDate: 'asc' } } },
+        },
+      },
+    })
+    res.json({ ...fresh, backfill })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
@@ -443,6 +604,7 @@ router.post('/admin/api/managed/:id/payout-preview', express.json(), async (req,
     if (auth.role !== 'super' && mp.landlordId !== auth.landlordId) {
       return res.status(403).json({ error: 'forbidden' })
     }
+    const backfill = await ensureManagedPropertyLedgerRecords(req.params.id)
 
     const existing = await prisma.ownerPayout.findUnique({
       where: { managedPropertyId_period: { managedPropertyId: req.params.id, period } },
@@ -461,7 +623,7 @@ router.post('/admin/api/managed/:id/payout-preview', express.json(), async (req,
       },
       orderBy: { recordDate: 'asc' },
     })
-    res.json({ period, existingPayoutId: existing?.id || null, ...calculateOwnerPayout(mp, records), records })
+    res.json({ period, existingPayoutId: existing?.id || null, ...calculateOwnerPayout(mp, records), records, backfill })
   } catch (e) {
     console.error('預覽撥款失敗:', e.message)
     res.status(500).json({ error: e.message })
@@ -485,6 +647,7 @@ router.post('/admin/api/managed/:id/payout', express.json(), async (req, res) =>
     if (auth.role !== 'super' && mp.landlordId !== auth.landlordId) {
       return res.status(403).json({ error: 'forbidden' })
     }
+    await ensureManagedPropertyLedgerRecords(req.params.id)
 
     const existing = await prisma.ownerPayout.findUnique({
       where: { managedPropertyId_period: { managedPropertyId: req.params.id, period } },
@@ -1283,6 +1446,7 @@ router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
   try {
     const lease = await getOwnedLease(auth, req.params.leaseId)
     if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    const backfill = await ensureLeaseLedgerRecords(lease)
     const [records, utilityReadings, rentPayments] = await Promise.all([
       prisma.managementRecord.findMany({ where: { managedPropertyId: lease.managedPropertyId, leaseId: lease.id }, orderBy: { recordDate: 'asc' } }),
       prisma.utilityReading.findMany({ where: { leaseId: lease.id }, orderBy: { endDate: 'desc' } }),
@@ -1290,7 +1454,7 @@ router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
     ])
     const rentSchedule = buildRentSchedule(lease, rentPayments)
     // 租約對帳只回傳該房客/房號的收支；整棟台電等 leaseId=null 的支出留在委託物件總帳。
-    res.json({ lease, rentSchedule, utilityReadings, records })
+    res.json({ lease, rentSchedule, utilityReadings, records, backfill })
   } catch (e) {
     console.error('租約帳務載入失敗:', e.message)
     res.status(500).json({ error: e.message })
@@ -1535,19 +1699,12 @@ router.post('/admin/api/managed/lease/:leaseId/payment', express.json(), async (
     if (kind === 'UTILITY') {
       const reading = await prisma.utilityReading.findFirst({ where: { id: b.utilityReadingId, leaseId: lease.id } })
       if (!reading) return res.status(404).json({ error: '找不到水電明細' })
-      const marker = `[水電收款 ${reading.id}]`
+      const marker = utilityReceiptMarker(reading.id)
       const existingRecord = await prisma.managementRecord.findFirst({
         where: { managedPropertyId: lease.managedPropertyId, leaseId: lease.id, type: 'INCOME', category: 'UTILITY', description: { startsWith: marker } },
       })
       const updated = await prisma.$transaction(async tx => {
         let recordId = existingRecord?.id || null
-        const descParts = [
-          marker,
-          '水電費',
-          lease.tenantName || '',
-          lease.roomLabel ? `(${lease.roomLabel})` : '',
-          b.payMethod ? `(${b.payMethod})` : '',
-        ].filter(Boolean)
         const recordData = {
           managedPropertyId: lease.managedPropertyId,
           leaseId: lease.id,
@@ -1555,7 +1712,7 @@ router.post('/admin/api/managed/lease/:leaseId/payment', express.json(), async (
           category: 'UTILITY',
           amount: paidAmount,
           recordDate: paidDate,
-          description: descParts.join(' ').trim(),
+          description: utilityReceiptDescription(reading, lease, b.payMethod),
         }
         if (recordId) {
           await tx.managementRecord.update({ where: { id: recordId }, data: recordData })
@@ -1774,7 +1931,7 @@ router.delete('/admin/api/managed/lease/:leaseId/utility-reading/:readingId', as
     if (!reading) return res.status(404).json({ error: '找不到水電記錄' })
     await prisma.$transaction([
       prisma.managementRecord.deleteMany({
-        where: { leaseId: lease.id, category: 'UTILITY', description: { startsWith: `[水電收款 ${reading.id}]` } },
+        where: { leaseId: lease.id, category: 'UTILITY', description: { startsWith: utilityReceiptMarker(reading.id) } },
       }),
       prisma.utilityReading.delete({ where: { id: reading.id } }),
     ])
