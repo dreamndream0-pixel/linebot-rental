@@ -8434,7 +8434,7 @@ async function openLeaseLedger(leaseId) {
   var billing = await billRes.json()
   UNLOCKED_ROWS = {}
   _LAST_BILLING = billing
-  // records 由 billing 端點一併回傳（此物業內綁定本租約或未綁定的收支），不再另打 /managed/:id
+  // records 由 billing 端點一併回傳（只含本租約收支），不再另打 /managed/:id
   var recs = billing.records || []
   var start = l.leaseStart ? new Date(l.leaseStart) : null
   var end = l.leaseEnd ? new Date(l.leaseEnd) : null
@@ -8866,7 +8866,7 @@ async function addLeaseRecord(managedId, leaseId) {
     recordDate: document.getElementById('lease_rec_date').value,
     description: val('lease_rec_desc')
   }
-  var res = await fetch('/admin/api/managed/' + managedId + '/record', {
+  var res = await fetch('/admin/api/managed/' + managedId + '/record?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
   })
   if (!res.ok) { showToast('❌ 新增失敗'); return }
@@ -8876,7 +8876,7 @@ async function addLeaseRecord(managedId, leaseId) {
 
 async function deleteLeaseRecord(recordId, leaseId) {
   if (!confirm('確定刪除此筆收支？')) return
-  var res = await fetch('/admin/api/managed/record/' + recordId, { method: 'DELETE' })
+  var res = await fetch('/admin/api/managed/record/' + recordId + '?key=' + encodeURIComponent(KEY), { method: 'DELETE' })
   if (!res.ok) { showToast('❌ 刪除失敗'); return }
   showToast('✅ 已刪除')
   openLeaseLedger(leaseId)

@@ -1284,12 +1284,12 @@ router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
     const lease = await getOwnedLease(auth, req.params.leaseId)
     if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
     const [records, utilityReadings, rentPayments] = await Promise.all([
-      prisma.managementRecord.findMany({ where: { managedPropertyId: lease.managedPropertyId, OR: [{ leaseId: lease.id }, { leaseId: null }] }, orderBy: { recordDate: 'asc' } }),
+      prisma.managementRecord.findMany({ where: { managedPropertyId: lease.managedPropertyId, leaseId: lease.id }, orderBy: { recordDate: 'asc' } }),
       prisma.utilityReading.findMany({ where: { leaseId: lease.id }, orderBy: { endDate: 'desc' } }),
       prisma.rentPayment.findMany({ where: { leaseId: lease.id }, orderBy: { periodStart: 'asc' } }),
     ])
     const rentSchedule = buildRentSchedule(lease, rentPayments)
-    // 一併回傳收支記錄，前端就不必再打較重的 /managed/:id（大幅加快對帳開啟）
+    // 租約對帳只回傳該房客/房號的收支；整棟台電等 leaseId=null 的支出留在委託物件總帳。
     res.json({ lease, rentSchedule, utilityReadings, records })
   } catch (e) {
     console.error('租約帳務載入失敗:', e.message)
@@ -1535,15 +1535,44 @@ router.post('/admin/api/managed/lease/:leaseId/payment', express.json(), async (
     if (kind === 'UTILITY') {
       const reading = await prisma.utilityReading.findFirst({ where: { id: b.utilityReadingId, leaseId: lease.id } })
       if (!reading) return res.status(404).json({ error: '找不到水電明細' })
-      const updated = await prisma.utilityReading.update({
-        where: { id: reading.id },
-        data: {
-          paidAmount,
-          paidDate,
-          payMethod: b.payMethod || null,
-          receiptUrl: b.receiptUrl || null,
-          note: b.note !== undefined ? (b.note || null) : reading.note,
-        },
+      const marker = `[水電收款 ${reading.id}]`
+      const existingRecord = await prisma.managementRecord.findFirst({
+        where: { managedPropertyId: lease.managedPropertyId, leaseId: lease.id, type: 'INCOME', category: 'UTILITY', description: { startsWith: marker } },
+      })
+      const updated = await prisma.$transaction(async tx => {
+        let recordId = existingRecord?.id || null
+        const descParts = [
+          marker,
+          '水電費',
+          lease.tenantName || '',
+          lease.roomLabel ? `(${lease.roomLabel})` : '',
+          b.payMethod ? `(${b.payMethod})` : '',
+        ].filter(Boolean)
+        const recordData = {
+          managedPropertyId: lease.managedPropertyId,
+          leaseId: lease.id,
+          type: 'INCOME',
+          category: 'UTILITY',
+          amount: paidAmount,
+          recordDate: paidDate,
+          description: descParts.join(' ').trim(),
+        }
+        if (recordId) {
+          await tx.managementRecord.update({ where: { id: recordId }, data: recordData })
+        } else {
+          const record = await tx.managementRecord.create({ data: recordData })
+          recordId = record.id
+        }
+        return tx.utilityReading.update({
+          where: { id: reading.id },
+          data: {
+            paidAmount,
+            paidDate,
+            payMethod: b.payMethod || null,
+            receiptUrl: b.receiptUrl || null,
+            note: b.note !== undefined ? (b.note || null) : reading.note,
+          },
+        })
       })
       return res.json(updated)
     }
@@ -1629,19 +1658,6 @@ router.post('/admin/api/managed/lease/:leaseId/utility-reading', express.json(),
         note: b.note || null,
       },
     })
-    if (amount > 0) {
-      await prisma.managementRecord.create({
-        data: {
-          managedPropertyId: lease.managedPropertyId,
-          leaseId: lease.id,
-          type: 'INCOME',
-          category: 'UTILITY',
-          amount,
-          recordDate: reading.dueDate || reading.endDate,
-          description: `電費 ${startDegree}→${endDegree} 度，${usedDegree} 度 x ${rate} 元`,
-        },
-      })
-    }
     res.json(reading)
   } catch (e) {
     console.error('新增抄表失敗:', e.message)
@@ -1677,18 +1693,6 @@ router.put('/admin/api/managed/lease/:leaseId/utility-reading/:readingId', expre
         note: b.note !== undefined ? (b.note || null) : reading.note,
       },
     })
-    try {
-      const rec = await prisma.managementRecord.findFirst({
-        where: { leaseId: lease.id, category: 'UTILITY', amount: reading.amount },
-        orderBy: { recordDate: 'desc' }
-      })
-      if (rec) {
-        await prisma.managementRecord.update({
-          where: { id: rec.id },
-          data: { amount, recordDate: updated.dueDate || updated.endDate, description: `電費 ${startDegree}→${endDegree} 度，${usedDegree} 度 x ${rate} 元` }
-        })
-      }
-    } catch(_) {}
     res.json(updated)
   } catch (e) {
     console.error('更新抄表失敗:', e.message)
@@ -1768,14 +1772,12 @@ router.delete('/admin/api/managed/lease/:leaseId/utility-reading/:readingId', as
     if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
     const reading = await prisma.utilityReading.findFirst({ where: { id: req.params.readingId, leaseId: lease.id } })
     if (!reading) return res.status(404).json({ error: '找不到水電記錄' })
-    try {
-      const rec = await prisma.managementRecord.findFirst({
-        where: { leaseId: lease.id, category: 'UTILITY', amount: reading.amount },
-        orderBy: { recordDate: 'desc' }
-      })
-      if (rec) await prisma.managementRecord.delete({ where: { id: rec.id } })
-    } catch(_) {}
-    await prisma.utilityReading.delete({ where: { id: reading.id } })
+    await prisma.$transaction([
+      prisma.managementRecord.deleteMany({
+        where: { leaseId: lease.id, category: 'UTILITY', description: { startsWith: `[水電收款 ${reading.id}]` } },
+      }),
+      prisma.utilityReading.delete({ where: { id: reading.id } }),
+    ])
     res.json({ ok: true })
   } catch (e) {
     console.error('刪除抄表記錄失敗:', e.message)
