@@ -8347,7 +8347,11 @@ function renderRentBillingRows(rows, leaseId) {
     var statusCell = '<td style="padding:3px 6px;font-size:12px;text-align:right;white-space:nowrap;color:' + (unpaid > 0 ? '#C0524A' : '#2E7D32') + ';">' + leaseMoney(unpaid) + '</td>' +
       '<td style="padding:3px 6px;font-size:12px;text-align:center;white-space:nowrap;">' + (paid ? '<span style="color:#2E7D32;font-weight:700;">已收款</span>' : '<span style="color:#C0524A;font-weight:700;">未繳</span>') + '</td>'
     var unlockLabel = r.locked ? '<br><span style="font-size:11px;color:#E07B39;">已解鎖</span>' : ''
-    var parkNote = (r.note && !r.locked) ? '<br><span style="font-size:11px;color:#B07A2E;">🅿️ ' + esc(r.note) + '</span>' : ''
+    var _noteStr = (r.note || '').trim()
+    // 隱藏「只是重複期間的日期範圍」這種備註（Ragic 同步殘留），並依內容選圖示（停車才用 🅿️）
+    var _isDateRange = /^\d{2,4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*[~\-]\s*\d{2,4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(_noteStr)
+    var _noteIcon = /停車|車位/.test(_noteStr) ? '🅿️' : '📝'
+    var parkNote = (_noteStr && !r.locked && !_isDateRange) ? '<br><span style="font-size:11px;color:#B07A2E;">' + _noteIcon + ' ' + esc(_noteStr) + '</span>' : ''
     return '<tr>' +
       '<td style="padding:4px 6px;font-size:12px;">' + r.index + '</td>' +
       '<td style="padding:3px;">' +
