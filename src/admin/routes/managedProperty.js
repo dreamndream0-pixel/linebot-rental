@@ -75,6 +75,10 @@ function startOfDay(d) {
   return x
 }
 
+function dateTime(d) {
+  return d ? new Date(d).getTime() : 0
+}
+
 function safeParse(s) {
   try { return JSON.parse(s) } catch { return null }
 }
@@ -114,6 +118,67 @@ function effectiveRent(lease) {
   return rent
 }
 
+function isHiddenRentPayment(p) {
+  return p && p.note === HIDDEN_RENT_PAYMENT_NOTE
+}
+
+function isPaidRentPayment(p) {
+  return !!(p && (p.paidAmount || 0) > 0)
+}
+
+function isValidRentPeriod(p) {
+  return !!(p && p.periodStart && p.periodEnd && dateTime(p.periodEnd) >= dateTime(p.periodStart))
+}
+
+function rentPeriodsOverlap(a, b) {
+  if (!isValidRentPeriod(a) || !isValidRentPeriod(b)) return false
+  return dateTime(a.periodStart) <= dateTime(b.periodEnd) && dateTime(b.periodStart) <= dateTime(a.periodEnd)
+}
+
+function rentPeriodDuration(p) {
+  return Math.max(0, dateTime(p.periodEnd) - dateTime(p.periodStart))
+}
+
+async function hideInvalidOrDuplicateRentPayments(leaseId) {
+  const rows = await prisma.rentPayment.findMany({
+    where: { leaseId },
+    orderBy: [{ periodStart: 'asc' }, { createdAt: 'asc' }],
+  })
+  const visible = rows
+    .filter(p => !isHiddenRentPayment(p))
+    .sort((a, b) => {
+      const byStart = dateTime(a.periodStart) - dateTime(b.periodStart)
+      if (byStart) return byStart
+      const byPaid = Number(isPaidRentPayment(b)) - Number(isPaidRentPayment(a))
+      if (byPaid) return byPaid
+      const byDuration = rentPeriodDuration(b) - rentPeriodDuration(a)
+      if (byDuration) return byDuration
+      return dateTime(a.createdAt) - dateTime(b.createdAt)
+    })
+  const keep = []
+  const hideIds = []
+  for (const p of visible) {
+    if (!isValidRentPeriod(p)) {
+      if (!isPaidRentPayment(p)) hideIds.push(p.id)
+      else keep.push(p)
+      continue
+    }
+    const overlapped = keep.some(k => rentPeriodsOverlap(k, p))
+    if (overlapped && !isPaidRentPayment(p)) {
+      hideIds.push(p.id)
+    } else {
+      keep.push(p)
+    }
+  }
+  if (hideIds.length) {
+    await prisma.rentPayment.updateMany({
+      where: { id: { in: hideIds }, paidAmount: 0 },
+      data: { note: HIDDEN_RENT_PAYMENT_NOTE, settled: true },
+    })
+  }
+  return { hiddenRentDuplicates: hideIds.length }
+}
+
 function buildRentSchedule(lease, rentPayments) {
   if (!lease.leaseStart) return []
   const months = cycleMonths(lease.paymentCycle)
@@ -131,17 +196,18 @@ function buildRentSchedule(lease, rentPayments) {
   // 優先已繳款者；都未繳則保留「非 Ragic 民國日期備註」那筆（系統為主）。
   const _isRagicDateNote = (s) => /^\s*\d{2,4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*[~\-]/.test(String(s || ''))
   const _betterRow = (a, b) => {
-    const pa = (a.paidAmount || 0) > 0, pb = (b.paidAmount || 0) > 0
+    const pa = isPaidRentPayment(a), pb = isPaidRentPayment(b)
     if (pa !== pb) return pa ? a : b
     const ra = _isRagicDateNote(a.note), rb = _isRagicDateNote(b.note)
     if (ra !== rb) return ra ? b : a
+    if (rentPeriodDuration(a) !== rentPeriodDuration(b)) return rentPeriodDuration(a) > rentPeriodDuration(b) ? a : b
     return a
   }
   const dedupedStored = []
   stored.forEach(p => {
-    if (p.note === HIDDEN_RENT_PAYMENT_NOTE) return
-    const ps = new Date(p.periodStart).getTime(), pe = new Date(p.periodEnd).getTime()
-    const idx = dedupedStored.findIndex(k => new Date(k.periodStart).getTime() <= pe && new Date(k.periodEnd).getTime() >= ps)
+    if (isHiddenRentPayment(p)) return
+    if (!isValidRentPeriod(p) && !isPaidRentPayment(p)) return
+    const idx = dedupedStored.findIndex(k => rentPeriodsOverlap(k, p))
     if (idx === -1) dedupedStored.push(p)
     else dedupedStored[idx] = _betterRow(dedupedStored[idx], p)
   })
@@ -276,6 +342,7 @@ function utilityReceiptDescription(reading, lease, payMethod) {
 }
 
 async function ensureLeaseLedgerRecords(lease) {
+  const hidden = await hideInvalidOrDuplicateRentPayments(lease.id)
   const [rentPayments, utilityReadings] = await Promise.all([
     prisma.rentPayment.findMany({ where: { leaseId: lease.id } }),
     prisma.utilityReading.findMany({ where: { leaseId: lease.id } }),
@@ -381,14 +448,15 @@ async function ensureLeaseLedgerRecords(lease) {
     }
   }
 
-  return { rentCreated, rentLinked, utilityCreated, utilityLinked }
+  return { ...hidden, rentCreated, rentLinked, utilityCreated, utilityLinked }
 }
 
 async function ensureManagedPropertyLedgerRecords(managedPropertyId) {
   const leases = await prisma.lease.findMany({ where: { managedPropertyId } })
-  const total = { rentCreated: 0, rentLinked: 0, utilityCreated: 0, utilityLinked: 0 }
+  const total = { hiddenRentDuplicates: 0, rentCreated: 0, rentLinked: 0, utilityCreated: 0, utilityLinked: 0 }
   for (const lease of leases) {
     const result = await ensureLeaseLedgerRecords(lease)
+    total.hiddenRentDuplicates += result.hiddenRentDuplicates || 0
     total.rentCreated += result.rentCreated
     total.rentLinked += result.rentLinked
     total.utilityCreated += result.utilityCreated
@@ -1757,12 +1825,22 @@ router.post('/admin/api/managed/lease/:leaseId/payment', express.json(), async (
     const dueDate = b.dueDate ? startOfDay(b.dueDate) : null
     const amount = parseInt(b.amount) || paidAmount
     if (!periodStart || !periodEnd || !dueDate) return res.status(400).json({ error: '缺少租金期別資料' })
+    if (periodEnd < periodStart) return res.status(400).json({ error: '租金期別結束日不能早於開始日' })
 
     let existing = b.rentPaymentId ? await prisma.rentPayment.findFirst({ where: { id: b.rentPaymentId, leaseId: lease.id } }) : null
     if (!existing) {
       existing = await prisma.rentPayment.findFirst({
         where: { leaseId: lease.id, periodStart, dueDate },
       })
+    }
+    const overlapRows = await prisma.rentPayment.findMany({ where: { leaseId: lease.id } })
+    const conflict = overlapRows.find(p => {
+      if (isHiddenRentPayment(p)) return false
+      if (existing && p.id === existing.id) return false
+      return rentPeriodsOverlap(p, { periodStart, periodEnd })
+    })
+    if (conflict) {
+      return res.status(400).json({ error: `租金期別與既有明細重疊：${ymd(conflict.periodStart)}~${ymd(conflict.periodEnd)}` })
     }
 
     let recordId = existing?.recordId || null
