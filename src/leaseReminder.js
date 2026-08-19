@@ -229,19 +229,95 @@ function rentReminderFlex(lease) {
 
 // 租金收款確認（房東登記收款後推播給房客）
 function rentReceiptFlex(lease) {
-  const rows = []
-  if (lease.periodStartStr && lease.periodEndStr) rows.push(remRow('租金期間', fmtYMD(lease.periodStartStr) + ' → ' + fmtYMD(lease.periodEndStr)))
-  if (lease.paidDateStr) rows.push(remRow('繳款日期', fmtYMD(lease.paidDateStr)))
-  if (lease.payMethod) rows.push(remRow('繳費方式', String(lease.payMethod)))
-  return reminderBubble({
-    alt: '租金收款確認', title: '租金收款確認',
-    subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
-    subColor: '#DCEBDD', accent: '#5E8663', tint: '#EFF5EF', deep: '#3E6144',
-    tenant: lease.tenantName, intro: '已收到您的租金，感謝您的配合',
-    amountLabel: '本次已收金額', amount: Number(lease.paidAmount || 0), dueStr: null,
-    detailTitle: '繳費明細', rows: rows,
-    footer: '如有疑問請與我們聯繫，謝謝您',
+  const period = (lease.periodStartStr && lease.periodEndStr)
+    ? fmtYMD(lease.periodStartStr) + ' ~ ' + fmtYMD(lease.periodEndStr)
+    : '—'
+  const paidDate = lease.paidDateStr ? fmtYMD(lease.paidDateStr) : '—'
+  const payMethod = lease.payMethod ? String(lease.payMethod) : '—'
+  const property = lease.managedTitle + (lease.roomLabel ? ' · ' + lease.roomLabel : '')
+  const infoRow = (label, value, color) => ({
+    type: 'box',
+    layout: 'horizontal',
+    paddingAll: '10px',
+    backgroundColor: '#F8FAF7',
+    cornerRadius: '10px',
+    margin: 'sm',
+    contents: [
+      { type: 'text', text: label, size: 'xs', color: '#8C877D', flex: 4, wrap: true },
+      { type: 'text', text: String(value), size: 'sm', color: color || '#2F342F', weight: 'bold', flex: 8, align: 'end', wrap: true },
+    ],
   })
+  return {
+    type: 'flex',
+    altText: '租金收款確認',
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#5E8663',
+        paddingAll: '16px',
+        spacing: 'sm',
+        contents: [
+          {
+            type: 'box',
+            layout: 'horizontal',
+            contents: [
+              { type: 'text', text: '租金收款確認', color: '#FFFFFF', weight: 'bold', size: 'lg', flex: 7 },
+              {
+                type: 'box',
+                layout: 'vertical',
+                backgroundColor: '#EAF5EA',
+                cornerRadius: '999px',
+                paddingAll: '5px',
+                flex: 3,
+                contents: [{ type: 'text', text: '已收款', color: '#2E7D46', size: 'xs', weight: 'bold', align: 'center' }],
+              },
+            ],
+          },
+          { type: 'text', text: property, color: '#DCEBDD', size: 'sm', wrap: true },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: '16px',
+        spacing: 'none',
+        contents: [
+          { type: 'text', text: lease.tenantName + ' 您好', weight: 'bold', size: 'md', color: '#2B2B2B' },
+          { type: 'text', text: '我們已收到您的租金款項，以下為本次收款明細。', size: 'sm', color: '#8C877D', wrap: true, margin: 'xs' },
+          {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: '#EFF5EF',
+            cornerRadius: '14px',
+            paddingAll: '14px',
+            margin: 'md',
+            contents: [
+              { type: 'text', text: '本次已收金額', size: 'xs', color: '#3E6144' },
+              { type: 'text', text: 'NT$ ' + Number(lease.paidAmount || 0).toLocaleString(), size: 'xxl', color: '#3E6144', weight: 'bold', margin: 'xs', wrap: true },
+            ],
+          },
+          { type: 'text', text: '收款明細', size: 'xs', color: '#B0A891', weight: 'bold', margin: 'lg' },
+          { type: 'separator', margin: 'sm', color: '#ECE6DA' },
+          infoRow('租金期間', period),
+          infoRow('繳款日期', paidDate),
+          infoRow('繳費方式', payMethod),
+          infoRow('房源房號', property, '#3E6144'),
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: '12px',
+        contents: [
+          { type: 'text', text: '此訊息為收款確認通知，請安心保留作為紀錄。', size: 'xs', color: '#AEA89C', wrap: true, align: 'center' },
+        ],
+      },
+      styles: { footer: { separator: true } },
+    },
+  }
 }
 
 // 水電收款確認（房東登記收款後推播給房客）
