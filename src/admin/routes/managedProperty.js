@@ -126,9 +126,27 @@ function buildRentSchedule(lease, rentPayments) {
   const stored = (rentPayments || [])
     .slice()
     .sort((a, b) => new Date(a.periodStart) - new Date(b.periodStart))
-  let storedIndex = 0
-  stored.forEach((p) => {
+  // 去重 + 隱藏被隱藏的產生期別：Ragic 同步與系統合約可能為「同一段期間」各建一筆
+  // （起始日差幾天／金額不同）而重複。同段期間（期間重疊）只保留一筆：
+  // 優先已繳款者；都未繳則保留「非 Ragic 民國日期備註」那筆（系統為主）。
+  const _isRagicDateNote = (s) => /^\s*\d{2,4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*[~\-]/.test(String(s || ''))
+  const _betterRow = (a, b) => {
+    const pa = (a.paidAmount || 0) > 0, pb = (b.paidAmount || 0) > 0
+    if (pa !== pb) return pa ? a : b
+    const ra = _isRagicDateNote(a.note), rb = _isRagicDateNote(b.note)
+    if (ra !== rb) return ra ? b : a
+    return a
+  }
+  const dedupedStored = []
+  stored.forEach(p => {
     if (p.note === HIDDEN_RENT_PAYMENT_NOTE) return
+    const ps = new Date(p.periodStart).getTime(), pe = new Date(p.periodEnd).getTime()
+    const idx = dedupedStored.findIndex(k => new Date(k.periodStart).getTime() <= pe && new Date(k.periodEnd).getTime() >= ps)
+    if (idx === -1) dedupedStored.push(p)
+    else dedupedStored[idx] = _betterRow(dedupedStored[idx], p)
+  })
+  let storedIndex = 0
+  dedupedStored.forEach((p) => {
     const paidAmt = p.paidAmount || 0
     storedIndex += 1
     rows.push({
@@ -151,7 +169,7 @@ function buildRentSchedule(lease, rentPayments) {
     })
   })
 
-  const lastStoredEnd = stored.reduce((max, p) => {
+  const lastStoredEnd = dedupedStored.reduce((max, p) => {
     const t = new Date(p.periodEnd).getTime()
     return t > max ? t : max
   }, 0)
