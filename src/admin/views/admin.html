@@ -7351,9 +7351,15 @@ function renderContractManager() {
   var m = MANAGED.current
   function fmtDate(d) { return d ? new Date(d).toISOString().slice(0,10) : '' }
   var leases = MANAGED.leases || []
-  // 生效中 vs 已過期/已終止
-  var activeLeases = leases.filter(function(l){ return l.status === 'ACTIVE' })
-  var inactiveLeases = leases.filter(function(l){ return l.status !== 'ACTIVE' })
+  // 生效中：狀態為 ACTIVE 且未過租期（leaseEnd 早於今天者視為已到期，不算生效中）
+  function isActiveNow(l) {
+    if (l.status !== 'ACTIVE') return false
+    if (!l.leaseEnd) return true
+    var end = new Date(l.leaseEnd); end.setHours(23, 59, 59, 999)
+    return end.getTime() >= Date.now()
+  }
+  var activeLeases = leases.filter(isActiveNow)
+  var inactiveLeases = leases.filter(function(l){ return !isActiveNow(l) })
   var rooms = contractRoomList()
 
   // 房號 → 生效中合約（同房號取第一筆）
@@ -7422,7 +7428,7 @@ function renderContractManager() {
 
   // 已過期／已終止（可收合）
   var inactiveRows = inactiveLeases.map(function(l){
-    var statusLabel = { ENDED:'已終止', EXPIRED:'已到期' }[l.status] || l.status
+    var statusLabel = { ENDED:'已終止', EXPIRED:'已到期' }[l.status] || (l.status === 'ACTIVE' ? '已到期' : l.status)
     var settled = l.settledAt ? '　·　已結算 ' + fmtDate(l.endedAt || l.settledAt) + (l.earlyTerminated ? '（提前終止）' : '') : ''
     return '<tr>' +
       '<td style="padding:8px;font-size:13px;color:#666;">' + esc(l.roomLabel || '—') + '</td>' +
