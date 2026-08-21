@@ -491,6 +491,16 @@ router.get('/admin/api/managed/:id', async (req, res) => {
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
 
   try {
+    // light 模式：只需物業基本資料（例如「合約租約」視窗），
+    // 不撈收支/撥款、也跳過耗時的收支帳補建，加快開啟速度
+    if (req.query.light) {
+      const lite = await prisma.managedProperty.findUnique({ where: { id: req.params.id } })
+      if (!lite) return res.status(404).json({ error: 'not found' })
+      if (auth.role !== 'super' && lite.landlordId !== auth.landlordId) {
+        return res.status(403).json({ error: 'forbidden' })
+      }
+      return res.json(lite)
+    }
     const item = await prisma.managedProperty.findUnique({
       where: { id: req.params.id },
       include: {
@@ -1196,6 +1206,35 @@ router.post('/admin/api/managed/:id/contract', express.json(), async (req, res) 
   }
 })
 
+// ── 設定某物業的房號清單（用來顯示空房位與新增合約） ──────────
+router.post('/admin/api/managed/:id/rooms', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const mp = await prisma.managedProperty.findUnique({ where: { id: req.params.id } })
+    if (!mp) return res.status(404).json({ error: 'not found' })
+    if (auth.role !== 'super' && mp.landlordId !== auth.landlordId) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+    // 接受陣列或以逗號/換行分隔的字串；去除空白、去重、保序
+    let raw = req.body && req.body.rooms
+    let list = Array.isArray(raw) ? raw : String(raw || '').split(/[\n,、，]+/)
+    const seen = {}
+    const rooms = list.map(s => String(s || '').trim()).filter(s => {
+      if (!s || seen[s]) return false
+      seen[s] = 1
+      return true
+    })
+    const updated = await prisma.managedProperty.update({
+      where: { id: req.params.id },
+      data: { roomLabels: rooms.length ? JSON.stringify(rooms) : null },
+    })
+    res.json({ ok: true, rooms, roomLabels: updated.roomLabels })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ── 租賃合約：列出某物業的所有租約 ────────────────────────────
 router.get('/admin/api/managed/:id/leases', async (req, res) => {
   const auth = await resolveRole(req.query.key)
@@ -1419,14 +1458,25 @@ router.get('/admin/api/managed-leases', async (req, res) => {
     if (auth.role !== 'super') {
       where.managedProperty = { landlordId: auth.landlordId }
     }
+    // 只載入承租中（DB status=ACTIVE）合約的租金明細——只有它們需要算下期租金；
+    // 已終止合約不需要，避免把大量歷史租金明細全撈回來拖慢清單開啟。
     const leases = await prisma.lease.findMany({
       where,
       include: {
         managedProperty: { select: { id: true, title: true, ownerName: true } },
-        rentPayments: { orderBy: { periodStart: 'asc' } },
       },
       orderBy: { leaseEnd: 'asc' },
     })
+    const activeIds = leases.filter(l => l.status === 'ACTIVE').map(l => l.id)
+    const rentPaymentsByLease = {}
+    if (activeIds.length) {
+      const rps = await prisma.rentPayment.findMany({
+        where: { leaseId: { in: activeIds } },
+        orderBy: { periodStart: 'asc' },
+      })
+      rps.forEach(rp => { (rentPaymentsByLease[rp.leaseId] = rentPaymentsByLease[rp.leaseId] || []).push(rp) })
+    }
+    leases.forEach(l => { l.rentPayments = rentPaymentsByLease[l.id] || [] })
 
     const now = new Date()
     const today = startOfDay(now)
