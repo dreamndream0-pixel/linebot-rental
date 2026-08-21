@@ -5717,19 +5717,57 @@ function escapeHtml(s) {
     return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]
   })
 }
+// 操作紀錄摘要：把後台留存的欄位 JSON 轉成中文可讀說明
+var AUDIT_KEY_MAP = {
+  kind:'類型', amount:'金額', paidAmount:'已繳金額', paidDate:'繳款日',
+  payMethod:'付款方式', dueDate:'應繳日', note:'備註', mode:'模式',
+  muted:'靜音', featured:'精選', name:'名稱', title:'標題', room:'房號',
+  roomNo:'房號', meterRate:'每度電價', startDegree:'起始度數', endDegree:'結算度數',
+  usedDegree:'使用度數', settled:'已結清', deleted:'刪除筆數', ids:'筆數',
+  rent:'租金', discountType:'折扣類型', discountValue:'折扣值', paymentCycle:'繳費週期',
+  tenantName:'房客', receiptUrl:'收據', text:'內容', message:'內容', enabled:'啟用'
+}
+var AUDIT_VAL_MAP = { RENT:'租金', UTIL:'水電費', UTILITY:'水電費', 'true':'是', 'false':'否', off:'關閉', auto:'自動發送', confirm:'先確認再送' }
+var AUDIT_SKIP_KEY = { rentPaymentId:1, recordId:1, leaseId:1, id:1, userId:1, lineUserId:1 }
+function auditVal(v) {
+  var s = String(v)
+  return AUDIT_VAL_MAP.hasOwnProperty(s) ? AUDIT_VAL_MAP[s] : s
+}
+function translateAuditSummary(raw) {
+  if (!raw) return ''
+  var obj
+  try { obj = JSON.parse(raw) } catch (e) { return escapeHtml(raw) }
+  if (!obj || typeof obj !== 'object') return escapeHtml(raw)
+  var parts = []
+  // 期間起訖合併顯示
+  if (obj.periodStart || obj.periodEnd) {
+    parts.push('期間：' + (obj.periodStart || '?') + '～' + (obj.periodEnd || '?'))
+    delete obj.periodStart; delete obj.periodEnd
+  }
+  Object.keys(obj).forEach(function(k) {
+    if (AUDIT_SKIP_KEY[k]) return
+    var v = obj[k]
+    if (v == null || v === '') return
+    if (k === 'receiptUrl') { parts.push('收據：有'); return }
+    var label = AUDIT_KEY_MAP[k] || k
+    parts.push(label + '：' + auditVal(v))
+  })
+  return escapeHtml(parts.join('・'))
+}
 function renderAuditRows(logs) {
   if (!logs || !logs.length) return '<div class="empty" style="padding:24px;text-align:center;color:#999;">尚無操作紀錄</div>'
   return logs.map(function(r) {
     var d = new Date(r.createdAt)
     var when = isNaN(d) ? '' : (d.getFullYear() + '/' + ('0'+(d.getMonth()+1)).slice(-2) + '/' + ('0'+d.getDate()).slice(-2) + ' ' + ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2))
     var actor = escapeHtml(r.actorLabel || '未知') + '（' + auditRoleLabel(r.actorRole) + '）'
-    var summary = r.summary ? '<div style="font-size:11px;color:#888;margin-top:3px;word-break:break-all;">' + escapeHtml(r.summary) + '</div>' : ''
+    var detail = translateAuditSummary(r.summary)
+    var summary = detail ? '<div style="font-size:12px;color:#666;margin-top:3px;word-break:break-all;line-height:1.6;">' + detail + '</div>' : ''
     return '<div style="padding:10px 4px;border-bottom:1px solid #eee;">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">' +
         '<span style="font-weight:600;font-size:13px;">' + escapeHtml(r.action || r.path) + auditStatusBadge(r.status) + '</span>' +
         '<span style="font-size:11px;color:#aaa;white-space:nowrap;">' + when + '</span>' +
       '</div>' +
-      '<div style="font-size:12px;color:#666;margin-top:2px;">' + actor + '　·　<span style="color:#999;">' + escapeHtml(r.method) + ' ' + escapeHtml(r.path) + '</span></div>' +
+      '<div style="font-size:12px;color:#888;margin-top:2px;">' + actor + '</div>' +
       summary +
     '</div>'
   }).join('')
