@@ -1531,8 +1531,9 @@ router.get('/admin/api/managed-leases', async (req, res) => {
       let nextRentDate = null
       let daysToRent = null
       let nextRentAmount = null
-      let arrearsCount = 0      // 尚欠期數（應繳日已到、仍未繳清）
+      let arrearsCount = 0      // 尚欠期數（合約內所有未繳期別，含未到期）
       let arrearsTotal = 0      // 尚欠總金額
+      let overdueCount = 0      // 其中「應繳日已到仍未繳」的期數（用來強調逾期）
       let fullyPaid = false     // 合約內所有期別都已繳清（含未到期）才為 true
       try {
         if (l.leaseEnd) {
@@ -1545,11 +1546,12 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         // 用租金明細排程計算：尚欠期數/金額（應繳日已到仍未繳）與下一筆未繳。
         if (l.status === 'ACTIVE') {
           const sched = buildRentSchedule(l, l.rentPayments)
-          const owed = sched.filter(r => (r.unpaid || 0) > 0 && r.dueDate && startOfDay(r.dueDate) <= today)
-          arrearsCount = owed.length
-          arrearsTotal = owed.reduce((s, r) => s + (r.unpaid || 0), 0)
+          const unpaidRows = sched.filter(r => (r.unpaid || 0) > 0)
+          arrearsCount = unpaidRows.length
+          arrearsTotal = unpaidRows.reduce((s, r) => s + (r.unpaid || 0), 0)
+          overdueCount = unpaidRows.filter(r => r.dueDate && startOfDay(r.dueDate) <= today).length
           // 已繳清＝合約內每一期（含尚未到期）都無欠款
-          fullyPaid = sched.length > 0 && !sched.some(r => (r.unpaid || 0) > 0)
+          fullyPaid = sched.length > 0 && arrearsCount === 0
           const nextRent = sched
             .filter(r => (r.unpaid || 0) > 0 && r.dueDate)
             .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0] || null
@@ -1585,6 +1587,7 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         daysToRent,
         arrearsCount,
         arrearsTotal,
+        overdueCount,
         fullyPaid,
         managedTitle: l.managedProperty ? l.managedProperty.title : '未連結物業',
         managedId: l.managedProperty ? l.managedProperty.id : '',
