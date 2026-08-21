@@ -5728,7 +5728,10 @@ var AUDIT_KEY_MAP = {
   tenantName:'房客', receiptUrl:'收據', text:'內容', message:'內容', enabled:'啟用'
 }
 var AUDIT_VAL_MAP = { RENT:'租金', UTIL:'水電費', UTILITY:'水電費', 'true':'是', 'false':'否', off:'關閉', auto:'自動發送', confirm:'先確認再送' }
-var AUDIT_SKIP_KEY = { rentPaymentId:1, recordId:1, leaseId:1, id:1, userId:1, lineUserId:1 }
+// 內部識別碼一律不顯示：id、任何以 Id 結尾的鍵（readingId、recordId、leaseId…）
+function auditSkipKey(k) {
+  return k === 'id' || /Id$/.test(k) || /^lineUserId$/i.test(k)
+}
 function auditVal(v) {
   var s = String(v)
   return AUDIT_VAL_MAP.hasOwnProperty(s) ? AUDIT_VAL_MAP[s] : s
@@ -5745,7 +5748,7 @@ function translateAuditSummary(raw) {
     delete obj.periodStart; delete obj.periodEnd
   }
   Object.keys(obj).forEach(function(k) {
-    if (AUDIT_SKIP_KEY[k]) return
+    if (auditSkipKey(k)) return
     var v = obj[k]
     if (v == null || v === '') return
     if (k === 'receiptUrl') { parts.push('收據：有'); return }
