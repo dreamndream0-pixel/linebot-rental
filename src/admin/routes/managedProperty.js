@@ -2017,6 +2017,66 @@ router.post('/admin/api/managed/lease/:leaseId/rent-payment/hide', express.json(
   }
 })
 
+// 清除重複租金明細：同一段期間（相同起始日或期間重疊）若有多筆，只保留一筆，其餘刪除。
+// 保留優先序：已繳款 > 期間有效（迄日不早於起日）> 非 Ragic 民國日期備註（系統合約為主）。
+router.post('/admin/api/managed/lease/:leaseId/rent-payment/dedup', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+
+    const _isRagicDateNote = (s) => /^\s*\d{2,4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*[~\-]/.test(String(s || ''))
+    const _valid = (p) => new Date(p.periodEnd).getTime() >= new Date(p.periodStart).getTime()
+    // 回傳「較該保留」的那一筆
+    const _betterRow = (a, b) => {
+      const pa = (a.paidAmount || 0) > 0, pb = (b.paidAmount || 0) > 0
+      if (pa !== pb) return pa ? a : b
+      const va = _valid(a), vb = _valid(b)
+      if (va !== vb) return va ? a : b
+      const ra = _isRagicDateNote(a.note), rb = _isRagicDateNote(b.note)
+      if (ra !== rb) return ra ? b : a
+      return a
+    }
+
+    const all = await prisma.rentPayment.findMany({ where: { leaseId: lease.id } })
+    // 隱藏標記列不納入去重
+    const rows = all.filter(p => p.note !== HIDDEN_RENT_PAYMENT_NOTE)
+      .slice().sort((a, b) => new Date(a.periodStart) - new Date(b.periodStart))
+
+    // 分組：相同起始日（同一天）或期間重疊者視為同一期
+    const dayKey = (d) => startOfDay(d).getTime()
+    const groups = []
+    for (const p of rows) {
+      const ps = new Date(p.periodStart).getTime()
+      const pe = new Date(p.periodEnd).getTime()
+      const g = groups.find(grp => grp.some(k => {
+        const ks = new Date(k.periodStart).getTime(), ke = new Date(k.periodEnd).getTime()
+        return dayKey(k.periodStart) === dayKey(p.periodStart) || (ks <= pe && ke >= ps)
+      }))
+      if (g) g.push(p); else groups.push([p])
+    }
+
+    const toDelete = []
+    for (const g of groups) {
+      if (g.length < 2) continue
+      let keep = g[0]
+      for (let i = 1; i < g.length; i++) keep = _betterRow(keep, g[i])
+      for (const p of g) if (p.id !== keep.id) toDelete.push(p)
+    }
+
+    for (const p of toDelete) {
+      if (p.recordId) await prisma.managementRecord.deleteMany({ where: { id: p.recordId } })
+      await prisma.rentPayment.delete({ where: { id: p.id } })
+    }
+
+    res.json({ ok: true, deleted: toDelete.length })
+  } catch (e) {
+    console.error('清除重複租金明細失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 router.delete('/admin/api/managed/lease/:leaseId/utility-reading/:readingId', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })

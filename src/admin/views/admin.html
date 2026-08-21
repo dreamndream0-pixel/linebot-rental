@@ -8495,7 +8495,8 @@ async function openLeaseLedger(leaseId) {
       '</div>' +
       '<button class="btn spin-btn" style="width:100%;padding:10px;font-size:14px;" onclick="btnLoad(this,function(){return addLeaseRecord(\'' + l.managedId + '\',\'' + l.id + '\')})">新增</button>' +
     '</div>' +
-    '<h4 style="margin:14px 0 10px;font-size:15px;">租金繳納明細</h4>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 10px;"><h4 style="margin:0;font-size:15px;">租金繳納明細</h4>' +
+      '<button class="btn spin-btn" style="padding:5px 12px;font-size:12px;background:#C0524A;color:#fff;" onclick="btnLoad(this,function(){return dedupRentPayments(\'' + l.id + '\')})">清除重複</button></div>' +
     '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:1030px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="13" style="padding:6px;text-align:center;font-size:13px;">租金明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">期別</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">說明(起訖)</th><th style="padding:5px 6px;text-align:right;font-size:12px;white-space:nowrap;">應繳租金</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">應繳日期</th><th style="padding:5px 6px;text-align:right;font-size:12px;white-space:nowrap;">未繳差額</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">狀態</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">已繳金額</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">繳款日期</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">方式</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">匯款圖</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">儲存</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">提醒</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">刪除</th></tr></thead><tbody id="rentTbody_' + l.id + '">' + renderRentBillingRows(billing.rentSchedule || [], l.id) + '</tbody></table></div>' +
     '<h4 style="margin:14px 0 10px;font-size:15px;">水電明細表</h4>'
  +
@@ -8595,6 +8596,15 @@ function unlockRow(key, leaseId, tableType) {
     var tbody = document.getElementById('utilTbody_' + leaseId)
     if (tbody) tbody.innerHTML = renderUtilityBillingRows(_LAST_BILLING.utilityReadings || [], leaseId)
   }
+}
+
+async function dedupRentPayments(leaseId) {
+  if (!confirm('將自動清除「同一期間重複」的租金明細（同段期間只保留一筆，優先保留已繳款／系統合約），確定執行？')) return
+  var res = await fetch('/admin/api/managed/lease/' + leaseId + '/rent-payment/dedup?key=' + encodeURIComponent(KEY), { method: 'POST' })
+  var data = {}; try { data = await res.json() } catch(e) {}
+  if (!res.ok) { showToast('❌ 清除失敗：' + (data.error || res.status)); return }
+  showToast(data.deleted ? ('✅ 已清除 ' + data.deleted + ' 筆重複明細') : '✅ 沒有發現重複明細')
+  openLeaseLedger(leaseId)
 }
 
 async function deleteRentPayment(leaseId, paymentId) {
