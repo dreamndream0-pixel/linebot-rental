@@ -19,19 +19,35 @@ const SENSITIVE_KEYS = /(password|passwd|pwd|key|token|secret|adminkey|channelto
 // 依 method + 路徑推斷中文操作名稱
 function describeAction(method, pathname) {
   const p = pathname.replace(/\/admin\/api\/?/, '')
-  const table = [
+  // 有些操作的動作固定（不依 method 加動詞），直接回傳完整中文名稱
+  const fixed = [
+    [/managed\/lease\/[^/]+\/rent-payment\/dedup/, '清除重複租金明細'],
+    [/managed\/lease\/[^/]+\/rent-payment\/hide/, '隱藏租金期別'],
+    [/managed\/lease\/[^/]+\/rent-payment/, method === 'DELETE' ? '清除繳費記錄' : '登記租金繳費'],
+    [/managed\/lease\/[^/]+\/utility-reading/, method === 'DELETE' ? '刪除水電記錄' : '登記水電抄表'],
+    [/managed\/lease\/[^/]+\/settle-notify/, '發送結算通知'],
+    [/managed\/lease\/[^/]+\/settle/, '合約結算'],
+    [/managed\/lease\/[^/]+\/renew/, '續約'],
+    [/managed\/lease\/[^/]+\/payment/, '繳費登記'],
+    [/managed\/lease\/[^/]+\/remind/, '發送繳費提醒'],
+    [/managed\/lease\/[^/]+\/receipt/, '發送收據'],
+    [/managed\/lease\/[^/]+\/contract/, '設定合約'],
+    [/managed\/lease\/[^/]+$/, method === 'DELETE' ? '刪除租約' : '更新租約'],
+    [/managed\/[^/]+\/lease$/, '新增租約'],
     [/managed-broadcast/, 'LINE 群發'],
     [/managed-import-taipower/, '匯入台電帳單'],
+    [/managed-rent-reminder-test/, '測試租金提醒'],
+    [/managed-rent-reminder-mode/, '設定自動租金提醒'],
+    [/properties\/batch-featured/, '房源精選設定'],
+  ]
+  for (const [re, label] of fixed) if (re.test(p)) return label
+  // 其餘依 method 加動詞
+  const table = [
     [/managed-report/, '收支報表'],
     [/managed-leases/, '租約資料'],
     [/bot-mute/, 'Bot 靜音設定'],
-    [/managed\/[^/]+\/settle-notify/, '結算通知'],
-    [/managed\/[^/]+\/settle/, '合約結算'],
-    [/managed\/[^/]+\/renew/, '續約'],
-    [/managed\/[^/]+\/payment/, '繳費登記'],
-    [/managed\/[^/]+\/remind/, '發送繳費提醒'],
-    [/managed\/[^/]+\/receipt/, '發送收據'],
     [/managed\/[^/]+\/record/, '管理紀錄'],
+    [/managed\/[^/]+\/payout/, '撥款作業'],
     [/managed/, '包租代管'],
     [/smartlock|lock/, '智慧門鎖'],
     [/tenant/, '租客資料'],
