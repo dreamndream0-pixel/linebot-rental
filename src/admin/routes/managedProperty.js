@@ -1712,6 +1712,31 @@ router.post('/admin/api/managed/lease/:leaseId/settle', express.json(), async (r
         settleNote: b.note || null,
       },
     })
+    // 結算退款 → 記一筆「支出」（退還房客的錢，計入淨額）；可重複結算時覆蓋更新，退款≤0 則移除
+    try {
+      const SETTLE_REFUND_TAG = '[settle-refund]'
+      const existingRefund = await prisma.managementRecord.findFirst({
+        where: { leaseId: lease.id, type: 'EXPENSE', category: '退款', description: { startsWith: SETTLE_REFUND_TAG } },
+      })
+      if (refund > 0) {
+        const refundData = {
+          managedPropertyId: lease.managedPropertyId,
+          leaseId: lease.id,
+          type: 'EXPENSE',
+          category: '退款',
+          amount: refund,
+          recordDate: settledAt,
+          description: `${SETTLE_REFUND_TAG} 結算退款（押金 ${deposit.toLocaleString()}＋預收 ${prepaid.toLocaleString()}−應扣 ${deductTotal.toLocaleString()}）`,
+        }
+        if (existingRefund) {
+          if (!existingRefund.payoutId) await prisma.managementRecord.update({ where: { id: existingRefund.id }, data: refundData })
+        } else {
+          await prisma.managementRecord.create({ data: refundData })
+        }
+      } else if (existingRefund && !existingRefund.payoutId) {
+        await prisma.managementRecord.delete({ where: { id: existingRefund.id } })
+      }
+    } catch (e) { console.error('結算退款支出記錄失敗:', e.message) }
     // 若在結算頁直接抄表 → 記錄一筆電費明細（已從押金扣抵，標記為已繳避免後續列為未收）
     try {
       const mr = b.meterReading
