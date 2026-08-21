@@ -7375,10 +7375,11 @@ function renderContractManager() {
   }
   // 跳色間隔背景
   function rowBg(i) { return (i % 2 === 0) ? '#FFFFFF' : '#F5F2EC' }
-  // 條列式：生效中合約列（緊湊、日期不換行）
-  function occupiedRow(room, l, i) {
-    return '<tr style="background:' + rowBg(i) + ';">' +
-      '<td style="padding:6px 8px;font-size:13px;font-weight:700;color:#26362D;white-space:nowrap;">' + esc(room || l.roomLabel || '—') + '</td>' +
+  // 條列式：生效中合約列（緊湊、日期不換行）；dupNote 用來標示同房號重複
+  function occupiedRow(room, l, i, dupNote) {
+    var roomCell = esc(room || l.roomLabel || '—') + (dupNote ? '<br><span style="font-size:10px;color:#C0524A;font-weight:400;white-space:nowrap;">' + dupNote + '</span>' : '')
+    return '<tr style="background:' + (dupNote ? '#FBF0EE' : rowBg(i)) + ';">' +
+      '<td style="padding:6px 8px;font-size:13px;font-weight:700;color:#26362D;white-space:nowrap;">' + roomCell + '</td>' +
       '<td style="padding:6px 8px;font-size:13px;white-space:nowrap;">' + esc(l.tenantName || '—') + '</td>' +
       '<td style="padding:6px 8px;font-size:13px;white-space:nowrap;text-align:right;">NT$ ' + Number(l.rent||0).toLocaleString() + '</td>' +
       '<td style="padding:6px 8px;font-size:12px;white-space:nowrap;">' + fmtDate(l.leaseStart) + ' ~ ' + fmtDate(l.leaseEnd) + endWarnOf(l) + '</td>' +
@@ -7400,19 +7401,29 @@ function renderContractManager() {
     '</tr>'
   }
 
-  // 依房號清單排；清單外仍有生效合約者補在後面
+  // 依房號清單排；每個房號取一筆為代表，其餘生效合約（同房號重複／不在清單內）
+  // 都各自列一行，確保不會被藏起來、且「生效中」數量與列數一致。
   var rowItems = []
+  var usedLeaseIds = {}
   if (rooms.length) {
-    rooms.forEach(function(room){ rowItems.push({ room: room, l: byRoom[(room || '').trim()] || null }) })
+    rooms.forEach(function(room){
+      var l = byRoom[(room || '').trim()] || null
+      if (l) usedLeaseIds[l.id] = 1
+      rowItems.push({ room: room, l: l })
+    })
     activeLeases.forEach(function(l){
+      if (usedLeaseIds[l.id]) return
+      usedLeaseIds[l.id] = 1
       var k = (l.roomLabel || '').trim()
-      if (!k || rooms.indexOf(k) < 0) rowItems.push({ room: l.roomLabel, l: l })
+      var dup = k && byRoom[k] && byRoom[k].id !== l.id  // 該房號已有另一筆生效合約
+      rowItems.push({ room: l.roomLabel, l: l, dupNote: dup ? '⚠️ 同房號重複' : '' })
     })
   } else {
     activeLeases.forEach(function(l){ rowItems.push({ room: l.roomLabel, l: l }) })
   }
+  var _dupCount = rowItems.filter(function(it){ return it.dupNote }).length
   var bodyRows = rowItems.map(function(it, i){
-    return it.l ? occupiedRow(it.room, it.l, i) : vacantRow(it.room, i)
+    return it.l ? occupiedRow(it.room, it.l, i, it.dupNote) : vacantRow(it.room, i)
   }).join('')
   var roomGrid = bodyRows
     ? '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;">' +
@@ -7460,7 +7471,8 @@ function renderContractManager() {
       '<button onclick="closeContractModal()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
     '</div>' +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">' +
-      '<div style="font-weight:700;font-size:14px;">🏠 房客合約（生效中 ' + activeLeases.length + (rooms.length ? ' / 共 ' + rooms.length + ' 間' : '') + '）</div>' +
+      '<div style="font-weight:700;font-size:14px;">🏠 房客合約（生效中 ' + activeLeases.length + (rooms.length ? ' / 共 ' + rooms.length + ' 間' : '') + '）' +
+        (_dupCount ? '<br><span style="font-size:11px;color:#C0524A;font-weight:400;">⚠️ 有 ' + _dupCount + ' 筆同房號重複的生效合約，請確認是否需終止舊約</span>' : '') + '</div>' +
       '<div style="display:flex;gap:8px;">' +
         '<button class="btn" style="padding:6px 12px;font-size:13px;background:#8A8A8A;" onclick="openRoomLabelEditor()">設定房號</button>' +
         '<button class="btn" style="padding:6px 14px;font-size:13px;" onclick="openLeaseForm()">+ 新增租約</button>' +
