@@ -277,25 +277,33 @@ function settleReceiptFlex(lease) {
   // 正數＝應扣費用；負數＝退款項（例如按日退租金）
   const charges = deductions.filter(d => (Number(d.amount) || 0) >= 0)
   const refundItems = deductions.filter(d => (Number(d.amount) || 0) < 0)
-  const rows = []
-  if (lease.settledAt) rows.push(remRow('結算日期', fmtYMD(lease.settledAt)))
-  if (lease.endedAt) rows.push(remRow('合約結束日', fmtYMD(lease.endedAt)))
+  // 結算明細列（結算日期/合約結束日 + 金額項目）
+  const settleRows = []
+  if (lease.settledAt) settleRows.push(remRow('結算日期', fmtYMD(lease.settledAt)))
+  if (lease.endedAt) settleRows.push(remRow('合約結束日', fmtYMD(lease.endedAt)))
   // 金額項目（＋押金／＋預收／＋退款；－應扣），正負號與顏色置於金額側，項目名稱獨佔左欄
-  rows.push(moneyRow('押金', deposit, '+'))
-  if (prepaid > 0) rows.push(moneyRow('預收費用', prepaid, '+'))
-  refundItems.forEach(function (d) { rows.push(moneyRow(d.name || '退款', d.amount, '+')) })
-  charges.forEach(function (d) { rows.push(moneyRow(d.name || '應扣費用', d.amount, '-')) })
+  settleRows.push(moneyRow('押金', deposit, '+'))
+  if (prepaid > 0) settleRows.push(moneyRow('預收費用', prepaid, '+'))
+  refundItems.forEach(function (d) { settleRows.push(moneyRow(d.name || '退款', d.amount, '+')) })
+  charges.forEach(function (d) { settleRows.push(moneyRow(d.name || '應扣費用', d.amount, '-')) })
+
   // 電費明細（結算抄表）：起訖日/度數、使用度數、費率，讓房客了解電費如何計算
   const r = lease.reading || null
+  const rows = []
+  let detailTitle = '結算明細'
   if (r) {
-    rows.push({ type: 'separator', margin: 'lg', color: '#ECE6DA' })
-    rows.push({ type: 'text', text: '電費明細（結算抄表）', size: 'xs', color: '#B0A891', weight: 'bold', margin: 'sm' })
+    // 電費明細置於上方，結算明細接於其下
+    detailTitle = '電費明細（結算抄表）'
     rows.push(remRow('抄表期間', fmtYMD(r.startDate) + ' → ' + fmtYMD(r.endDate)))
     rows.push(remRow('度數', Number(r.startDegree || 0).toLocaleString() + ' → ' + Number(r.endDegree || 0).toLocaleString() + ' 度'))
     rows.push(remRow('本期使用', Number(r.usedDegree || 0).toLocaleString() + ' 度', { bold: true, color: '#A9781E' }))
     if (r.rate) rows.push(remRow('每度費率', 'NT$ ' + Number(r.rate).toLocaleString()))
     if (r.amount) rows.push(remRow('電費金額', 'NT$ ' + Number(r.amount).toLocaleString(), { bold: true, color: '#B5544C' }))
+    rows.push({ type: 'separator', margin: 'lg', color: '#ECE6DA' })
+    rows.push({ type: 'text', text: '結算明細', size: 'xs', color: '#B0A891', weight: 'bold', margin: 'sm' })
   }
+  settleRows.forEach(function (rw) { rows.push(rw) })
+
   const positive = refund >= 0
   return reminderBubble({
     alt: '合約結算明細', title: '合約結算明細',
@@ -303,7 +311,7 @@ function settleReceiptFlex(lease) {
     subColor: '#D8DFE6', accent: '#5A6B7B', tint: '#EEF1F4', deep: '#3C4A57',
     tenant: lease.tenantName, intro: '您的合約已完成結算，以下為結算明細',
     amountLabel: positive ? '應退還您的金額' : '尚需補繳金額', amount: Math.abs(refund), dueStr: null,
-    detailTitle: '結算明細', rows: rows,
+    detailTitle: detailTitle, rows: rows,
     footer: positive ? '退款將依約定方式辦理，感謝您的承租' : '請於結算後儘速完成補繳，感謝您的配合',
   })
 }
