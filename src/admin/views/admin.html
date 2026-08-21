@@ -5725,12 +5725,19 @@ var AUDIT_KEY_MAP = {
   roomNo:'房號', meterRate:'每度電價', startDegree:'起始度數', endDegree:'結算度數',
   usedDegree:'使用度數', settled:'已結清', deleted:'刪除筆數', ids:'筆數',
   rent:'租金', discountType:'折扣類型', discountValue:'折扣值', paymentCycle:'繳費週期',
-  tenantName:'房客', receiptUrl:'收據', text:'內容', message:'內容', enabled:'啟用'
+  tenantName:'房客', receiptUrl:'收據', text:'內容', message:'內容', enabled:'啟用',
+  // 合約結算相關
+  settledAt:'結算日期', endedAt:'合約結束日', earlyTerminated:'提前終止',
+  deposit:'押金', prepaid:'預收費用', deductions:'扣抵項目', refund:'應退金額',
+  settleRefund:'應退金額', reason:'原因', rate:'每度費率', usedKwh:'使用度數',
+  // 抄表相關
+  startDate:'起始日期', endDate:'結束日期', rentAmount:'租金金額', utilAmount:'水電金額'
 }
 var AUDIT_VAL_MAP = { RENT:'租金', UTIL:'水電費', UTILITY:'水電費', 'true':'是', 'false':'否', off:'關閉', auto:'自動發送', confirm:'先確認再送' }
-// 內部識別碼一律不顯示：id、任何以 Id 結尾的鍵（readingId、recordId、leaseId…）
+// 內部識別碼與系統旗標一律不顯示：id／任何以 Id 結尾的鍵、preview（預覽旗標）、
+// meterReading 之類的巢狀物件（後台留存為「{…}」佔位，無實際內容）
 function auditSkipKey(k) {
-  return k === 'id' || /Id$/.test(k) || /^lineUserId$/i.test(k)
+  return k === 'id' || /Id$/.test(k) || /^lineUserId$/i.test(k) || k === 'preview' || k === 'meterReading'
 }
 function auditVal(v) {
   var s = String(v)
@@ -5751,6 +5758,7 @@ function translateAuditSummary(raw) {
     if (auditSkipKey(k)) return
     var v = obj[k]
     if (v == null || v === '') return
+    if (v === '{…}') return  // 巢狀物件佔位，無實際內容
     if (k === 'receiptUrl') { parts.push('收據：有'); return }
     var label = AUDIT_KEY_MAP[k] || k
     parts.push(label + '：' + auditVal(v))
