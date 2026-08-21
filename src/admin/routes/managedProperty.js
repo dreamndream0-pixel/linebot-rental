@@ -343,9 +343,11 @@ function utilityReceiptDescription(reading, lease, payMethod) {
 
 async function ensureLeaseLedgerRecords(lease) {
   const hidden = await hideInvalidOrDuplicateRentPayments(lease.id)
-  const [rentPayments, utilityReadings] = await Promise.all([
+  // 一次撈回本租約的收款紀錄，改在記憶體比對（原本每筆都 findFirst，租約多時很慢）
+  const [rentPayments, utilityReadings, incomeRecords] = await Promise.all([
     prisma.rentPayment.findMany({ where: { leaseId: lease.id } }),
     prisma.utilityReading.findMany({ where: { leaseId: lease.id } }),
+    prisma.managementRecord.findMany({ where: { leaseId: lease.id, type: 'INCOME' } }),
   ])
 
   let rentCreated = 0
@@ -353,28 +355,27 @@ async function ensureLeaseLedgerRecords(lease) {
   let utilityCreated = 0
   let utilityLinked = 0
 
+  const byId = {}
+  incomeRecords.forEach(r => { byId[r.id] = r })
+  const rentRecords = incomeRecords.filter(r => r.category === 'RENT')
+  const utilRecords = incomeRecords.filter(r => r.category === 'UTILITY')
+  const dt = v => (v ? new Date(v).getTime() : 0)
+  // 內容一致就不重複寫入，省下大量無意義 UPDATE
+  const recSame = (r, data) =>
+    r.amount === data.amount &&
+    dt(r.recordDate) === dt(data.recordDate) &&
+    (r.description || '') === (data.description || '') &&
+    r.managedPropertyId === data.managedPropertyId
+
   for (const payment of rentPayments) {
     if (!(payment.paidAmount > 0 && payment.paidDate)) continue
-    let record = payment.recordId
-      ? await prisma.managementRecord.findFirst({ where: { id: payment.recordId, leaseId: lease.id } })
-      : null
     const marker = rentReceiptMarker(payment.id)
+    let record = (payment.recordId && byId[payment.recordId]) || null
+    if (!record) record = rentRecords.find(r => (r.description || '').startsWith(marker)) || null
     if (!record) {
-      record = await prisma.managementRecord.findFirst({
-        where: { leaseId: lease.id, type: 'INCOME', category: 'RENT', description: { startsWith: marker } },
-      })
-    }
-    if (!record) {
-      record = await prisma.managementRecord.findFirst({
-        where: {
-          leaseId: lease.id,
-          type: 'INCOME',
-          category: 'RENT',
-          amount: payment.paidAmount,
-          recordDate: payment.paidDate,
-        },
-        orderBy: { createdAt: 'asc' },
-      })
+      record = rentRecords
+        .filter(r => r.amount === payment.paidAmount && dt(r.recordDate) === dt(payment.paidDate))
+        .sort((a, b) => dt(a.createdAt) - dt(b.createdAt))[0] || null
     }
     const data = {
       managedPropertyId: lease.managedPropertyId,
@@ -386,8 +387,9 @@ async function ensureLeaseLedgerRecords(lease) {
       description: rentReceiptDescription(payment, lease),
     }
     if (record) {
-      if (!record.payoutId && (!record.description || !record.description.startsWith('[ragic-rent:'))) {
-        await prisma.managementRecord.update({ where: { id: record.id }, data })
+      const canSync = !record.payoutId && (!record.description || !record.description.startsWith('[ragic-rent:'))
+      if (canSync && !recSame(record, data)) {
+        byId[record.id] = await prisma.managementRecord.update({ where: { id: record.id }, data })
       }
       if (payment.recordId !== record.id) {
         await prisma.rentPayment.update({ where: { id: payment.id }, data: { recordId: record.id } })
@@ -396,6 +398,8 @@ async function ensureLeaseLedgerRecords(lease) {
     } else {
       record = await prisma.managementRecord.create({ data })
       await prisma.rentPayment.update({ where: { id: payment.id }, data: { recordId: record.id } })
+      byId[record.id] = record
+      rentRecords.push(record)
       rentCreated += 1
     }
   }
@@ -403,32 +407,16 @@ async function ensureLeaseLedgerRecords(lease) {
   for (const reading of utilityReadings) {
     if (!(reading.paidAmount > 0 && reading.paidDate)) continue
     const marker = utilityReceiptMarker(reading.id)
-    let record = await prisma.managementRecord.findFirst({
-      where: { leaseId: lease.id, type: 'INCOME', category: 'UTILITY', description: { startsWith: marker } },
-    })
+    let record = utilRecords.find(r => (r.description || '').startsWith(marker)) || null
     if (!record) {
-      record = await prisma.managementRecord.findFirst({
-        where: {
-          leaseId: lease.id,
-          type: 'INCOME',
-          category: 'UTILITY',
-          amount: reading.paidAmount,
-          recordDate: reading.paidDate,
-        },
-        orderBy: { createdAt: 'asc' },
-      })
+      record = utilRecords
+        .filter(r => r.amount === reading.paidAmount && dt(r.recordDate) === dt(reading.paidDate))
+        .sort((a, b) => dt(a.createdAt) - dt(b.createdAt))[0] || null
     }
     if (!record) {
-      record = await prisma.managementRecord.findFirst({
-        where: {
-          leaseId: lease.id,
-          type: 'INCOME',
-          category: 'UTILITY',
-          amount: reading.amount,
-          description: { startsWith: '電費 ' },
-        },
-        orderBy: { createdAt: 'asc' },
-      })
+      record = utilRecords
+        .filter(r => r.amount === reading.amount && (r.description || '').startsWith('電費 '))
+        .sort((a, b) => dt(a.createdAt) - dt(b.createdAt))[0] || null
     }
     const data = {
       managedPropertyId: lease.managedPropertyId,
@@ -440,10 +428,14 @@ async function ensureLeaseLedgerRecords(lease) {
       description: utilityReceiptDescription(reading, lease, reading.payMethod),
     }
     if (record) {
-      if (!record.payoutId) await prisma.managementRecord.update({ where: { id: record.id }, data })
+      if (!record.payoutId && !recSame(record, data)) {
+        byId[record.id] = await prisma.managementRecord.update({ where: { id: record.id }, data })
+      }
       utilityLinked += 1
     } else {
-      await prisma.managementRecord.create({ data })
+      record = await prisma.managementRecord.create({ data })
+      utilRecords.push(record)
+      byId[record.id] = record
       utilityCreated += 1
     }
   }
@@ -454,13 +446,18 @@ async function ensureLeaseLedgerRecords(lease) {
 async function ensureManagedPropertyLedgerRecords(managedPropertyId) {
   const leases = await prisma.lease.findMany({ where: { managedPropertyId } })
   const total = { hiddenRentDuplicates: 0, rentCreated: 0, rentLinked: 0, utilityCreated: 0, utilityLinked: 0 }
-  for (const lease of leases) {
-    const result = await ensureLeaseLedgerRecords(lease)
-    total.hiddenRentDuplicates += result.hiddenRentDuplicates || 0
-    total.rentCreated += result.rentCreated
-    total.rentLinked += result.rentLinked
-    total.utilityCreated += result.utilityCreated
-    total.utilityLinked += result.utilityLinked
+  // 各租約彼此獨立，分批平行處理（限制併發數避免耗盡連線池）
+  const CONCURRENCY = 4
+  for (let i = 0; i < leases.length; i += CONCURRENCY) {
+    const batch = leases.slice(i, i + CONCURRENCY)
+    const results = await Promise.all(batch.map(l => ensureLeaseLedgerRecords(l)))
+    for (const result of results) {
+      total.hiddenRentDuplicates += result.hiddenRentDuplicates || 0
+      total.rentCreated += result.rentCreated
+      total.rentLinked += result.rentLinked
+      total.utilityCreated += result.utilityCreated
+      total.utilityLinked += result.utilityLinked
+    }
   }
   return total
 }
@@ -516,16 +513,20 @@ router.get('/admin/api/managed/:id', async (req, res) => {
       return res.status(403).json({ error: 'forbidden' })
     }
     const backfill = await ensureManagedPropertyLedgerRecords(item.id)
-    const fresh = await prisma.managedProperty.findUnique({
-      where: { id: req.params.id },
-      include: {
-        incomes: { orderBy: { recordDate: 'desc' } },
-        payouts: {
-          orderBy: { period: 'desc' },
-          include: { records: { orderBy: { recordDate: 'asc' } } },
-        },
-      },
-    })
+    // 只有補建有實際變更（新增/連結收支）時才重撈一次，否則直接用第一次結果
+    const changed = (backfill.rentCreated + backfill.rentLinked + backfill.utilityCreated + backfill.utilityLinked + (backfill.hiddenRentDuplicates || 0)) > 0
+    const fresh = changed
+      ? await prisma.managedProperty.findUnique({
+          where: { id: req.params.id },
+          include: {
+            incomes: { orderBy: { recordDate: 'desc' } },
+            payouts: {
+              orderBy: { period: 'desc' },
+              include: { records: { orderBy: { recordDate: 'asc' } } },
+            },
+          },
+        })
+      : item
     res.json({ ...fresh, backfill })
   } catch (e) {
     res.status(500).json({ error: e.message })
