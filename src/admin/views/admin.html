@@ -7367,15 +7367,17 @@ function renderContractManager() {
     if (days < 0) return ' <span style="color:#C0524A;font-size:11px;">已逾期</span>'
     return ''
   }
-  // 條列式：生效中合約列
-  function occupiedRow(room, l) {
-    return '<tr>' +
-      '<td style="padding:8px;font-size:13px;font-weight:700;color:#26362D;white-space:nowrap;">' + esc(room || l.roomLabel || '—') + '</td>' +
-      '<td style="padding:8px;font-size:13px;">' + esc(l.tenantName || '—') + '</td>' +
-      '<td style="padding:8px;font-size:13px;white-space:nowrap;">NT$ ' + Number(l.rent||0).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:12px;white-space:nowrap;">' + fmtDate(l.leaseStart) + '<br>~ ' + fmtDate(l.leaseEnd) + endWarnOf(l) + '</td>' +
-      '<td style="padding:8px;white-space:nowrap;"><span style="font-size:11px;color:#4A8A4A;background:#E4F1E4;border-radius:99px;padding:2px 8px;">生效中</span></td>' +
-      '<td style="padding:8px;white-space:nowrap;">' +
+  // 跳色間隔背景
+  function rowBg(i) { return (i % 2 === 0) ? '#FFFFFF' : '#F5F2EC' }
+  // 條列式：生效中合約列（緊湊、日期不換行）
+  function occupiedRow(room, l, i) {
+    return '<tr style="background:' + rowBg(i) + ';">' +
+      '<td style="padding:6px 8px;font-size:13px;font-weight:700;color:#26362D;white-space:nowrap;">' + esc(room || l.roomLabel || '—') + '</td>' +
+      '<td style="padding:6px 8px;font-size:13px;white-space:nowrap;">' + esc(l.tenantName || '—') + '</td>' +
+      '<td style="padding:6px 8px;font-size:13px;white-space:nowrap;text-align:right;">NT$ ' + Number(l.rent||0).toLocaleString() + '</td>' +
+      '<td style="padding:6px 8px;font-size:12px;white-space:nowrap;">' + fmtDate(l.leaseStart) + ' ~ ' + fmtDate(l.leaseEnd) + endWarnOf(l) + '</td>' +
+      '<td style="padding:6px 8px;white-space:nowrap;text-align:center;"><span style="font-size:11px;color:#4A8A4A;background:#E4F1E4;border-radius:99px;padding:2px 8px;">生效中</span></td>' +
+      '<td style="padding:6px 8px;white-space:nowrap;text-align:center;">' +
         (l.contractFile ? '<a href="' + esc(l.contractFile) + '" target="_blank" style="font-size:12px;color:#4A6741;">📄</a> ' : '') +
         '<button onclick="openLeaseForm(\'' + l.id + '\')" style="border:none;background:none;cursor:pointer;font-size:13px;">✏️</button>' +
         '<button onclick="deleteLease(\'' + l.id + '\')" style="border:none;background:none;cursor:pointer;color:#C0524A;">✕</button>' +
@@ -7383,33 +7385,33 @@ function renderContractManager() {
     '</tr>'
   }
   // 條列式：空房位列（附「新增合約」）
-  function vacantRow(room) {
-    return '<tr style="background:#FAF8F4;">' +
-      '<td style="padding:8px;font-size:13px;font-weight:700;color:#8A8377;white-space:nowrap;">' + esc(room) + '</td>' +
-      '<td style="padding:8px;font-size:12px;color:#B0A891;" colspan="3">目前無承租合約（空房）</td>' +
-      '<td style="padding:8px;white-space:nowrap;"><span style="font-size:11px;color:#9A927F;background:#EEE9DF;border-radius:99px;padding:2px 8px;">空房</span></td>' +
-      '<td style="padding:8px;white-space:nowrap;"><button class="btn" style="padding:4px 10px;font-size:12px;width:auto;white-space:nowrap;" onclick="openLeaseForm(null, ' + jsArg(room) + ')">＋ 新增合約</button></td>' +
+  function vacantRow(room, i) {
+    return '<tr style="background:' + rowBg(i) + ';">' +
+      '<td style="padding:6px 8px;font-size:13px;font-weight:700;color:#8A8377;white-space:nowrap;">' + esc(room) + '</td>' +
+      '<td style="padding:6px 8px;font-size:12px;color:#B0A891;white-space:nowrap;" colspan="3">目前無承租合約（空房）</td>' +
+      '<td style="padding:6px 8px;white-space:nowrap;text-align:center;"><span style="font-size:11px;color:#9A927F;background:#EEE9DF;border-radius:99px;padding:2px 8px;">空房</span></td>' +
+      '<td style="padding:6px 8px;white-space:nowrap;text-align:center;"><button class="btn" style="padding:4px 10px;font-size:12px;width:auto;white-space:nowrap;" onclick="openLeaseForm(null, ' + jsArg(room) + ')">＋ 新增合約</button></td>' +
     '</tr>'
   }
 
   // 依房號清單排；清單外仍有生效合約者補在後面
-  var bodyRows = ''
+  var rowItems = []
   if (rooms.length) {
-    bodyRows += rooms.map(function(room){
-      var l = byRoom[(room || '').trim()]
-      return l ? occupiedRow(room, l) : vacantRow(room)
-    }).join('')
+    rooms.forEach(function(room){ rowItems.push({ room: room, l: byRoom[(room || '').trim()] || null }) })
     activeLeases.forEach(function(l){
       var k = (l.roomLabel || '').trim()
-      if (!k || rooms.indexOf(k) < 0) bodyRows += occupiedRow(l.roomLabel, l)
+      if (!k || rooms.indexOf(k) < 0) rowItems.push({ room: l.roomLabel, l: l })
     })
   } else {
-    bodyRows = activeLeases.map(function(l){ return occupiedRow(l.roomLabel, l) }).join('')
+    activeLeases.forEach(function(l){ rowItems.push({ room: l.roomLabel, l: l }) })
   }
+  var bodyRows = rowItems.map(function(it, i){
+    return it.l ? occupiedRow(it.room, it.l, i) : vacantRow(it.room, i)
+  }).join('')
   var roomGrid = bodyRows
     ? '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;">' +
         '<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;">' +
-        '<th style="padding:8px;text-align:left;font-size:12px;">房號</th><th style="padding:8px;text-align:left;font-size:12px;">承租人</th><th style="padding:8px;text-align:left;font-size:12px;">租金</th><th style="padding:8px;text-align:left;font-size:12px;">租期</th><th style="padding:8px;text-align:left;font-size:12px;">狀態</th><th style="padding:8px;text-align:left;font-size:12px;">操作</th>' +
+        '<th style="padding:6px 8px;text-align:left;font-size:12px;white-space:nowrap;">房號</th><th style="padding:6px 8px;text-align:left;font-size:12px;white-space:nowrap;">承租人</th><th style="padding:6px 8px;text-align:right;font-size:12px;white-space:nowrap;">租金</th><th style="padding:6px 8px;text-align:left;font-size:12px;white-space:nowrap;">租期</th><th style="padding:6px 8px;text-align:center;font-size:12px;white-space:nowrap;">狀態</th><th style="padding:6px 8px;text-align:center;font-size:12px;white-space:nowrap;">操作</th>' +
         '</tr></thead><tbody>' + bodyRows + '</tbody></table>' +
       '</div>'
     : '<div style="padding:16px;text-align:center;color:#aaa;">尚無生效中合約</div>'
