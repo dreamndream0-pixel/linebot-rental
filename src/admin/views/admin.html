@@ -7575,10 +7575,19 @@ async function openLeaseForm(leaseId, prefillRoom) {
 
   var html = '<div id="leaseModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:340;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
     '<div style="background:#fff;border-radius:16px;padding:24px;max-width:480px;width:100%;margin:auto;">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;">' +
       '<h3 style="margin:0;">' + (leaseId ? '編輯租約' : '新增租約') + '</h3>' +
-      '<button onclick="closeLeaseModal()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+      '<div style="display:flex;align-items:center;gap:6px;">' +
+        '<label style="font-size:12px;color:#888;white-space:nowrap;">合約狀態</label>' +
+        '<select id="l_status" style="padding:6px 8px;border:1px solid #E5E0D5;border-radius:8px;font-size:13px;">' +
+          '<option value="ACTIVE"' + (l.status==='ACTIVE'||!l.status?' selected':'') + '>生效中</option>' +
+          '<option value="ENDED"' + (l.status==='ENDED'?' selected':'') + '>已終止</option>' +
+          '<option value="EXPIRED"' + (l.status==='EXPIRED'?' selected':'') + '>已到期</option>' +
+        '</select>' +
+        '<button onclick="closeLeaseModal()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+      '</div>' +
     '</div>' +
+    // 基本資料
     '<div style="display:flex;gap:10px;">' +
       '<div style="flex:1;">' + mInput('承租人姓名 *', 'l_tenantName', l.tenantName) + '</div>' +
       '<div style="flex:1;">' + mInput('電話', 'l_tenantPhone', l.tenantPhone) + '</div>' +
@@ -7587,23 +7596,22 @@ async function openLeaseForm(leaseId, prefillRoom) {
       '<div style="flex:1;">' + mInput('房號/單位', 'l_roomLabel', l.roomLabel) + '</div>' +
       '<div style="flex:1;">' + mInput('身分證字號', 'l_tenantIdNo', l.tenantIdNo) + '</div>' +
     '</div>' +
-    '<div style="display:flex;gap:10px;">' +
-      '<div style="flex:1;">' + mInput('租約起日', 'l_leaseStart', fmtDate(l.leaseStart), 'date') + '</div>' +
-      '<div style="flex:1;">' + mInput('租約迄日', 'l_leaseEnd', fmtDate(l.leaseEnd), 'date') + '</div>' +
-    '</div>' +
+    // 租金 / 押金 / 預收電費
     '<div style="display:flex;gap:10px;">' +
       '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">月租金</label><input id="l_rent" type="number" value="' + esc(l.rent==null?'':l.rent) + '" oninput="updateDiscountPreview()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;"></div>' +
       '<div style="flex:1;">' + mInput('押金', 'l_deposit', l.deposit, 'number') + '</div>' +
     '</div>' +
     '<div style="display:flex;gap:10px;">' +
+      '<div style="flex:1;">' + mInput('預收電費', 'l_prepaidUtility', l.prepaidUtility, 'number') + '</div>' +
       '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">折扣方式</label><select id="l_discountType" onchange="toggleDiscountField()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:4px;">' +
         '<option value="NONE"' + ((l.discountType||'NONE')==='NONE'?' selected':'') + '>不折扣</option>' +
         '<option value="FIXED"' + (l.discountType==='FIXED'?' selected':'') + '>折固定金額</option>' +
         '<option value="PERCENT"' + (l.discountType==='PERCENT'?' selected':'') + '>折%數</option>' +
       '</select></div>' +
-      '<div style="flex:1;" id="discountValueBox"><label id="discountValueLabel" style="font-size:12px;color:#888;display:block;margin-bottom:4px;">折扣金額</label><input id="l_discountValue" type="number" value="' + (l.discountValue || '') + '" oninput="updateDiscountPreview()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>' +
     '</div>' +
+    '<div id="discountValueBox" style="display:none;margin-bottom:10px;"><label id="discountValueLabel" style="font-size:12px;color:#888;display:block;margin-bottom:4px;">折扣金額</label><input id="l_discountValue" type="number" value="' + (l.discountValue || '') + '" oninput="updateDiscountPreview()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>' +
     '<div id="discountPreview" style="font-size:12px;color:#4A6741;margin:-4px 0 10px;"></div>' +
+    // 繳費方式 / 繳費日計算
     '<div style="display:flex;gap:10px;">' +
       '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">繳費方式</label><select id="l_paymentCycle" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;">' +
         '<option value="MONTHLY"' + ((l.paymentCycle||'MONTHLY')==='MONTHLY'?' selected':'') + '>月繳</option>' +
@@ -7617,17 +7625,33 @@ async function openLeaseForm(leaseId, prefillRoom) {
         '<option value="CONTRACT_START"' + (l.paymentDueMode==='CONTRACT_START'?' selected':'') + '>以合約開始日</option>' +
       '</select></div>' +
     '</div>' +
+    // 租約起訖
     '<div style="display:flex;gap:10px;">' +
-      '<div style="flex:1;">' + mInput('預收電費', 'l_prepaidUtility', l.prepaidUtility, 'number') + '</div>' +
-      '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">合約狀態</label><select id="l_status" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:10px;">' +
-        '<option value="ACTIVE"' + (l.status==='ACTIVE'||!l.status?' selected':'') + '>生效中</option>' +
-        '<option value="ENDED"' + (l.status==='ENDED'?' selected':'') + '>已終止</option>' +
-        '<option value="EXPIRED"' + (l.status==='EXPIRED'?' selected':'') + '>已到期</option>' +
-      '</select></div>' +
+      '<div style="flex:1;">' + mInput('租約起日', 'l_leaseStart', fmtDate(l.leaseStart), 'date') + '</div>' +
+      '<div style="flex:1;">' + mInput('租約迄日', 'l_leaseEnd', fmtDate(l.leaseEnd), 'date') + '</div>' +
     '</div>' +
-    // 房源連結
-    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">🔗 連結網站房源頁</label>' +
-    '<select id="l_propertyId" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:14px;">' + propOptions + '</select>' +
+    // 停車位
+    '<label style="font-size:12px;color:#888;display:block;margin:6px 0 4px;">停車位</label>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+      mInput('車位編號', 'l_parkingSpotId', l.parkingSpotId || '') +
+      mInput('車格', 'l_parkingSpace', l.parkingSpace || '') +
+      mInput('停車費/月(元)', 'l_parkingFee', l.parkingFee || 0, 'number') +
+      mInput('車牌', 'l_vehiclePlate', l.vehiclePlate || '') +
+    '</div>' +
+    // 水電費率模式（獨立區塊）：實際抄表/算費在「電費明細表」處理，這裡只設定計費方式
+    '<div style="border:1px solid #E5E0D5;border-radius:12px;padding:14px;margin:4px 0 12px;">' +
+      '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">水電費率模式</label>' +
+      '<select id="l_utilMode" onchange="toggleUtilMode()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:8px;">' +
+        '<option value="FIXED"' + (l.utilMode !== 'METER' ? ' selected' : '') + '>固定費率（自訂每度費率）</option>' +
+        '<option value="METER"' + (l.utilMode === 'METER' ? ' selected' : '') + '>台水台電（依實際帳單，免填費率）</option>' +
+      '</select>' +
+      '<div id="utilRateBox">' + mInput('每度費率(元)', 'l_meterRate', l.meterRate, 'number') + '</div>' +
+      '<div style="display:flex;gap:10px;">' +
+        '<div style="flex:1;">' + mInput('電表初次抄表（度）', 'l_meterInitial', l.meterInitial || 0, 'number') + '</div>' +
+        '<div style="flex:1;">' + mInput('初次抄表日期', 'l_meterReadDate', fmtDate(l.meterReadDate), 'date') + '</div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#999;">抄表度數與金額請到「電費明細表」逐期新增</div>' +
+    '</div>' +
     // ── LINE 提醒設定 ──
     '<div style="background:#F0F7F1;border-radius:12px;padding:14px;margin-bottom:12px;">' +
       '<div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#4A6741;">📲 LINE 繳費提醒</div>' +
@@ -7643,30 +7667,11 @@ async function openLeaseForm(leaseId, prefillRoom) {
         '<label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="l_utilRemindOn"' + (l.utilRemindOn ? ' checked' : '') + '> 水電提醒</label>' +
         '<div style="flex:1;">' + mInput('水電日(號)', 'l_utilPayDay', l.utilPayDay || '', 'number') + '</div>' +
       '</div>' +
-      // 水電費率模式：實際抄表/算費都在「電費明細表」處理，這裡只設定每期沿用的計費方式
-      '<div style="border-top:1px dashed #cfe0d0;margin-top:10px;padding-top:10px;">' +
-        '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">水電費率模式</label>' +
-        '<select id="l_utilMode" onchange="toggleUtilMode()" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:8px;">' +
-          '<option value="FIXED"' + (l.utilMode !== 'METER' ? ' selected' : '') + '>固定費率（自訂每度費率）</option>' +
-          '<option value="METER"' + (l.utilMode === 'METER' ? ' selected' : '') + '>台水台電（依實際帳單，免填費率）</option>' +
-        '</select>' +
-        '<div id="utilRateBox">' + mInput('每度費率(元)', 'l_meterRate', l.meterRate, 'number') + '</div>' +
-        '<div style="display:flex;gap:10px;">' +
-          '<div style="flex:1;">' + mInput('電表初次抄表（度）', 'l_meterInitial', l.meterInitial || 0, 'number') + '</div>' +
-          '<div style="flex:1;">' + mInput('初次抄表日期', 'l_meterReadDate', fmtDate(l.meterReadDate), 'date') + '</div>' +
-        '</div>' +
-        '<div style="font-size:11px;color:#999;">抄表度數與金額請到「電費明細表」逐期新增</div>' +
-      '</div>' +
       '<div style="font-size:11px;color:#999;margin-top:8px;">提醒會在繳費日前 3 天自動推播</div>' +
     '</div>' +
-    // 停車位
-    '<label style="font-size:12px;color:#888;display:block;margin:10px 0 4px;">停車位</label>' +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
-      mInput('車位編號', 'l_parkingSpotId', l.parkingSpotId || '') +
-      mInput('車格', 'l_parkingSpace', l.parkingSpace || '') +
-      mInput('停車費/月(元)', 'l_parkingFee', l.parkingFee || 0, 'number') +
-      mInput('車牌', 'l_vehiclePlate', l.vehiclePlate || '') +
-    '</div>' +
+    // 房源連結
+    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">🔗 連結網站房源頁</label>' +
+    '<select id="l_propertyId" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:14px;">' + propOptions + '</select>' +
     // 租約文件
     '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">租約文件</label>' +
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +
