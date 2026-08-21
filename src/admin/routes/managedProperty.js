@@ -1533,6 +1533,7 @@ router.get('/admin/api/managed-leases', async (req, res) => {
       let nextRentAmount = null
       let arrearsCount = 0      // 尚欠期數（應繳日已到、仍未繳清）
       let arrearsTotal = 0      // 尚欠總金額
+      let fullyPaid = false     // 合約內所有期別都已繳清（含未到期）才為 true
       try {
         if (l.leaseEnd) {
           daysToEnd = Math.ceil((new Date(l.leaseEnd) - now) / 86400000)
@@ -1547,6 +1548,8 @@ router.get('/admin/api/managed-leases', async (req, res) => {
           const owed = sched.filter(r => (r.unpaid || 0) > 0 && r.dueDate && startOfDay(r.dueDate) <= today)
           arrearsCount = owed.length
           arrearsTotal = owed.reduce((s, r) => s + (r.unpaid || 0), 0)
+          // 已繳清＝合約內每一期（含尚未到期）都無欠款
+          fullyPaid = sched.length > 0 && !sched.some(r => (r.unpaid || 0) > 0)
           const nextRent = sched
             .filter(r => (r.unpaid || 0) > 0 && r.dueDate)
             .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0] || null
@@ -1582,6 +1585,7 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         daysToRent,
         arrearsCount,
         arrearsTotal,
+        fullyPaid,
         managedTitle: l.managedProperty ? l.managedProperty.title : '未連結物業',
         managedId: l.managedProperty ? l.managedProperty.id : '',
         ownerName: l.managedProperty ? l.managedProperty.ownerName : '（未填房東）',
