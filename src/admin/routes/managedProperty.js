@@ -1531,6 +1531,8 @@ router.get('/admin/api/managed-leases', async (req, res) => {
       let nextRentDate = null
       let daysToRent = null
       let nextRentAmount = null
+      let arrearsCount = 0      // 尚欠期數（應繳日已到、仍未繳清）
+      let arrearsTotal = 0      // 尚欠總金額
       try {
         if (l.leaseEnd) {
           daysToEnd = Math.ceil((new Date(l.leaseEnd) - now) / 86400000)
@@ -1539,12 +1541,20 @@ router.get('/admin/api/managed-leases', async (req, res) => {
             else if (daysToEnd <= 30) computedStatus = 'EXPIRING'
           }
         }
-        // 用租金明細排程計算下一筆未繳租金，避免繳費週期/合約起日/已繳紀錄算錯。
-        const nextRent = l.status === 'ACTIVE' ? nextUnpaidRentRow(l, now) : null
-        if (nextRent) {
-          nextRentDate = nextRent.dueDate
-          nextRentAmount = nextRent.amount
-          daysToRent = Math.ceil((startOfDay(nextRentDate) - today) / 86400000)
+        // 用租金明細排程計算：尚欠期數/金額（應繳日已到仍未繳）與下一筆未繳。
+        if (l.status === 'ACTIVE') {
+          const sched = buildRentSchedule(l, l.rentPayments)
+          const owed = sched.filter(r => (r.unpaid || 0) > 0 && r.dueDate && startOfDay(r.dueDate) <= today)
+          arrearsCount = owed.length
+          arrearsTotal = owed.reduce((s, r) => s + (r.unpaid || 0), 0)
+          const nextRent = sched
+            .filter(r => (r.unpaid || 0) > 0 && r.dueDate)
+            .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0] || null
+          if (nextRent) {
+            nextRentDate = nextRent.dueDate
+            nextRentAmount = nextRent.amount
+            daysToRent = Math.ceil((startOfDay(nextRentDate) - today) / 86400000)
+          }
         }
       } catch (e) {
         console.error('代管清單單筆計算失敗:', l.id, e.message)
@@ -1570,6 +1580,8 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         nextRentDate,
         nextRentAmount,
         daysToRent,
+        arrearsCount,
+        arrearsTotal,
         managedTitle: l.managedProperty ? l.managedProperty.title : '未連結物業',
         managedId: l.managedProperty ? l.managedProperty.id : '',
         ownerName: l.managedProperty ? l.managedProperty.ownerName : '（未填房東）',
