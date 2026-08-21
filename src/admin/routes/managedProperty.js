@@ -359,6 +359,7 @@ async function ensureLeaseLedgerRecords(lease) {
   let rentLinked = 0
   let utilityCreated = 0
   let utilityLinked = 0
+  let refundCreated = 0
 
   const byId = {}
   incomeRecords.forEach(r => { byId[r.id] = r })
@@ -445,12 +446,40 @@ async function ensureLeaseLedgerRecords(lease) {
     }
   }
 
-  return { ...hidden, rentCreated, rentLinked, utilityCreated, utilityLinked }
+  // 補建結算退款支出：已結算且退款>0，但尚未記過退款支出者，補一筆（舊資料相容）
+  if (lease.settledAt && Number(lease.settleRefund) > 0) {
+    const existingRefund = await prisma.managementRecord.findFirst({
+      where: { leaseId: lease.id, type: 'EXPENSE', category: '退款', description: { startsWith: '[settle-refund]' } },
+    })
+    if (!existingRefund) {
+      const deposit = lease.settleDeposit || 0
+      const prepaid = lease.settlePrepaid || 0
+      let deductTotal = 0
+      try {
+        const ded = lease.settleDeductions ? JSON.parse(lease.settleDeductions) : []
+        if (Array.isArray(ded)) deductTotal = ded.reduce((s, x) => s + (Number(x.amount) || 0), 0)
+      } catch (_) {}
+      await prisma.managementRecord.create({
+        data: {
+          managedPropertyId: lease.managedPropertyId,
+          leaseId: lease.id,
+          type: 'EXPENSE',
+          category: '退款',
+          amount: Number(lease.settleRefund),
+          recordDate: lease.settledAt,
+          description: `[settle-refund] 結算退款（押金 ${deposit.toLocaleString()}＋預收 ${prepaid.toLocaleString()}−應扣 ${deductTotal.toLocaleString()}）`,
+        },
+      })
+      refundCreated += 1
+    }
+  }
+
+  return { ...hidden, rentCreated, rentLinked, utilityCreated, utilityLinked, refundCreated }
 }
 
 async function ensureManagedPropertyLedgerRecords(managedPropertyId) {
   const leases = await prisma.lease.findMany({ where: { managedPropertyId } })
-  const total = { hiddenRentDuplicates: 0, rentCreated: 0, rentLinked: 0, utilityCreated: 0, utilityLinked: 0 }
+  const total = { hiddenRentDuplicates: 0, rentCreated: 0, rentLinked: 0, utilityCreated: 0, utilityLinked: 0, refundCreated: 0 }
   // 各租約彼此獨立，分批平行處理（限制併發數避免耗盡連線池）
   const CONCURRENCY = 4
   for (let i = 0; i < leases.length; i += CONCURRENCY) {
@@ -462,6 +491,7 @@ async function ensureManagedPropertyLedgerRecords(managedPropertyId) {
       total.rentLinked += result.rentLinked
       total.utilityCreated += result.utilityCreated
       total.utilityLinked += result.utilityLinked
+      total.refundCreated += result.refundCreated || 0
     }
   }
   return total
@@ -525,7 +555,7 @@ router.get('/admin/api/managed/:id', async (req, res) => {
       _ledgerEnsuredAt.set(item.id, Date.now())
     }
     // 只有補建有實際變更（新增/連結收支）時才重撈一次，否則直接用第一次結果
-    const changed = (backfill.rentCreated + backfill.rentLinked + backfill.utilityCreated + backfill.utilityLinked + (backfill.hiddenRentDuplicates || 0)) > 0
+    const changed = (backfill.rentCreated + backfill.rentLinked + backfill.utilityCreated + backfill.utilityLinked + (backfill.hiddenRentDuplicates || 0) + (backfill.refundCreated || 0)) > 0
     const fresh = changed
       ? await prisma.managedProperty.findUnique({
           where: { id: req.params.id },
