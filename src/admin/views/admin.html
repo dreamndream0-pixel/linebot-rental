@@ -7974,29 +7974,33 @@ function renderLeaseList() {
       endInfo += '<br><span style="color:#888;font-size:11px;">已結算 ' + fmt(l.endedAt || l.settledAt) + '</span>'
       if (l.earlyTerminated) endInfo += ' <span style="color:#C0524A;font-size:10px;">·提前終止</span>'
     }
-    var nextRent = l.nextRentDate ? new Date(l.nextRentDate).toLocaleDateString('zh-TW') : '—'
-    var rentHint = ''
-    if (l.daysToRent != null) {
-      if (l.daysToRent < 0) rentHint = ' · <span style="color:#C0524A;font-weight:700;">逾期 ' + (-l.daysToRent) + ' 天未繳</span>'
-      else if (l.daysToRent === 0) rentHint = ' · <span style="color:#C0524A;font-weight:700;">今天繳租</span>'
-      else rentHint = ' · ' + l.daysToRent + '天後繳租'
+    // 租金狀態：全部繳清（無尚欠）→ 已繳清；否則顯示尚欠期數與金額
+    var nextRent = l.nextRentDate ? new Date(l.nextRentDate).toLocaleDateString('zh-TW') : ''
+    var rentStatus
+    if ((l.arrearsCount || 0) > 0) {
+      rentStatus = '<span style="color:#C0524A;font-weight:700;">尚欠 ' + l.arrearsCount + ' 期租金 NT$ ' + Number(l.arrearsTotal || 0).toLocaleString() + '</span>'
+    } else {
+      var nextNote = ''
+      if (l.nextRentDate) {
+        var when = l.daysToRent == null ? '' : (l.daysToRent === 0 ? '今天繳租' : l.daysToRent + '天後繳租')
+        nextNote = '　下期 ' + nextRent + (when ? '（' + when + '）' : '')
+      }
+      rentStatus = '<span style="color:#2E7D32;font-weight:700;">已繳清</span><span style="color:#999;">' + nextNote + '</span>'
     }
-    var displayRent = l.nextRentAmount || l.rent
     var propLink = l.propertyId
       ? '<a href="' + (DATA.siteUrl || '') + '/property/' + l.propertyId + '" target="_blank" style="color:#4A6741;font-size:12px;">🔗 房源頁</a>'
       : '<span style="font-size:12px;color:#bbb;">房源未連結</span>'
-    var hasLineId = l.lineImported || l.lineBound || !!l.lineUserId
-    var lineBadge = l.lineLinked
-      ? '<span onclick="copyText(' + jsArg(l.lineUserId || '') + ')" title="已連到後台租客，點擊複製 LINE userID" style="color:#06C755;font-size:12px;cursor:pointer;">● LINE 已綁定</span>'
-      : (hasLineId
-        ? '<span onclick="copyText(' + jsArg(l.lineUserId || '') + ')" title="Ragic 已匯入 userID，但尚未找到同一個後台租客資料" style="color:#2E9B57;font-size:12px;cursor:pointer;">● LINE ID 已匯入</span>'
-        : '<span style="color:#ccc;font-size:12px;">○ LINE 未綁</span>')
+    // LINE 只分「已綁定 / 未綁」；不再區分匯入或綁定
+    var hasLine = l.lineLinked || l.lineImported || l.lineBound || !!l.lineUserId
+    var lineBadge = hasLine
+      ? '<span onclick="copyText(' + jsArg(l.lineUserId || '') + ')" title="點擊複製 LINE userID" style="color:#06C755;font-size:12px;cursor:pointer;">● LINE 綁定</span>'
+      : '<span style="color:#ccc;font-size:12px;">○ LINE 未綁</span>'
     return '<tr style="background:' + rowBg + ';">' +
       '<td style="padding:8px;font-size:13px;white-space:nowrap;position:sticky;left:0;z-index:2;background:' + rowBg + ';box-shadow:2px 0 4px rgba(0,0,0,0.06);"><span style="display:inline-flex;align-items:center;gap:5px;">' + esc(l.tenantName) + '<button title="編輯房客合約" class="spin-btn" onclick="btnLoad(this, function(){ return editLeaseFromList(\'' + l.id + '\') })" style="border:none;background:none;color:#4A6741;cursor:pointer;font-size:13px;padding:0;">✎</button></span></td>' +
       '<td style="padding:8px;font-size:13px;color:#555;white-space:nowrap;">' + esc(l.roomLabel || '—') + '</td>' +
       '<td style="padding:8px;font-size:13px;white-space:nowrap;">' + esc(l.managedTitle) + '</td>' +
       '<td style="padding:8px;font-size:12px;white-space:nowrap;">' + fmt(l.leaseStart) + '<br>~ ' + endInfo + '</td>' +
-      '<td style="padding:8px;font-size:13px;white-space:nowrap;">NT$ ' + Number(displayRent).toLocaleString() + '<br><span style="font-size:11px;color:#999;">下期 ' + nextRent + rentHint + '</span></td>' +
+      '<td style="padding:8px;font-size:13px;white-space:nowrap;">NT$ ' + Number(l.rent || 0).toLocaleString() + '<br><span style="font-size:11px;">' + rentStatus + '</span></td>' +
       '<td style="padding:8px;white-space:nowrap;">' + propLink + '<br>' + lineBadge + '</td>' +
       '<td style="padding:8px;white-space:nowrap;"><button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;" onclick="btnLoad(this, function(){ return openLeaseLedger(\'' + l.id + '\') })">對帳</button> ' +
         '<button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;background:' + (l.settledAt ? '#888' : '#B07A2E') + ';" onclick="btnLoad(this, function(){ return openSettleModal(\'' + l.id + '\') })">' + (l.settledAt ? '結算✓' : '結算') + '</button></td>' +
