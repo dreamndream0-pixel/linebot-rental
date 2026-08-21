@@ -5731,16 +5731,28 @@ var AUDIT_KEY_MAP = {
   deposit:'押金', prepaid:'預收費用', deductions:'扣抵項目', refund:'應退金額',
   settleRefund:'應退金額', reason:'原因', rate:'每度費率', usedKwh:'使用度數',
   // 抄表相關
-  startDate:'起始日期', endDate:'結束日期', rentAmount:'租金金額', utilAmount:'水電金額'
+  startDate:'起始日期', endDate:'結束日期', rentAmount:'租金金額', utilAmount:'水電金額',
+  // 租約相關
+  roomLabel:'房號', prepaidUtility:'預收水電費', status:'狀態', rentPayDay:'繳租日',
+  paymentDueMode:'應繳日模式', rentRemindOn:'租金提醒', utilRemindOn:'水電提醒',
+  utilMode:'水電計算', meterInitial:'電表起始度數', parkingFee:'停車費', vehiclePlate:'車牌'
 }
 var AUDIT_VAL_MAP = { RENT:'租金', UTIL:'水電費', UTILITY:'水電費', 'true':'是', 'false':'否', off:'關閉', auto:'自動發送', confirm:'先確認再送' }
+// 依欄位提供對應的列舉值中文（同一個英文值在不同欄位可能代表不同意思）
+var AUDIT_KEYVAL_MAP = {
+  discountType: { PERCENT:'百分比', FIXED:'定額', NONE:'無' },
+  status: { ACTIVE:'承租中', ENDED:'已結束', PENDING:'未生效', TERMINATED:'已終止', EXPIRED:'已到期' },
+  paymentDueMode: { FIXED_DAY:'固定日', CONTRACT_START:'合約起日' },
+  utilMode: { FIXED:'固定金額', METER:'抄表計算' }
+}
 // 內部識別碼與系統旗標一律不顯示：id／任何以 Id 結尾的鍵、preview（預覽旗標）、
 // meterReading 之類的巢狀物件（後台留存為「{…}」佔位，無實際內容）
 function auditSkipKey(k) {
   return k === 'id' || /Id$/.test(k) || /^lineUserId$/i.test(k) || k === 'preview' || k === 'meterReading'
 }
-function auditVal(v) {
+function auditVal(k, v) {
   var s = String(v)
+  if (AUDIT_KEYVAL_MAP[k] && AUDIT_KEYVAL_MAP[k].hasOwnProperty(s)) return AUDIT_KEYVAL_MAP[k][s]
   return AUDIT_VAL_MAP.hasOwnProperty(s) ? AUDIT_VAL_MAP[s] : s
 }
 function translateAuditSummary(raw) {
@@ -5749,10 +5761,14 @@ function translateAuditSummary(raw) {
   try { obj = JSON.parse(raw) } catch (e) { return escapeHtml(raw) }
   if (!obj || typeof obj !== 'object') return escapeHtml(raw)
   var parts = []
-  // 期間起訖合併顯示
+  // 期間起訖合併顯示（租金期別／租約期間）
   if (obj.periodStart || obj.periodEnd) {
     parts.push('期間：' + (obj.periodStart || '?') + '～' + (obj.periodEnd || '?'))
     delete obj.periodStart; delete obj.periodEnd
+  }
+  if (obj.leaseStart || obj.leaseEnd) {
+    parts.push('租約期間：' + (obj.leaseStart || '?') + '～' + (obj.leaseEnd || '?'))
+    delete obj.leaseStart; delete obj.leaseEnd
   }
   Object.keys(obj).forEach(function(k) {
     if (auditSkipKey(k)) return
@@ -5761,7 +5777,7 @@ function translateAuditSummary(raw) {
     if (v === '{…}') return  // 巢狀物件佔位，無實際內容
     if (k === 'receiptUrl') { parts.push('收據：有'); return }
     var label = AUDIT_KEY_MAP[k] || k
-    parts.push(label + '：' + auditVal(v))
+    parts.push(label + '：' + auditVal(k, v))
   })
   return escapeHtml(parts.join('・'))
 }
