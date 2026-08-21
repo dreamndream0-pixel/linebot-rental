@@ -7986,7 +7986,10 @@ function renderLeaseList() {
     }
     var rentStatus
     if ((l.arrearsCount || 0) > 0) {
-      rentStatus = '<span style="color:#C0524A;font-weight:700;">尚欠 ' + l.arrearsCount + ' 期租金 NT$ ' + Number(l.arrearsTotal || 0).toLocaleString() + '</span>'
+      // 有逾期未繳→紅色強調；只是未到期尚未繳→琥珀色
+      var owedColor = (l.overdueCount || 0) > 0 ? '#C0524A' : '#B07A2E'
+      rentStatus = '<span style="color:' + owedColor + ';font-weight:700;">尚欠 ' + l.arrearsCount + ' 期租金 NT$ ' + Number(l.arrearsTotal || 0).toLocaleString() + '</span>' +
+        (nextNote ? '<br><span style="color:#999;">' + nextNote + '</span>' : '')
     } else if (l.fullyPaid) {
       rentStatus = '<span style="color:#2E7D32;font-weight:700;">已繳清</span>'
     } else {
