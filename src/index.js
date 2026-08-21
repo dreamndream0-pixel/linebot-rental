@@ -144,6 +144,7 @@ prisma.$connect()
       await prisma.$executeRawUnsafe(`ALTER TABLE management_records ADD COLUMN IF NOT EXISTS "payoutId" TEXT`)
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "management_records_leaseId_idx" ON management_records ("leaseId")`)
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "management_records_payoutId_idx" ON management_records ("payoutId")`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE managed_properties ADD COLUMN IF NOT EXISTS "roomLabels" TEXT`)
       await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "paymentCycle" TEXT NOT NULL DEFAULT 'MONTHLY'`)
       await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "paymentDueMode" TEXT NOT NULL DEFAULT 'FIXED_DAY'`)
       // 合約結算（退租/終止時一次性結清）

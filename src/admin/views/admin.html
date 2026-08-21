@@ -7334,7 +7334,7 @@ async function openContractManager(id) {
   _leaseFormOrigin = 'contract'
   // 兩支彼此無關，平行打省一次來回
   var results = await Promise.all([
-    fetch('/admin/api/managed/' + id + '?key=' + encodeURIComponent(KEY)),
+    fetch('/admin/api/managed/' + id + '?light=1&key=' + encodeURIComponent(KEY)),
     fetch('/admin/api/managed/' + id + '/leases?key=' + encodeURIComponent(KEY)),
   ])
   if (!results[0].ok) { showToast('❌ 載入失敗'); return }
@@ -7343,52 +7343,160 @@ async function openContractManager(id) {
   renderContractManager()
 }
 
+function contractRoomList() {
+  var m = MANAGED.current
+  try { var a = JSON.parse(m.roomLabels || '[]'); return Array.isArray(a) ? a : [] } catch (e) { return [] }
+}
 function renderContractManager() {
   var m = MANAGED.current
   function fmtDate(d) { return d ? new Date(d).toISOString().slice(0,10) : '' }
+  var leases = MANAGED.leases || []
+  // 生效中 vs 已過期/已終止
+  var activeLeases = leases.filter(function(l){ return l.status === 'ACTIVE' })
+  var inactiveLeases = leases.filter(function(l){ return l.status !== 'ACTIVE' })
+  var rooms = contractRoomList()
 
-  // 租約列表
-  var leaseRows = (MANAGED.leases || []).map(function(l) {
-    var statusLabel = { ACTIVE:'生效中', ENDED:'已終止', EXPIRED:'已到期' }[l.status] || l.status
-    var statusColor = l.status === 'ACTIVE' ? '#4A8A4A' : '#999'
-    var endWarn = ''
-    if (l.leaseEnd && l.status === 'ACTIVE') {
-      var days = Math.ceil((new Date(l.leaseEnd) - new Date()) / 86400000)
-      if (days <= 30 && days >= 0) endWarn = ' <span style="color:#E5A33C;font-size:11px;">⚠️ ' + days + '天後到期</span>'
-      else if (days < 0) endWarn = ' <span style="color:#C0524A;font-size:11px;">已逾期</span>'
-    }
+  // 房號 → 生效中合約（同房號取第一筆）
+  var byRoom = {}
+  activeLeases.forEach(function(l){ var k = (l.roomLabel || '').trim(); if (k && !byRoom[k]) byRoom[k] = l })
+
+  function endWarnOf(l) {
+    if (!l.leaseEnd) return ''
+    var days = Math.ceil((new Date(l.leaseEnd) - new Date()) / 86400000)
+    if (days <= 30 && days >= 0) return ' <span style="color:#E5A33C;font-size:11px;">⚠️ ' + days + '天後到期</span>'
+    if (days < 0) return ' <span style="color:#C0524A;font-size:11px;">已逾期</span>'
+    return ''
+  }
+  function occupiedCard(room, l) {
+    return '<div style="border:1px solid #D6E3D6;background:#F6FAF6;border-radius:12px;padding:12px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+        '<span style="font-weight:800;font-size:14px;color:#26362D;">' + esc(room || l.roomLabel || '（未填房號）') + '</span>' +
+        '<span style="font-size:11px;color:#4A8A4A;background:#E4F1E4;border-radius:99px;padding:2px 8px;">生效中</span>' +
+      '</div>' +
+      '<div style="font-size:13px;color:#333;">👤 ' + esc(l.tenantName || '—') + '</div>' +
+      '<div style="font-size:12px;color:#666;margin-top:3px;">NT$ ' + Number(l.rent||0).toLocaleString() + '　·　' + fmtDate(l.leaseStart) + ' ~ ' + fmtDate(l.leaseEnd) + endWarnOf(l) + '</div>' +
+      '<div style="margin-top:8px;display:flex;gap:6px;">' +
+        (l.contractFile ? '<a href="' + esc(l.contractFile) + '" target="_blank" style="font-size:12px;color:#4A6741;text-decoration:none;padding:4px 8px;border:1px solid #D6E3D6;border-radius:8px;">📄 合約</a>' : '') +
+        '<button onclick="openLeaseForm(\'' + l.id + '\')" style="font-size:12px;cursor:pointer;padding:4px 10px;border:1px solid #D6E3D6;background:#fff;border-radius:8px;">✏️ 編輯</button>' +
+        '<button onclick="deleteLease(\'' + l.id + '\')" style="font-size:12px;cursor:pointer;padding:4px 10px;border:1px solid #EED6D3;background:#fff;color:#C0524A;border-radius:8px;">✕</button>' +
+      '</div>' +
+    '</div>'
+  }
+  function vacantCard(room) {
+    return '<div style="border:1.5px dashed #CFC9BC;background:#FAF8F4;border-radius:12px;padding:12px;display:flex;flex-direction:column;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+        '<span style="font-weight:800;font-size:14px;color:#8A8377;">' + esc(room) + '</span>' +
+        '<span style="font-size:11px;color:#9A927F;background:#EEE9DF;border-radius:99px;padding:2px 8px;">空房</span>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#B0A891;flex:1;">目前無承租合約</div>' +
+      '<button class="btn" style="margin-top:10px;padding:7px 10px;font-size:13px;width:100%;" onclick="openLeaseForm(null, ' + jsArg(room) + ')">＋ 新增合約</button>' +
+    '</div>'
+  }
+
+  // 房號格：先照房號清單排；清單外仍有生效合約者補在後面
+  var cards = ''
+  if (rooms.length) {
+    cards += rooms.map(function(room){
+      var l = byRoom[(room || '').trim()]
+      return l ? occupiedCard(room, l) : vacantCard(room)
+    }).join('')
+    // 生效中但房號不在清單內的合約，也要顯示（避免被藏起來）
+    activeLeases.forEach(function(l){
+      var k = (l.roomLabel || '').trim()
+      if (!k || rooms.indexOf(k) < 0) cards += occupiedCard(l.roomLabel, l)
+    })
+  } else {
+    // 尚未設定房號清單：只顯示生效中合約
+    cards = activeLeases.map(function(l){ return occupiedCard(l.roomLabel, l) }).join('')
+  }
+  var roomGrid = cards
+    ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">' + cards + '</div>'
+    : '<div style="padding:16px;text-align:center;color:#aaa;">尚無生效中合約</div>'
+
+  var roomNote = rooms.length
+    ? ''
+    : '<div style="font-size:12px;color:#B07A2E;background:#FBF4E4;border-radius:8px;padding:8px 10px;margin-bottom:10px;">尚未設定房號清單。設定後可看到每間房的空/租狀態，並在空房位直接新增合約。</div>'
+
+  // 已過期／已終止（可收合）
+  var inactiveRows = inactiveLeases.map(function(l){
+    var statusLabel = { ENDED:'已終止', EXPIRED:'已到期' }[l.status] || l.status
+    var settled = l.settledAt ? '　·　已結算 ' + fmtDate(l.endedAt || l.settledAt) + (l.earlyTerminated ? '（提前終止）' : '') : ''
     return '<tr>' +
-      '<td style="padding:8px;font-size:13px;">' + esc(l.tenantName) + (l.roomLabel ? '<br><span style="font-size:11px;color:#999;">' + esc(l.roomLabel) + '</span>' : '') + '</td>' +
-      '<td style="padding:8px;font-size:13px;">NT$ ' + Number(l.rent).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:12px;">' + fmtDate(l.leaseStart) + '<br>~ ' + fmtDate(l.leaseEnd) + endWarn + '</td>' +
-      '<td style="padding:8px;"><span style="color:' + statusColor + ';font-size:12px;">' + statusLabel + '</span></td>' +
+      '<td style="padding:8px;font-size:13px;color:#666;">' + esc(l.roomLabel || '—') + '</td>' +
+      '<td style="padding:8px;font-size:13px;color:#666;">' + esc(l.tenantName || '—') + '</td>' +
+      '<td style="padding:8px;font-size:12px;color:#888;">' + fmtDate(l.leaseStart) + ' ~ ' + fmtDate(l.leaseEnd) + '</td>' +
+      '<td style="padding:8px;font-size:12px;color:#999;">' + statusLabel + settled + '</td>' +
       '<td style="padding:8px;">' +
         (l.contractFile ? '<a href="' + esc(l.contractFile) + '" target="_blank" style="font-size:12px;color:#4A6741;">📄</a> ' : '') +
         '<button onclick="openLeaseForm(\'' + l.id + '\')" style="border:none;background:none;cursor:pointer;font-size:13px;">✏️</button>' +
         '<button onclick="deleteLease(\'' + l.id + '\')" style="border:none;background:none;cursor:pointer;color:#C0524A;">✕</button>' +
       '</td>' +
     '</tr>'
-  }).join('') || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#aaa;">尚無租約</td></tr>'
+  }).join('')
+  var inactiveSection = inactiveLeases.length
+    ? '<div style="margin-top:16px;border:1px solid #E5E0D5;border-radius:10px;overflow:hidden;">' +
+        '<div onclick="var x=document.getElementById(\'inactiveLeaseBox\');var open=x.style.display!==\'none\';x.style.display=open?\'none\':\'\';this.querySelector(\'.arw\').textContent=open?\'▸\':\'▾\';" style="display:flex;justify-content:space-between;align-items:center;background:#EFEBE3;padding:10px 14px;cursor:pointer;font-weight:700;font-size:14px;color:#7A7367;">' +
+          '<span>🗂️ 已過期／已終止（' + inactiveLeases.length + '）</span><span class="arw">▸</span>' +
+        '</div>' +
+        '<div id="inactiveLeaseBox" style="display:none;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;">' +
+          '<th style="padding:8px;text-align:left;font-size:12px;">房號</th><th style="padding:8px;text-align:left;font-size:12px;">承租人</th><th style="padding:8px;text-align:left;font-size:12px;">租期</th><th style="padding:8px;text-align:left;font-size:12px;">狀態</th><th style="padding:8px;text-align:left;font-size:12px;">操作</th>' +
+        '</tr></thead><tbody>' + inactiveRows + '</tbody></table></div>' +
+      '</div>'
+    : ''
 
   var html = '<div id="contractModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:320;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
-    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:680px;width:100%;margin:auto;">' +
+    '<div style="background:#fff;border-radius:16px;padding:24px;max-width:720px;width:100%;margin:auto;">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
       '<h3 style="margin:0;">合約管理 — ' + esc(m.title) + '</h3>' +
       '<button onclick="closeContractModal()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
     '</div>' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
-      '<div style="font-weight:700;font-size:14px;">🏠 房客合約</div>' +
-      '<button class="btn" style="padding:6px 14px;font-size:13px;" onclick="openLeaseForm()">+ 新增租約</button>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">' +
+      '<div style="font-weight:700;font-size:14px;">🏠 房客合約（生效中 ' + activeLeases.length + (rooms.length ? ' / 共 ' + rooms.length + ' 間' : '') + '）</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="btn" style="padding:6px 12px;font-size:13px;background:#8A8A8A;" onclick="openRoomLabelEditor()">設定房號</button>' +
+        '<button class="btn" style="padding:6px 14px;font-size:13px;" onclick="openLeaseForm()">+ 新增租約</button>' +
+      '</div>' +
     '</div>' +
-    '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;">' +
-      '<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F5F0EA;">' +
-      '<th style="padding:8px;text-align:left;font-size:12px;">承租人</th><th style="padding:8px;text-align:left;font-size:12px;">租金</th><th style="padding:8px;text-align:left;font-size:12px;">租期</th><th style="padding:8px;text-align:left;font-size:12px;">狀態</th><th style="padding:8px;text-align:left;font-size:12px;">操作</th>' +
-      '</tr></thead><tbody>' + leaseRows + '</tbody></table>' +
-    '</div>' +
+    roomNote +
+    roomGrid +
+    inactiveSection +
     '</div></div>'
 
   var ex = document.getElementById('contractModal'); if (ex) ex.remove()
   document.body.insertAdjacentHTML('beforeend', html)
+}
+
+// 設定房號清單（逗號或換行分隔）
+function openRoomLabelEditor() {
+  var m = MANAGED.current
+  var rooms = contractRoomList()
+  var old = document.getElementById('roomLabelModal'); if (old) old.remove()
+  var html = '<div id="roomLabelModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:360;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+    '<div style="background:#fff;border-radius:16px;padding:22px;max-width:420px;width:100%;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+        '<h3 style="margin:0;font-size:16px;">設定房號 — ' + esc(m.title) + '</h3>' +
+        '<button onclick="var x=document.getElementById(\'roomLabelModal\');if(x)x.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#888;margin-bottom:8px;line-height:1.6;">一行一個房號，或用逗號分隔（例：22-501、22-502…）。設定後會依此顯示每間房的空／租狀態。</div>' +
+      '<textarea id="roomLabelInput" rows="8" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #E5E0D5;border-radius:8px;font-size:14px;line-height:1.7;" placeholder="22-501&#10;22-502&#10;22-503">' + esc(rooms.join('\n')) + '</textarea>' +
+      '<button class="btn" style="width:100%;margin-top:12px;" onclick="saveRoomLabels()">儲存房號</button>' +
+    '</div></div>'
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+async function saveRoomLabels() {
+  var el = document.getElementById('roomLabelInput')
+  var val = el ? el.value : ''
+  try {
+    var res = await fetch('/admin/api/managed/' + MANAGED.current.id + '/rooms?key=' + encodeURIComponent(KEY), {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ rooms: val })
+    })
+    var d = await res.json()
+    if (!res.ok) { showToast('❌ ' + (d.error || '儲存失敗')); return }
+    MANAGED.current.roomLabels = d.roomLabels
+    var x = document.getElementById('roomLabelModal'); if (x) x.remove()
+    showToast('✅ 已儲存 ' + (d.rooms ? d.rooms.length : 0) + ' 個房號')
+    renderContractManager()
+  } catch (e) { showToast('❌ 連線失敗') }
 }
 
 function closeContractModal() { var m = document.getElementById('contractModal'); if (m) m.remove() }
@@ -7424,10 +7532,12 @@ async function saveContract() {
 
 // ── 租約表單 ───────────────────────────────────────────────────
 var _uploadedLeaseFile = null
-async function openLeaseForm(leaseId) {
+async function openLeaseForm(leaseId, prefillRoom) {
   await loadManagedOpts()
   var l = leaseId ? (MANAGED.leases || []).find(function(x){ return x.id === leaseId }) : {}
   l = l || {}
+  // 從空房位「新增合約」進來時，預先帶入房號
+  if (!leaseId && prefillRoom) l = { roomLabel: prefillRoom }
   _uploadedLeaseFile = null
   function fmtDate(d) { return d ? new Date(d).toISOString().slice(0,10) : '' }
 

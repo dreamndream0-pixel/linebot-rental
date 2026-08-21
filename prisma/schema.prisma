@@ -566,6 +566,7 @@ model ManagedProperty {
   title         String    // 社區名稱
   address       String    // 地址
   roomCount     Int       @default(1)  // 房間數
+  roomLabels    String?   @db.Text     // 房號清單（JSON 陣列），用來顯示空房位與新增合約
 
   // 委託類型與合約
   manageType    String    // 'SUBLEASE'(包租) 或 'TRUST'(代管)
