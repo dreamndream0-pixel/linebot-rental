@@ -9,6 +9,11 @@ const { findLineTenant } = require('../../tenantStore')
 
 const HIDDEN_RENT_PAYMENT_NOTE = '__HIDDEN_RENT_SCHEDULE_ROW__'
 
+// 收支帳補建（reconciliation）節流：短時間內重複開啟明細對帳時，跳過防禦性的補建。
+// 顯示的收支數字每次都會重新查詢，補建只是把舊資料/Ragic 匯入補齊，60 秒內略過不影響正確性。
+const _ledgerEnsuredAt = new Map()
+const LEDGER_ENSURE_TTL = 60 * 1000
+
 // 權限過濾：super 看全部，房東只看自己的
 function ownFilter(auth) {
   return auth.role === 'super' ? {} : { landlordId: auth.landlordId }
@@ -512,7 +517,13 @@ router.get('/admin/api/managed/:id', async (req, res) => {
     if (auth.role !== 'super' && item.landlordId !== auth.landlordId) {
       return res.status(403).json({ error: 'forbidden' })
     }
-    const backfill = await ensureManagedPropertyLedgerRecords(item.id)
+    // 60 秒內剛補建過就略過，避免反覆開啟明細對帳每次都重跑補建
+    const lastEnsured = _ledgerEnsuredAt.get(item.id)
+    let backfill = { rentCreated: 0, rentLinked: 0, utilityCreated: 0, utilityLinked: 0, hiddenRentDuplicates: 0, skipped: true }
+    if (!lastEnsured || Date.now() - lastEnsured > LEDGER_ENSURE_TTL) {
+      backfill = await ensureManagedPropertyLedgerRecords(item.id)
+      _ledgerEnsuredAt.set(item.id, Date.now())
+    }
     // 只有補建有實際變更（新增/連結收支）時才重撈一次，否則直接用第一次結果
     const changed = (backfill.rentCreated + backfill.rentLinked + backfill.utilityCreated + backfill.utilityLinked + (backfill.hiddenRentDuplicates || 0)) > 0
     const fresh = changed
@@ -2358,6 +2369,7 @@ async function findLeaseLineTenant(lineUserId, landlordId, cache) {
 router.post('/admin/api/ragic/sync', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!(await hasRagicFeature(auth))) return res.status(403).json({ error: 'forbidden' })
+  _ledgerEnsuredAt.clear()  // Ragic 同步會新增租金/水電資料，重置補建節流，讓下次明細對帳重新補建
 
   const apiKey = process.env.RAGIC_API_KEY
   const formUrl = process.env.RAGIC_FORM_URL
@@ -2488,6 +2500,7 @@ router.post('/admin/api/ragic/sync', async (req, res) => {
 router.post('/admin/api/ragic/sync-utility', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!(await hasRagicFeature(auth))) return res.status(403).json({ error: 'forbidden' })
+  _ledgerEnsuredAt.clear()  // Ragic 同步會新增租金/水電資料，重置補建節流，讓下次明細對帳重新補建
 
   const apiKey = process.env.RAGIC_API_KEY
   const formUrl = process.env.RAGIC_UTILITY_FORM_URL
@@ -2606,6 +2619,7 @@ router.post('/admin/api/ragic/sync-utility', async (req, res) => {
 router.post('/admin/api/ragic/sync-rent', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!(await hasRagicFeature(auth))) return res.status(403).json({ error: 'forbidden' })
+  _ledgerEnsuredAt.clear()  // Ragic 同步會新增租金/水電資料，重置補建節流，讓下次明細對帳重新補建
 
   const apiKey = process.env.RAGIC_API_KEY
   const formUrl = process.env.RAGIC_RENT_FORM_URL
