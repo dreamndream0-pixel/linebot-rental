@@ -7879,6 +7879,7 @@ var LEASE_SORT = 'room'   // 預設房號升冪：tenant / room / title / rent /
 var LEASE_SORT_DIR = 'asc'
 var LEASE_SEARCH = ''
 var LEASE_DUE = ''          // '' / '7' / '14' / '30'：只看即將繳費 N 天內
+var LEASE_HIDE_PAID = false // 隱藏已繳清的租約
 
 function leaseSortCompare(a, b) {
   var dir = LEASE_SORT_DIR === 'desc' ? -1 : 1
@@ -8043,6 +8044,7 @@ function renderLeaseList() {
     baseList = d[LEASE_TAB] || []
   }
   var list = applyLeaseFilterSort(baseList)
+  if (LEASE_HIDE_PAID) list = list.filter(function(l){ return !l.fullyPaid })
   var shownCount = list.length
   // 先依房東分組，房東底下再依社區（棟別）分組
   var groups = {}, order = []
@@ -8106,6 +8108,7 @@ function renderLeaseList() {
         [['','即將繳費：全部'],['7','即將繳費：一週內'],['14','即將繳費：兩週內'],['30','即將繳費：一個月內']]
           .map(function(o){ return '<option value="' + o[0] + '"' + (LEASE_DUE===o[0]?' selected':'') + '>' + o[1] + '</option>' }).join('') +
       '</select>' +
+      '<button onclick="LEASE_HIDE_PAID=!LEASE_HIDE_PAID;renderLeaseList()" style="padding:8px 12px;border:1.5px solid ' + (LEASE_HIDE_PAID ? '#4A6741' : '#E5E0D5') + ';border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;background:' + (LEASE_HIDE_PAID ? '#4A6741' : '#fff') + ';color:' + (LEASE_HIDE_PAID ? '#fff' : '#4A6741') + ';">' + (LEASE_HIDE_PAID ? '✓ 已隱藏繳清' : '隱藏已繳清') + '</button>' +
       '<span style="font-size:12px;color:#888;white-space:nowrap;">點表頭箭頭可排序</span>' +
       '<span style="font-size:12px;color:#888;white-space:nowrap;">共 ' + shownCount + ' 筆' + (LEASE_SEARCH.trim() ? '（跨所有狀態）' : '') + '</span>' +
       ((DATA && DATA.isBroker) ? '<button class="spin-btn" onclick="btnLoad(this,function(){return bulkSetPrepaid()})" style="padding:8px 12px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:#B07A2E;color:#fff;white-space:nowrap;">批次設定預收電費</button>' : '') +
