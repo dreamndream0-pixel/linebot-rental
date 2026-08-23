@@ -7980,26 +7980,31 @@ function renderLeaseList() {
       endInfo += '<br><span style="color:#888;font-size:11px;">已結算 ' + fmt(l.endedAt || l.settledAt) + '</span>'
       if (l.earlyTerminated) endInfo += ' <span style="color:#C0524A;font-size:10px;">·提前終止</span>'
     }
-    // 租金狀態：
-    //  有應繳日已到未繳 → 尚欠 X 期租金 $XXX（紅）
-    //  合約內每期都繳清（含未到期）→ 已繳清（綠）
-    //  只是還有未到期的期別未繳 → 顯示下期資訊（不算已繳清）
+    // 月租金欄：金額（繳費週期）
+    var monthlyRentHtml = 'NT$ ' + Number(l.rent || 0).toLocaleString() +
+      '<span style="color:#888;font-size:11px;">（' + paymentCycleLabel(l.paymentCycle) + '）</span>'
+    // 下期租金欄：下期應繳金額 / 日期（逾期或N天後） / 尚欠期數金額
     var nextRent = l.nextRentDate ? new Date(l.nextRentDate).toLocaleDateString('zh-TW') : ''
-    var nextNote = ''
-    if (l.nextRentDate) {
-      var when = l.daysToRent == null ? '' : (l.daysToRent === 0 ? '今天繳租' : l.daysToRent + '天後繳租')
-      nextNote = '下期 ' + nextRent + (when ? '（' + when + '）' : '')
-    }
-    var rentStatus
-    if ((l.arrearsCount || 0) > 0) {
-      // 有逾期未繳→紅色強調；只是未到期尚未繳→琥珀色
-      var owedColor = (l.overdueCount || 0) > 0 ? '#C0524A' : '#B07A2E'
-      rentStatus = '<span style="color:' + owedColor + ';font-weight:700;">尚欠 ' + l.arrearsCount + ' 期租金 NT$ ' + Number(l.arrearsTotal || 0).toLocaleString() + '</span>' +
-        (nextNote ? '<br><span style="color:#999;">' + nextNote + '</span>' : '')
-    } else if (l.fullyPaid) {
-      rentStatus = '<span style="color:#2E7D32;font-weight:700;">已繳清</span>'
+    var nextRentHtml
+    if (l.fullyPaid) {
+      nextRentHtml = '<span style="color:#2E7D32;font-weight:700;">已繳清</span>'
     } else {
-      rentStatus = '<span style="color:#999;">' + (nextNote || '—') + '</span>'
+      var parts = []
+      if (l.nextRentDate) {
+        var whenTxt = ''
+        if (l.daysToRent != null) {
+          if (l.daysToRent < 0) whenTxt = '逾期 ' + (-l.daysToRent) + ' 天'
+          else if (l.daysToRent === 0) whenTxt = '今天繳租'
+          else whenTxt = l.daysToRent + '天後繳租'
+        }
+        parts.push('<span style="color:#333;font-weight:700;">下期租金應繳 NT$ ' + Number(l.nextRentAmount || 0).toLocaleString() + '</span>')
+        parts.push('<span style="color:#999;font-size:11px;">' + nextRent + (whenTxt ? '（' + whenTxt + '）' : '') + '</span>')
+      }
+      if ((l.arrearsCount || 0) > 0) {
+        var owedColor = (l.overdueCount || 0) > 0 ? '#C0524A' : '#B07A2E'
+        parts.push('<span style="color:' + owedColor + ';font-weight:700;">尚欠 ' + l.arrearsCount + ' 期租金 NT$ ' + Number(l.arrearsTotal || 0).toLocaleString() + '</span>')
+      }
+      nextRentHtml = parts.length ? parts.join('<br>') : '<span style="color:#999;">—</span>'
     }
     var propLink = l.propertyId
       ? '<a href="' + (DATA.siteUrl || '') + '/property/' + l.propertyId + '" target="_blank" style="color:#4A6741;font-size:12px;">🔗 房源頁</a>'
@@ -8014,7 +8019,8 @@ function renderLeaseList() {
       '<td style="padding:8px;font-size:13px;color:#555;white-space:nowrap;">' + esc(l.roomLabel || '—') + '</td>' +
       '<td style="padding:8px;font-size:13px;white-space:nowrap;">' + esc(l.managedTitle) + '</td>' +
       '<td style="padding:8px;font-size:12px;white-space:nowrap;">' + fmt(l.leaseStart) + '<br>~ ' + endInfo + '</td>' +
-      '<td style="padding:8px;font-size:13px;white-space:nowrap;">NT$ ' + Number(l.rent || 0).toLocaleString() + '<br><span style="font-size:11px;">' + rentStatus + '</span></td>' +
+      '<td style="padding:8px;font-size:13px;white-space:nowrap;">' + monthlyRentHtml + '</td>' +
+      '<td style="padding:8px;font-size:13px;white-space:nowrap;line-height:1.7;">' + nextRentHtml + '</td>' +
       '<td style="padding:8px;white-space:nowrap;">' + propLink + '<br>' + lineBadge + '</td>' +
       '<td style="padding:8px;white-space:nowrap;"><button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;" onclick="btnLoad(this, function(){ return openLeaseLedger(\'' + l.id + '\') })">對帳</button> ' +
         '<button class="btn" style="padding:5px 12px;font-size:12px;width:auto;white-space:nowrap;background:' + (l.settledAt ? '#888' : '#B07A2E') + ';" onclick="btnLoad(this, function(){ return openSettleModal(\'' + l.id + '\') })">' + (l.settledAt ? '結算✓' : '結算') + '</button></td>' +
@@ -8041,7 +8047,8 @@ function renderLeaseList() {
     sortTh('room', '房號') +
     sortTh('title', '社區') +
     sortTh('end', '租期') +
-    sortTh('rent', '租金/下期') +
+    sortTh('rent', '月租金') +
+    sortTh('nextRent', '下期租金') +
     '<th style="padding:8px;text-align:left;font-size:12px;white-space:nowrap;">連結</th><th style="padding:8px;text-align:left;font-size:12px;white-space:nowrap;">對帳</th></tr>'
 
   var groupsHtml = order.map(function(owner, gi) {
