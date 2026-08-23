@@ -8066,10 +8066,10 @@ function renderLeaseList() {
     var bodyHtml = g.bldgOrder.map(function(bldg, bi) {
       var rows = g.byBldg[bldg]
       var bid = gid + '_b' + bi
-      return '<tbody><tr onclick="var x=document.getElementById(\'' + bid + '\');var open=x.style.display!==\'none\';x.style.display=open?\'none\':\'\';this.querySelector(\'.arw\').textContent=open?\'▸\':\'▾\';" style="cursor:pointer;background:#F5F0EA;">' +
-          '<td colspan="7" style="padding:8px 16px;"><span style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13px;color:#5A5347;">' +
-            '<span>🏢 ' + esc(bldg) + '　<span style="font-size:12px;color:#999;font-weight:400;">' + rows.length + ' 位</span></span>' +
-            '<span class="arw">▾</span></span></td></tr></tbody>' +
+      return '<tbody><tr onclick="var x=document.getElementById(\'' + bid + '\');var open=x.style.display!==\'none\';x.style.display=open?\'none\':\'\';this.querySelector(\'.arw\').textContent=open?\'▸\':\'▾\';" style="cursor:pointer;background:#E5EEE6;">' +
+          '<td colspan="7" style="padding:9px 16px;border-left:3px solid #4A6741;border-top:1px solid #CFDECF;"><span style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13px;color:#2F4E37;">' +
+            '<span>🏢 ' + esc(bldg) + '　<span style="font-size:12px;color:#6E8A72;font-weight:400;">' + rows.length + ' 位</span></span>' +
+            '<span class="arw" style="color:#4A6741;">▾</span></span></td></tr></tbody>' +
         '<tbody id="' + bid + '">' + rows.map(leaseRow).join('') + '</tbody>'
     }).join('')
     return '<div style="border:1px solid #E5E0D5;border-radius:10px;margin-bottom:10px;overflow:hidden;">' +
