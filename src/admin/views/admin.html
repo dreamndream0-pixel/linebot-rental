@@ -8062,24 +8062,22 @@ function renderLeaseList() {
   var groupsHtml = order.map(function(owner, gi) {
     var g = groups[owner]
     var gid = 'lg_' + LEASE_TAB + '_' + gi
-    // 每個社區（棟別）一個可收合區塊，社區名放在標題上
-    var bldgHtml = g.bldgOrder.map(function(bldg, bi) {
+    // 同一房東的所有社區共用一個表格（欄位對齊一致）；每個社區為可收合的 tbody 群組
+    var bodyHtml = g.bldgOrder.map(function(bldg, bi) {
       var rows = g.byBldg[bldg]
       var bid = gid + '_b' + bi
-      return '<div style="border-top:1px solid #ECE6DA;">' +
-        '<div onclick="var x=document.getElementById(\'' + bid + '\');var open=x.style.display!==\'none\';x.style.display=open?\'none\':\'\';this.querySelector(\'.arw\').textContent=open?\'▸\':\'▾\';" style="display:flex;justify-content:space-between;align-items:center;background:#F5F0EA;padding:8px 16px;cursor:pointer;font-weight:700;font-size:13px;color:#5A5347;">' +
-          '<span>🏢 ' + esc(bldg) + '　<span style="font-size:12px;color:#999;font-weight:400;">' + rows.length + ' 位</span></span>' +
-          '<span class="arw">▾</span>' +
-        '</div>' +
-        '<div id="' + bid + '" style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead>' + th + '</thead><tbody>' + rows.map(leaseRow).join('') + '</tbody></table></div>' +
-      '</div>'
+      return '<tbody><tr onclick="var x=document.getElementById(\'' + bid + '\');var open=x.style.display!==\'none\';x.style.display=open?\'none\':\'\';this.querySelector(\'.arw\').textContent=open?\'▸\':\'▾\';" style="cursor:pointer;background:#F5F0EA;">' +
+          '<td colspan="7" style="padding:8px 16px;"><span style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13px;color:#5A5347;">' +
+            '<span>🏢 ' + esc(bldg) + '　<span style="font-size:12px;color:#999;font-weight:400;">' + rows.length + ' 位</span></span>' +
+            '<span class="arw">▾</span></span></td></tr></tbody>' +
+        '<tbody id="' + bid + '">' + rows.map(leaseRow).join('') + '</tbody>'
     }).join('')
     return '<div style="border:1px solid #E5E0D5;border-radius:10px;margin-bottom:10px;overflow:hidden;">' +
       '<div onclick="var x=document.getElementById(\'' + gid + '\');var open=x.style.display!==\'none\';x.style.display=open?\'none\':\'\';this.querySelector(\'.arw\').textContent=open?\'▸\':\'▾\';" style="display:flex;justify-content:space-between;align-items:center;background:#EDE8E0;padding:10px 14px;cursor:pointer;font-weight:700;font-size:14px;">' +
         '<span>👤 房東：' + esc(owner) + '　<span style="font-size:12px;color:#888;font-weight:400;">' + g.items.length + ' 位房客・' + g.bldgOrder.length + ' 棟</span></span>' +
         '<span class="arw">▾</span>' +
       '</div>' +
-      '<div id="' + gid + '">' + bldgHtml + '</div>' +
+      '<div id="' + gid + '" style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead>' + th + '</thead>' + bodyHtml + '</table></div>' +
     '</div>'
   }).join('') || '<div style="padding:20px;text-align:center;color:#aaa;">此分類沒有租約</div>'
 
