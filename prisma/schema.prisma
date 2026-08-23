@@ -707,6 +707,7 @@ model Lease {
   utilAmount    Int       @default(0)      // 水電金額（固定費率金額，或按表計算後的金額）
   lastRentRemind  DateTime?  // 上次推租金提醒的時間（避免同月重複推）
   lastRentRemindDue DateTime? // 上次已通知房客的那一期應繳日（用來在清單顯示「已通知」）
+  lastRemindCycleDue DateTime? // 上次已處理提醒（含 confirm 推給房東確認）的那一期應繳日（避免同一期重複觸發）
   lastUtilRemind  DateTime?  // 上次推水電提醒的時間
 
   // 水電費率模式：FIXED(固定費率) / METER(台水台電・按電表度數)

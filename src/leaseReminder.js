@@ -494,7 +494,7 @@ async function handleRentReminderApproval(leaseId, isConfirm) {
     rent: Number(dueRow.amount || lease.rent || 0),
   }
   await pushToLeaseTenant(lease, rentReminderFlex(data))
-  await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: dueRow.dueDate || null } })
+  await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: dueRow.dueDate || null, lastRemindCycleDue: dueRow.dueDate || null } })
   await writeReminderAudit(lease, data.rent, '房東確認送出', 'landlord', '租金提醒（確認送出）')
   return `✅ 已發送租金提醒給 ${lease.tenantName || '房客'}（NT$ ${Number(data.rent).toLocaleString()}）。`
 }
@@ -502,6 +502,13 @@ async function handleRentReminderApproval(leaseId, isConfirm) {
 // 主檢查：每天跑，找出今天該提醒的租約
 async function checkLeaseReminders() {
   const today = new Date().getDate()  // 今天幾號
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
+  const _sameDay = (a, b) => {
+    if (!a || !b) return false
+    const x = new Date(a); x.setHours(0, 0, 0, 0)
+    const y = new Date(b); y.setHours(0, 0, 0, 0)
+    return x.getTime() === y.getTime()
+  }
   console.log(`📅 檢查租約繳費提醒（今天 ${today} 號）...`)
 
   // 每次執行內快取各房東的提醒模式（避免同房東重複打 DB）
@@ -528,28 +535,31 @@ async function checkLeaseReminders() {
       rentPayInfo: buildPayInfo(mp, mp.landlord ? mp.landlord.rentPayInfo : null),
     }
 
-    // 租金提醒：繳費日前 N 天（只在「本期尚未繳清」時處理，金額以正確期別為準）
+    // 租金提醒：以「實際下期應繳日」為準，應繳日前 REMIND_BEFORE 天內（或已逾期）即提醒；
+    // 只在「本期尚未繳清」時處理，並以該期應繳日去重（同一期只觸發一次）。
     const mode = await modeFor(mp ? mp.landlordId : null)
-    if (lease.rentRemindOn && lease.rentPayDay && mode !== 'off') {
-      const remindDay = ((lease.rentPayDay - REMIND_BEFORE - 1 + 31) % 31) + 1
-      if (today === remindDay && !alreadyRemindedThisMonth(lease.lastRentRemind)) {
-        const dueRow = await findDueUnpaidRow(lease)
-        if (!dueRow) {
-          console.log(`⏭️ 本期已繳清，略過租金提醒：${lease.tenantName}`)
-        } else if (mode === 'confirm') {
-          // 先推播給房東確認，房東按「確認送出」才會發給房客
-          const ok = await sendRentApprovalToLandlord(lease, mp.landlord, dueRow)
-          if (ok) await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date() } })
-        } else {
-          // auto：直接發給房客 + 寫操作紀錄
-          const remindData = { ...data, rent: Number(dueRow.amount || lease.rent || 0) }
-          try {
-            await pushToLeaseTenant(lease, rentReminderFlex(remindData))
-            await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: dueRow.dueDate || null } })
-            await writeReminderAudit(lease, remindData.rent, '系統自動', 'system', '租金提醒（自動發送）')
-            console.log(`✅ 已推租金提醒：${lease.tenantName}`)
-          } catch (e) {
-            console.error(`租金提醒推播失敗（${lease.tenantName}）:`, e.message)
+    if (lease.rentRemindOn && mode !== 'off') {
+      const dueRow = await findDueUnpaidRow(lease)
+      if (dueRow && dueRow.dueDate) {
+        const dueD = new Date(dueRow.dueDate); dueD.setHours(0, 0, 0, 0)
+        const daysUntil = Math.round((dueD.getTime() - startOfToday.getTime()) / 86400000)
+        const alreadyHandled = _sameDay(lease.lastRemindCycleDue, dueRow.dueDate)
+        if (daysUntil <= REMIND_BEFORE && !alreadyHandled) {
+          if (mode === 'confirm') {
+            // 先推播給房東確認，房東按「確認送出」才會發給房客
+            const ok = await sendRentApprovalToLandlord(lease, mp.landlord, dueRow)
+            if (ok) await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRemindCycleDue: dueRow.dueDate } })
+          } else {
+            // auto：直接發給房客 + 寫操作紀錄
+            const remindData = { ...data, rent: Number(dueRow.amount || lease.rent || 0) }
+            try {
+              await pushToLeaseTenant(lease, rentReminderFlex(remindData))
+              await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: dueRow.dueDate, lastRemindCycleDue: dueRow.dueDate } })
+              await writeReminderAudit(lease, remindData.rent, '系統自動', 'system', '租金提醒（自動發送）')
+              console.log(`✅ 已推租金提醒：${lease.tenantName}（應繳日 ${fmtYMD(dueRow.dueDate)}，剩 ${daysUntil} 天）`)
+            } catch (e) {
+              console.error(`租金提醒推播失敗（${lease.tenantName}）:`, e.message)
+            }
           }
         }
       }
