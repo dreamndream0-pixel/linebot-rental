@@ -8004,6 +8004,10 @@ function renderLeaseList() {
         var owedColor = (l.overdueCount || 0) > 0 ? '#C0524A' : '#B07A2E'
         parts.push('<span style="color:' + owedColor + ';font-weight:700;">尚欠 ' + l.arrearsCount + ' 期租金 NT$ ' + Number(l.arrearsTotal || 0).toLocaleString() + '</span>')
       }
+      if (l.reminded) {
+        var remindedWhen = l.remindedAt ? new Date(l.remindedAt).toLocaleDateString('zh-TW') : ''
+        parts.push('<span style="display:inline-block;margin-top:1px;color:#2E7D32;background:#E4F1E4;border-radius:99px;padding:1px 8px;font-size:11px;">✅ 已通知' + (remindedWhen ? ' ' + remindedWhen : '') + '</span>')
+      }
       nextRentHtml = parts.length ? parts.join('<br>') : '<span style="color:#999;">—</span>'
     }
     var propLink = l.propertyId
