@@ -1625,6 +1625,65 @@ router.get('/admin/api/managed-leases', async (req, res) => {
   }
 })
 
+// ── 待繳費清單：所有承租中租約的「未繳」租金期別與水電抄表 ──────────
+router.get('/admin/api/managed/pending', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const where = { status: 'ACTIVE' }
+    if (auth.role !== 'super') where.managedProperty = { landlordId: auth.landlordId }
+    const leases = await prisma.lease.findMany({
+      where,
+      include: { managedProperty: { select: { id: true, title: true, ownerName: true } } },
+    })
+    const leaseIds = leases.map(l => l.id)
+    const leaseById = {}; leases.forEach(l => { leaseById[l.id] = l })
+    const [rentPayments, readings] = await Promise.all([
+      leaseIds.length ? prisma.rentPayment.findMany({ where: { leaseId: { in: leaseIds } } }) : [],
+      leaseIds.length ? prisma.utilityReading.findMany({ where: { leaseId: { in: leaseIds } } }) : [],
+    ])
+    const rpByLease = {}
+    rentPayments.forEach(rp => { (rpByLease[rp.leaseId] = rpByLease[rp.leaseId] || []).push(rp) })
+
+    const now = new Date()
+    const today = startOfDay(now)
+    const dayDiff = (d) => Math.round((startOfDay(d).getTime() - today.getTime()) / 86400000)
+    const meta = (l) => ({
+      leaseId: l.id,
+      tenantName: l.tenantName,
+      roomLabel: l.roomLabel,
+      managedTitle: l.managedProperty ? l.managedProperty.title : '未連結物業',
+      ownerName: l.managedProperty ? l.managedProperty.ownerName : '（未填房東）',
+    })
+
+    const rent = []
+    for (const l of leases) {
+      let sched = []
+      try { sched = buildRentSchedule(l, rpByLease[l.id] || []) } catch (e) { continue }
+      sched.forEach(r => {
+        if ((r.unpaid || 0) > 0 && r.dueDate) {
+          rent.push({ ...meta(l), dueDate: r.dueDate, amount: r.unpaid, daysUntil: dayDiff(r.dueDate) })
+        }
+      })
+    }
+    const util = []
+    readings.forEach(rd => {
+      const unpaid = Math.max(0, (rd.amount || 0) - (rd.paidAmount || 0))
+      if (unpaid <= 0) return
+      const l = leaseById[rd.leaseId]; if (!l) return
+      const due = rd.dueDate || rd.endDate
+      if (!due) return
+      util.push({ ...meta(l), dueDate: due, amount: unpaid, daysUntil: dayDiff(due), note: rd.note || '' })
+    })
+    rent.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+    util.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+    res.json({ rent, util, other: [] })
+  } catch (e) {
+    console.error('待繳費清單失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ── 批次設定所有合約的預收電費 ────────────────────────────────
 router.post('/admin/api/managed/leases/bulk-prepaid', express.json(), async (req, res) => {
   const auth = await resolveRole(req.query.key)
