@@ -127,6 +127,10 @@ function isHiddenRentPayment(p) {
   return p && p.note === HIDDEN_RENT_PAYMENT_NOTE
 }
 
+function isParkingRentPayment(p) {
+  return /車位|停車|parking/i.test(String((p && p.note) || ''))
+}
+
 function isPaidRentPayment(p) {
   return !!(p && (p.paidAmount || 0) > 0)
 }
@@ -168,7 +172,7 @@ async function hideInvalidOrDuplicateRentPayments(leaseId) {
       else keep.push(p)
       continue
     }
-    const overlapped = keep.some(k => rentPeriodsOverlap(k, p))
+    const overlapped = keep.some(k => isParkingRentPayment(k) === isParkingRentPayment(p) && rentPeriodsOverlap(k, p))
     if (overlapped && !isPaidRentPayment(p)) {
       hideIds.push(p.id)
     } else {
@@ -184,7 +188,7 @@ async function hideInvalidOrDuplicateRentPayments(leaseId) {
   return { hiddenRentDuplicates: hideIds.length }
 }
 
-function buildRentSchedule(lease, rentPayments) {
+function buildRentSchedule(lease, rentPayments, opts = {}) {
   if (!lease.leaseStart) return []
   const months = cycleMonths(lease.paymentCycle)
   const start = new Date(lease.leaseStart)
@@ -194,6 +198,7 @@ function buildRentSchedule(lease, rentPayments) {
   // 已儲存的期別（含未收款的「僅修改金額/應繳日」覆寫）：都列入明細；
   // 已繳者鎖定，未繳者維持可編輯。
   const stored = (rentPayments || [])
+    .filter(p => opts.onlyParking ? isParkingRentPayment(p) : !isParkingRentPayment(p))
     .slice()
     .sort((a, b) => new Date(a.periodStart) - new Date(b.periodStart))
   // 去重 + 隱藏被隱藏的產生期別：Ragic 同步與系統合約可能為「同一段期間」各建一筆
@@ -235,8 +240,8 @@ function buildRentSchedule(lease, rentPayments) {
       note: p.note,
       settled: !!p.settled,
       locked: paidAmt > 0,   // 只有已繳才鎖定；未繳覆寫仍可編輯
-      // 已結清（含折扣時實收<應繳）視為無欠款；否則以應繳−已繳計算
-      unpaid: p.settled ? 0 : Math.max(0, (p.amount || 0) - paidAmt),
+      // 差額永遠顯示「應繳 - 實收」；已收款但有折讓時仍可看出差額。
+      unpaid: Math.max(0, (p.amount || 0) - paidAmt),
     })
   })
 
@@ -247,22 +252,18 @@ function buildRentSchedule(lease, rentPayments) {
   let periodStart = lastStoredEnd ? new Date(lastStoredEnd + 86400000) : new Date(start)
   if (periodStart < start) periodStart = new Date(start)
   let idx = 1
-  while (periodStart <= leaseEnd && idx <= 120) {
+  while (!opts.skipGenerated && periodStart <= leaseEnd && idx <= 120) {
     const nextStart = addMonths(periodStart, months)
     const periodEnd = new Date(Math.min(addMonths(periodStart, months).getTime() - 86400000, leaseEnd.getTime()))
     // 預設應繳日期：期別起始日前 3 天（CONTRACT_START 模式維持＝期別起始日）
     const due = lease.paymentDueMode === 'CONTRACT_START'
       ? new Date(periodStart)
       : new Date(new Date(periodStart).getTime() - 3 * 86400000)
-    // 有停車費的合約：租金明細每期金額 ＝（折後租金 ＋ 停車費）× 期數
-    const parking = lease.parkingFee || 0
-    const amount = (effectiveRent(lease) + parking) * months
+    const amount = effectiveRent(lease) * months
     rows.push({
       id: null,
       index: rows.length + 1,
-      label: parking > 0
-        ? `${ymd(periodStart)}~${ymd(periodEnd)}（含停車費 ${parking.toLocaleString()}）`
-        : `${ymd(periodStart)}~${ymd(periodEnd)}`,
+      label: `${ymd(periodStart)}~${ymd(periodEnd)}`,
       periodStart,
       periodEnd,
       amount,
@@ -271,8 +272,7 @@ function buildRentSchedule(lease, rentPayments) {
       paidDate: null,
       payMethod: null,
       receiptUrl: null,
-      note: parking > 0 ? `含停車費 ${parking.toLocaleString()}/月` : null,
-      parkingFee: parking,
+      note: opts.generatedNote || null,
       locked: false,
       unpaid: amount,
     })
@@ -280,6 +280,19 @@ function buildRentSchedule(lease, rentPayments) {
     idx++
   }
   return rows
+}
+
+function buildParkingSchedule(lease, rentPayments) {
+  const parkingFee = lease.parkingFee || 0
+  const parkingPayments = (rentPayments || []).filter(p => isParkingRentPayment(p))
+  if (!lease.leaseStart || (parkingFee <= 0 && !parkingPayments.length)) return []
+  const parkingLease = { ...lease, rent: parkingFee, discountType: null, discountValue: 0 }
+  const rows = buildRentSchedule(parkingLease, parkingPayments, { onlyParking: true, skipGenerated: parkingFee <= 0, generatedNote: '汽車位租金' })
+  return rows.map(r => ({
+    ...r,
+    label: (r.label || '') + (lease.parkingSpotId ? `（${lease.parkingSpotId}）` : ''),
+    note: r.note || (lease.parkingSpotId ? `汽車位 ${lease.parkingSpotId}` : '汽車位租金'),
+  }))
 }
 
 function nextUnpaidRentRow(lease, today = new Date()) {
@@ -1720,8 +1733,9 @@ router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
       prisma.rentPayment.findMany({ where: { leaseId: lease.id }, orderBy: { periodStart: 'asc' } }),
     ])
     const rentSchedule = buildRentSchedule(lease, rentPayments)
+    const parkingSchedule = buildParkingSchedule(lease, rentPayments)
     // 租約對帳只回傳該房客/房號的收支；整棟台電等 leaseId=null 的支出留在委託物件總帳。
-    res.json({ lease, rentSchedule, utilityReadings, records, backfill })
+    res.json({ lease, rentSchedule, parkingSchedule, utilityReadings, records, backfill })
   } catch (e) {
     console.error('租約帳務載入失敗:', e.message)
     res.status(500).json({ error: e.message })
@@ -1981,7 +1995,7 @@ router.post('/admin/api/managed/lease/:leaseId/payment', express.json(), async (
     const lease = await getOwnedLease(auth, req.params.leaseId)
     if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
     const b = req.body
-    const kind = b.kind === 'UTILITY' ? 'UTILITY' : 'RENT'
+    const kind = b.kind === 'UTILITY' ? 'UTILITY' : (b.kind === 'PARKING' ? 'PARKING' : 'RENT')
     const paidAmount = parseInt(b.paidAmount) || 0
     const paidDate = b.paidDate ? new Date(b.paidDate) : null
     const isPaid = paidAmount > 0 && !!paidDate
@@ -2038,10 +2052,12 @@ router.post('/admin/api/managed/lease/:leaseId/payment', express.json(), async (
       existing = await prisma.rentPayment.findFirst({
         where: { leaseId: lease.id, periodStart, dueDate },
       })
+      if (existing && (kind === 'PARKING' ? !isParkingRentPayment(existing) : isParkingRentPayment(existing))) existing = null
     }
     const overlapRows = await prisma.rentPayment.findMany({ where: { leaseId: lease.id } })
     const conflict = overlapRows.find(p => {
       if (isHiddenRentPayment(p)) return false
+      if (kind === 'PARKING' ? !isParkingRentPayment(p) : isParkingRentPayment(p)) return false
       if (existing && p.id === existing.id) return false
       return rentPeriodsOverlap(p, { periodStart, periodEnd })
     })
@@ -2056,10 +2072,10 @@ router.post('/admin/api/managed/lease/:leaseId/payment', express.json(), async (
         managedPropertyId: lease.managedPropertyId,
         leaseId: lease.id,
         type: 'INCOME',
-        category: 'RENT',
+        category: kind === 'PARKING' ? 'PARKING' : 'RENT',
         amount: paidAmount,
         recordDate: paidDate,
-        description: `租金 ${ymd(periodStart)}~${ymd(periodEnd)} ${b.payMethod ? `(${b.payMethod})` : ''}`.trim(),
+        description: `${kind === 'PARKING' ? '汽車位租金' : '租金'} ${ymd(periodStart)}~${ymd(periodEnd)} ${b.payMethod ? `(${b.payMethod})` : ''}`.trim(),
       }
       if (recordId) {
         await prisma.managementRecord.update({ where: { id: recordId }, data: recordData })
@@ -2079,7 +2095,7 @@ router.post('/admin/api/managed/lease/:leaseId/payment', express.json(), async (
       paidDate,
       payMethod: b.payMethod || null,
       receiptUrl: b.receiptUrl || null,
-      note: b.note || null,
+      note: b.note || (kind === 'PARKING' ? `汽車位租金${lease.parkingSpotId ? ` ${lease.parkingSpotId}` : ''}` : null),
     }
     const payment = existing
       ? await prisma.rentPayment.update({ where: { id: existing.id }, data })
