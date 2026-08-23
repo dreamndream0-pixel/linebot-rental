@@ -227,6 +227,20 @@ function rentReminderFlex(lease) {
   })
 }
 
+function rentReminderDataForDue(lease, dueRow) {
+  const mp = lease.managedProperty
+  return {
+    ...lease,
+    managedTitle: mp ? mp.title : (lease.managedTitle || ''),
+    rentPayInfo: buildPayInfo(mp || {}, mp && mp.landlord ? mp.landlord.rentPayInfo : null),
+    rent: Number((dueRow && dueRow.amount) || lease.rent || 0),
+    dueDateStr: dueRow && dueRow.dueDate ? dueRow.dueDate : null,
+    periodStartStr: dueRow && dueRow.periodStart ? dueRow.periodStart : null,
+    periodEndStr: dueRow && dueRow.periodEnd ? dueRow.periodEnd : null,
+    payMethod: dueRow && dueRow.payMethod ? dueRow.payMethod : lease.payMethod,
+  }
+}
+
 // 租金收款確認（房東登記收款後推播給房客）
 function rentReceiptFlex(lease) {
   const rows = []
@@ -423,13 +437,7 @@ async function sendRentApprovalToLandlord(lease, landlord, dueRow) {
   const amount = Number((dueRow && dueRow.amount) || lease.rent || 0)
   const client = new Client({ channelAccessToken: ch.token, channelSecret: ch.secret })
   // 預覽卡片：與實際發給房客的內容完全一致（同一個 rentReminderFlex）
-  const mp = lease.managedProperty
-  const cardData = {
-    ...lease,
-    managedTitle: mp ? mp.title : (lease.managedTitle || ''),
-    rentPayInfo: buildPayInfo(mp || {}, mp && mp.landlord ? mp.landlord.rentPayInfo : null),
-    rent: amount,
-  }
+  const cardData = rentReminderDataForDue(lease, { ...dueRow, amount })
   const previewCard = rentReminderFlex(cardData)
   const confirmMsg = {
     type: 'template',
@@ -487,12 +495,7 @@ async function handleRentReminderApproval(leaseId, isConfirm) {
   if (!lease.lineUserId) return '此租約未綁定 LINE 房客，無法發送。'
   const dueRow = await findDueUnpaidRow(lease)
   if (!dueRow) return `${lease.tenantName || '房客'} 本期已繳清，未發送提醒。`
-  const mp = lease.managedProperty
-  const data = {
-    ...lease, managedTitle: mp.title,
-    rentPayInfo: buildPayInfo(mp, mp.landlord ? mp.landlord.rentPayInfo : null),
-    rent: Number(dueRow.amount || lease.rent || 0),
-  }
+  const data = rentReminderDataForDue(lease, dueRow)
   await pushToLeaseTenant(lease, rentReminderFlex(data))
   await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: dueRow.dueDate || null, lastRemindCycleDue: dueRow.dueDate || null } })
   await writeReminderAudit(lease, data.rent, '房東確認送出', 'landlord', '租金提醒（確認送出）')
@@ -551,7 +554,7 @@ async function checkLeaseReminders() {
             if (ok) await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRemindCycleDue: dueRow.dueDate } })
           } else {
             // auto：直接發給房客 + 寫操作紀錄
-            const remindData = { ...data, rent: Number(dueRow.amount || lease.rent || 0) }
+            const remindData = rentReminderDataForDue(data, dueRow)
             try {
               await pushToLeaseTenant(lease, rentReminderFlex(remindData))
               await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: dueRow.dueDate, lastRemindCycleDue: dueRow.dueDate } })
