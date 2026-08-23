@@ -8901,6 +8901,38 @@ async function uploadPaymentReceipt(input, targetId) {
   input.value = ''
 }
 
+// 租金收款確認：房客將收到的 LINE 卡片預覽（模擬 rentReceiptFlex 版面）
+function rentReceiptPreviewHtml(d) {
+  var subtitle = esc(d.title || '') + (d.room ? '　·　' + esc(d.room) : '')
+  var rows = [
+    ['租金期間', (d.periodStart || '—') + ' ~ ' + (d.periodEnd || '—')],
+    ['繳款日期', d.paidDate || '—'],
+    ['繳費方式', d.payMethod || '—']
+  ]
+  var rowHtml = rows.map(function(r) {
+    return '<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:12px;">' +
+      '<span style="color:#8C877D;">' + r[0] + '</span>' +
+      '<span style="color:#43413B;font-weight:600;text-align:right;">' + esc(r[1]) + '</span></div>'
+  }).join('')
+  return '<div style="text-align:left;border:1px solid #E5E0D5;border-radius:14px;overflow:hidden;max-width:320px;margin:0 auto 4px;">' +
+    '<div style="background:#5E8663;padding:12px 14px;">' +
+      '<div style="color:#fff;font-weight:700;font-size:15px;">租金收款確認</div>' +
+      '<div style="color:#DCEBDD;font-size:12px;margin-top:2px;">' + subtitle + '</div>' +
+    '</div>' +
+    '<div style="padding:14px;">' +
+      '<div style="font-weight:700;font-size:14px;color:#2B2B2B;">' + esc(d.tenant || '房客') + ' 您好</div>' +
+      '<div style="font-size:12px;color:#8C877D;margin:2px 0 10px;">已收到您的租金，感謝您的配合</div>' +
+      '<div style="background:#EFF5EF;border-radius:10px;padding:11px 13px;margin-bottom:10px;">' +
+        '<div style="font-size:11px;color:#3E6144;">本次已收金額</div>' +
+        '<div style="font-size:20px;font-weight:800;color:#3E6144;">NT$ ' + Number(d.paidAmount || 0).toLocaleString() + '</div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#B0A891;font-weight:700;margin-bottom:2px;">繳費明細</div>' +
+      rowHtml +
+    '</div>' +
+    '<div style="border-top:1px solid #eee;padding:8px;text-align:center;font-size:11px;color:#AEA89C;">如有疑問請與我們聯繫，謝謝您</div>' +
+  '</div>'
+}
+
 async function saveRentPayment(leaseId, key, rentPaymentId) {
   var startEl = document.getElementById(key + '_start')
   var endEl   = document.getElementById(key + '_end')
@@ -8932,10 +8964,21 @@ async function saveRentPayment(leaseId, key, rentPaymentId) {
   // 未收款：僅儲存修改，不推播收款確認
   if (!hasPaidAmt) { showToast('✅ 已儲存修改（尚未收款）'); openLeaseLedger(leaseId); return }
   showToast('✅ 租金繳費已儲存')
-  // 詢問是否推播「收款確認」給房客
+  // 詢問是否推播「收款確認」給房客——顯示房客將收到的卡片預覽
+  var _lease = (_LAST_BILLING && _LAST_BILLING.lease) || {}
+  var _preview = rentReceiptPreviewHtml({
+    tenant: _lease.tenantName,
+    title: (_lease.managedProperty && _lease.managedProperty.title) || '',
+    room: _lease.roomLabel || '',
+    paidAmount: body.paidAmount,
+    paidDate: body.paidDate,
+    payMethod: body.payMethod,
+    periodStart: body.periodStart,
+    periodEnd: body.periodEnd
+  })
   showConfirm({
-    icon: '📩', title: '發送收款確認給房客？',
-    msg: '將以 LINE 推播「租金收款確認」給房客（已收金額 NT$ ' + Number(body.paidAmount).toLocaleString() + '）。',
+    title: '發送收款確認給房客？',
+    msg: '<div style="font-size:12px;color:#8C877D;margin-bottom:10px;">以下為房客將收到的 LINE 卡片，確認無誤再送出：</div>' + _preview,
     okLabel: '發送', cancelLabel: '不用',
     onOk: async function() {
       try {
