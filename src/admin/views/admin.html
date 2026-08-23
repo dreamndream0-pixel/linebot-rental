@@ -7944,7 +7944,7 @@ async function showPendingList() {
   var box = document.getElementById('managedReportBox')
   box.innerHTML = '<div class="empty">載入待繳費清單中...</div>'
   try {
-    var res = await fetch('/admin/api/managed/pending?key=' + encodeURIComponent(KEY))
+    var res = await fetch('/admin/api/managed-pending?key=' + encodeURIComponent(KEY))
     if (!res.ok) { var ed = {}; try { ed = await res.json() } catch (e) {} box.innerHTML = '<div class="empty">載入失敗（HTTP ' + res.status + '）</div>'; showInfoModal('❌ 待繳費清單載入失敗', (ed.error || ('HTTP ' + res.status))); return }
     MANAGED.pending = await res.json()
   } catch (e) { box.innerHTML = '<div class="empty">載入失敗</div>'; return }

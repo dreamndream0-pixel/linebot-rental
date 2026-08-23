@@ -1626,7 +1626,8 @@ router.get('/admin/api/managed-leases', async (req, res) => {
 })
 
 // ── 待繳費清單：所有承租中租約的「未繳」租金期別與水電抄表 ──────────
-router.get('/admin/api/managed/pending', async (req, res) => {
+// 用 managed-pending（非 managed/pending）避免被 /admin/api/managed/:id 攔截
+router.get('/admin/api/managed-pending', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
   try {
