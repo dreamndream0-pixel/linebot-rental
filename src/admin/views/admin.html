@@ -8698,6 +8698,12 @@ function renderRentBillingRows(rows, leaseId, kind) {
     var key = (kind === 'PARKING' ? 'parking_' : 'rent_') + idx
     var unpaid = Number(r.unpaid || 0)
     var paid = unpaid <= 0
+    // 未繳差額：未繳→紅色欠款；已收但實收＞應繳→藍色「溢繳」；相符/結清→綠色 0
+    var _over = Number(r.paidAmount || 0) - Number(r.amount || 0)
+    var diffText, diffColor
+    if (unpaid > 0) { diffText = leaseMoney(unpaid); diffColor = '#C0524A' }
+    else if (Number(r.paidAmount || 0) > 0 && _over > 0) { diffText = '溢繳 ' + leaseMoney(_over); diffColor = '#2563EB' }
+    else { diffText = leaseMoney(0); diffColor = '#2E7D32' }
     var receipt = r.receiptUrl ? '<a href="' + esc(r.receiptUrl) + '" target="_blank" style="font-size:12px;color:#4A6741;">查看</a>' : '<span style="font-size:12px;color:#aaa;">無</span>'
     var isLocked = r.locked && !UNLOCKED_ROWS[key]
 
@@ -8708,7 +8714,7 @@ function renderRentBillingRows(rows, leaseId, kind) {
         '<td style="padding:4px 6px;font-size:12px;min-width:130px;white-space:nowrap;">' + esc(r.label || '') + '<br><span style="font-size:11px;color:#4A8A4A;">已繳鎖定</span></td>' +
         '<td style="padding:4px 6px;font-size:12px;text-align:right;white-space:nowrap;">' + leaseMoney(r.amount) + '</td>' +
         '<td style="padding:4px 6px;font-size:12px;white-space:nowrap;">' + leaseDate(r.dueDate) + '</td>' +
-        '<td style="padding:4px 6px;font-size:12px;text-align:right;color:' + (unpaid > 0 ? '#C0524A' : '#2E7D32') + ';white-space:nowrap;">' + leaseMoney(unpaid) + '</td>' +
+        '<td style="padding:4px 6px;font-size:12px;text-align:right;color:' + diffColor + ';white-space:nowrap;">' + diffText + '</td>' +
         '<td style="padding:4px 6px;font-size:12px;text-align:center;"><span style="color:#2E7D32;font-weight:700;">已收款</span></td>' +
         '<td style="padding:4px 6px;font-size:12px;font-weight:600;">' + Number(r.paidAmount||0).toLocaleString() + '</td>' +
         '<td style="padding:4px 6px;font-size:12px;white-space:nowrap;">' + leaseDate(r.paidDate) + '</td>' +
@@ -8725,7 +8731,7 @@ function renderRentBillingRows(rows, leaseId, kind) {
     }
 
     // ── 可編輯列──
-    var statusCell = '<td style="padding:3px 6px;font-size:12px;text-align:right;white-space:nowrap;color:' + (unpaid > 0 ? '#C0524A' : '#2E7D32') + ';">' + leaseMoney(unpaid) + '</td>' +
+    var statusCell = '<td style="padding:3px 6px;font-size:12px;text-align:right;white-space:nowrap;color:' + diffColor + ';">' + diffText + '</td>' +
       '<td style="padding:3px 6px;font-size:12px;text-align:center;white-space:nowrap;">' + (paid ? '<span style="color:#2E7D32;font-weight:700;">已收款</span>' : '<span style="color:#C0524A;font-weight:700;">未繳</span>') + '</td>'
     var unlockLabel = r.locked ? '<br><span style="font-size:11px;color:#E07B39;">已解鎖</span>' : ''
     var _noteStr = (r.note || '').trim()
