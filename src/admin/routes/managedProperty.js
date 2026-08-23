@@ -1535,6 +1535,8 @@ router.get('/admin/api/managed-leases', async (req, res) => {
       let arrearsTotal = 0      // 尚欠總金額
       let overdueCount = 0      // 其中「應繳日已到仍未繳」的期數（用來強調逾期）
       let fullyPaid = false     // 合約內所有期別都已繳清（含未到期）才為 true
+      let reminded = false      // 目前下期是否已通知房客
+      let remindedAt = null
       try {
         if (l.leaseEnd) {
           daysToEnd = Math.ceil((new Date(l.leaseEnd) - now) / 86400000)
@@ -1559,6 +1561,12 @@ router.get('/admin/api/managed-leases', async (req, res) => {
             nextRentDate = nextRent.dueDate
             nextRentAmount = nextRent.amount
             daysToRent = Math.ceil((startOfDay(nextRentDate) - today) / 86400000)
+          }
+          // 已通知：上次通知的期別應繳日＝目前下期應繳日（同一天）
+          if (l.lastRentRemindDue && nextRentDate &&
+              startOfDay(l.lastRentRemindDue).getTime() === startOfDay(nextRentDate).getTime()) {
+            reminded = true
+            remindedAt = l.lastRentRemind || null
           }
         }
       } catch (e) {
@@ -1589,6 +1597,8 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         arrearsTotal,
         overdueCount,
         fullyPaid,
+        reminded,
+        remindedAt,
         managedTitle: l.managedProperty ? l.managedProperty.title : '未連結物業',
         managedId: l.managedProperty ? l.managedProperty.id : '',
         ownerName: l.managedProperty ? l.managedProperty.ownerName : '（未填房東）',
@@ -2286,6 +2296,13 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
     if (req.body.preview) return res.json({ ok: true, preview: message })
     // 依序嘗試客服Bot→主Bot→系統Bot，任一成功即可（房客可能在客服 Bot 而非出租 Bot）
     const result = await pushToLeaseTenant(lease, message)
+    // 租金提醒成功→記錄「已通知」的期別（應繳日），供代管清單顯示
+    if (kind === 'RENT') {
+      const remindedDue = req.body.dueDate ? new Date(req.body.dueDate) : null
+      try {
+        await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: remindedDue } })
+      } catch (e) { console.error('記錄已通知失敗:', e.message) }
+    }
     res.json({ ok: true, via: result.via })
   } catch (e) {
     console.error('手動繳費提醒失敗:', e.message)

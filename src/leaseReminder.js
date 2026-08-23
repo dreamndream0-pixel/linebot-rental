@@ -494,7 +494,7 @@ async function handleRentReminderApproval(leaseId, isConfirm) {
     rent: Number(dueRow.amount || lease.rent || 0),
   }
   await pushToLeaseTenant(lease, rentReminderFlex(data))
-  await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date() } })
+  await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: dueRow.dueDate || null } })
   await writeReminderAudit(lease, data.rent, '房東確認送出', 'landlord', '租金提醒（確認送出）')
   return `✅ 已發送租金提醒給 ${lease.tenantName || '房客'}（NT$ ${Number(data.rent).toLocaleString()}）。`
 }
@@ -545,7 +545,7 @@ async function checkLeaseReminders() {
           const remindData = { ...data, rent: Number(dueRow.amount || lease.rent || 0) }
           try {
             await pushToLeaseTenant(lease, rentReminderFlex(remindData))
-            await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date() } })
+            await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: dueRow.dueDate || null } })
             await writeReminderAudit(lease, remindData.rent, '系統自動', 'system', '租金提醒（自動發送）')
             console.log(`✅ 已推租金提醒：${lease.tenantName}`)
           } catch (e) {
