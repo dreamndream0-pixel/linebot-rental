@@ -25,12 +25,14 @@
     color: var(--charcoal);
     min-height: 100vh;
   }
+  /* 預設隱藏金鑰登入頁：一般進入一律先跑 restoreSession（顯示載入中），
+     避免重新整理時瞬間閃出登入畫面。登入頁只在 ?login=key 或登入失敗時才顯示。 */
   #loginView {
-    display: flex; align-items: center; justify-content: center;
+    display: none; align-items: center; justify-content: center;
     min-height: 100vh; flex-direction: column; gap: 20px;
   }
   #loadingView {
-    display: none; align-items: center; justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     min-height: 100vh; flex-direction: column; gap: 16px;
   }
   .spinner {
