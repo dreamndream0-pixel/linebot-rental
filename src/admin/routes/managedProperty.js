@@ -2300,7 +2300,7 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
     if (kind === 'RENT') {
       const remindedDue = req.body.dueDate ? new Date(req.body.dueDate) : null
       try {
-        await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: remindedDue } })
+        await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: remindedDue, lastRemindCycleDue: remindedDue } })
       } catch (e) { console.error('記錄已通知失敗:', e.message) }
     }
     res.json({ ok: true, via: result.via })
