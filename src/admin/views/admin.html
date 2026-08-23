@@ -7940,6 +7940,26 @@ function setLeaseSort(key) {
 // ── 待繳費清單（租金／水電／其他）──────────────────────────────
 var PENDING_TAB = 'rent'   // rent / util / other
 var PENDING_WIN = '30'     // overdue / 1 / 3 / 7 / 30 / all
+var PENDING_SORT = 'due'   // tenant / room / due / amount
+var PENDING_SORT_DIR = 'asc'
+function setPendingSort(key) {
+  if (PENDING_SORT === key) PENDING_SORT_DIR = (PENDING_SORT_DIR === 'asc' ? 'desc' : 'asc')
+  else { PENDING_SORT = key; PENDING_SORT_DIR = (key === 'amount' || key === 'due') ? 'asc' : 'asc' }
+  renderPendingList()
+}
+function pendingSortCompare(a, b) {
+  var dir = PENDING_SORT_DIR === 'desc' ? -1 : 1
+  var d = 0
+  switch (PENDING_SORT) {
+    case 'tenant': d = String(a.tenantName || '').localeCompare(String(b.tenantName || ''), 'zh-Hant'); break
+    case 'room': d = String(a.roomLabel || '').localeCompare(String(b.roomLabel || ''), 'zh-Hant', { numeric: true }); break
+    case 'amount': d = (a.amount || 0) - (b.amount || 0); break
+    case 'due':
+    default: d = new Date(a.dueDate || 0) - new Date(b.dueDate || 0); break
+  }
+  if (d === 0) d = new Date(a.dueDate || 0) - new Date(b.dueDate || 0)
+  return d * dir
+}
 async function showPendingList() {
   var box = document.getElementById('managedReportBox')
   box.innerHTML = '<div class="empty">載入待繳費清單中...</div>'
@@ -7961,7 +7981,7 @@ function renderPendingList() {
   var P = MANAGED.pending || { rent: [], util: [], other: [] }
   if (['rent', 'util', 'other'].indexOf(PENDING_TAB) < 0) PENDING_TAB = 'rent'
   var items = (P[PENDING_TAB] || []).filter(function(it) { return pendingInWin(it.daysUntil, PENDING_WIN) })
-    .slice().sort(function(a, b) { return new Date(a.dueDate) - new Date(b.dueDate) })
+    .slice().sort(pendingSortCompare)
   var totalAmt = items.reduce(function(s, it) { return s + (it.amount || 0) }, 0)
   function fmt(d) { return d ? new Date(d).toLocaleDateString('zh-TW') : '—' }
   function statusHtml(it) {
@@ -7990,7 +8010,18 @@ function renderPendingList() {
     if (!g.byB[b]) { g.byB[b] = []; g.bOrder.push(b) }
     g.byB[b].push(it)
   })
-  var th = '<tr style="background:#FAF8F4;"><th style="padding:9px 12px;text-align:left;font-size:12px;white-space:nowrap;">承租人</th><th style="padding:9px 12px;text-align:left;font-size:12px;white-space:nowrap;">房號</th><th style="padding:9px 12px;text-align:left;font-size:12px;white-space:nowrap;">應繳日</th><th style="padding:9px 12px;text-align:left;font-size:12px;white-space:nowrap;">狀態</th><th style="padding:9px 12px;text-align:right;font-size:12px;white-space:nowrap;">金額</th><th style="padding:9px 12px;text-align:left;font-size:12px;white-space:nowrap;">對帳</th></tr>'
+  function pTh(key, label, align) {
+    var active = PENDING_SORT === key
+    var arrow = active ? (PENDING_SORT_DIR === 'asc' ? '↑' : '↓') : '↕'
+    return '<th style="padding:9px 12px;text-align:' + (align || 'left') + ';font-size:12px;white-space:nowrap;">' +
+      '<button onclick="setPendingSort(\'' + key + '\')" style="border:none;background:none;padding:0;cursor:pointer;font-size:12px;font-weight:700;color:' + (active ? '#4A6741' : '#222') + ';">' +
+      label + ' <span style="font-size:11px;color:' + (active ? '#4A6741' : '#aaa') + ';">' + arrow + '</span></button></th>'
+  }
+  var th = '<tr style="background:#FAF8F4;">' +
+    pTh('tenant', '承租人', 'left') + pTh('room', '房號', 'left') + pTh('due', '應繳日', 'left') +
+    '<th style="padding:9px 12px;text-align:left;font-size:12px;white-space:nowrap;">狀態</th>' +
+    pTh('amount', '金額', 'right') +
+    '<th style="padding:9px 12px;text-align:left;font-size:12px;white-space:nowrap;">對帳</th></tr>'
   var groupsHtml = order.map(function(owner, gi) {
     var g = groups[owner]
     var gid = 'pg_' + PENDING_TAB + '_' + gi
