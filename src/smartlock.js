@@ -250,7 +250,9 @@ function calcKeypadPassword(room, dateObj) {
   const d1 = isOdd ? dow - 1 : dow + 1
   const reversed = roomStr.split('').reverse().join('')
   const raw = isOdd ? r1 - r3 : r1 + r3
-  const d5 = ((raw % 10) + 10) % 10
+  // 取「絕對值」的個位數：單數星期用 r1-r3 可能為負，門鎖要的是去掉負號後的個位數
+  // （例：房號 103 週一 raw=-2 → 2，而非把負數環繞成 8）。避免負號或兩位數。
+  const d5 = Math.abs(raw) % 10
   const d6 = d1 + 1
   return `${d1}${reversed}${d5}${d6}#`
 }
