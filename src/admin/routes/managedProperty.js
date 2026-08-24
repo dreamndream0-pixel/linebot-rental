@@ -1644,7 +1644,10 @@ router.get('/admin/api/managed-pending', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
   try {
-    const where = { status: 'ACTIVE' }
+    // 待繳費清單以「款項是否已繳／已處理」為準，不因合約到期或被標記終止就消失：
+    // 只要合約尚未結算（settledAt 為空），其未繳款項就持續列出，直到繳清或結算後才移除。
+    // 排除未生效（PENDING）合約，避免把還沒開始的未來期別列入。
+    const where = { settledAt: null, status: { not: 'PENDING' } }
     if (auth.role !== 'super') where.managedProperty = { landlordId: auth.landlordId }
     const leases = await prisma.lease.findMany({
       where,
@@ -1668,6 +1671,8 @@ router.get('/admin/api/managed-pending', async (req, res) => {
       roomLabel: l.roomLabel,
       managedTitle: l.managedProperty ? l.managedProperty.title : '未連結物業',
       ownerName: l.managedProperty ? l.managedProperty.ownerName : '（未填房東）',
+      // 合約是否已到期／已被標記終止（仍列在待繳，供前端標記提醒）
+      inactive: l.status !== 'ACTIVE' || !!(l.leaseEnd && new Date(l.leaseEnd) < now),
     })
 
     const rent = []
