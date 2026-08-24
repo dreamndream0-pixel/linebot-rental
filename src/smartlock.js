@@ -10,6 +10,8 @@ const prisma = require('./db')
 const { findLineTenant } = require('./tenantStore')
 
 const TTLOCK_BASE = 'https://euapi.ttlock.com'
+// 密碼鎖算式版本：算式修正時 +1，使當日已快取（用舊算式產生）的密碼會自動重算為正確碼
+const KEYPAD_FORMULA_VERSION = 2
 const FREE_QUOTA = 3          // 每年免費次數
 const CHARGE_AMOUNT = 100     // 超過後每次系統作業處理費（元）
 // 卡片共用說明文字
@@ -617,10 +619,12 @@ async function handleTenantPasscode(landlordId, lineUserId) {
       })
     }
     const cachedSig = Array.isArray(u.todayData.roomKeys) ? u.todayData.roomKeys.slice().sort().join(',') : null
-    if (entries && entries.length && cachedSig === matchedSig) {
+    // 密碼算式版本相符才沿用快取；算式修正後（fv 提升）今日已取過者會重算為正確碼，但沿用計次不重複收費
+    const fvOk = (u.todayData.fv || 1) === KEYPAD_FORMULA_VERSION
+    if (entries && entries.length && cachedSig === matchedSig && fvOk) {
       return renderPasscodeReply(who, entries, today, u.todayData.n, u.todayData.charged)
     }
-    reissue = true  // 換房或快取格式不符 → 重新產生，但不重複計次/收費
+    reissue = true  // 換房／快取格式不符／算式版本更新 → 重新產生，但不重複計次/收費
   }
 
   // 有 TTLock 房間才連線取 token（用快取加速）
@@ -688,7 +692,7 @@ async function handleTenantPasscode(landlordId, lineUserId) {
     year,
     issued: (u.year === year) ? Math.max(u.issued || 0, n) : n,
     todayDate: today,
-    todayData: { entries, n, charged, roomKeys: matchedKeys },
+    todayData: { entries, n, charged, roomKeys: matchedKeys, fv: KEYPAD_FORMULA_VERSION },
     charges,
   }
   try {
