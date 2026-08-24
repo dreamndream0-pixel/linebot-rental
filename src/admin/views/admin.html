@@ -7994,7 +7994,7 @@ function renderPendingList() {
   function itemRow(it, i) {
     return '<tr style="background:' + rowBg(i) + ';">' +
       '<td style="padding:9px 12px;font-size:13px;white-space:nowrap;">' + esc(it.tenantName || '—') + '</td>' +
-      '<td style="padding:9px 12px;font-size:13px;color:#555;white-space:nowrap;">' + esc(it.roomLabel || '—') + '</td>' +
+      '<td style="padding:9px 12px;font-size:13px;color:#555;white-space:nowrap;">' + esc(it.roomLabel || '—') + (it.inactive ? ' <span style="font-size:10px;color:#B0552E;background:#F6E9DE;border-radius:4px;padding:1px 5px;font-weight:700;">已過期/終止</span>' : '') + '</td>' +
       '<td style="padding:9px 12px;font-size:13px;white-space:nowrap;">' + fmt(it.dueDate) + '</td>' +
       '<td style="padding:9px 12px;font-size:13px;white-space:nowrap;">' + statusHtml(it) + '</td>' +
       '<td style="padding:9px 12px;font-size:13px;white-space:nowrap;text-align:right;font-weight:700;color:#B07A2E;">NT$ ' + Number(it.amount || 0).toLocaleString() + '</td>' +
