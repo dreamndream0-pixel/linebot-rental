@@ -2016,12 +2016,13 @@ router.post('/admin/api/managed/lease/:leaseId/payment', express.json(), async (
     const paidAmount = parseInt(b.paidAmount) || 0
     const paidDate = b.paidDate ? new Date(b.paidDate) : null
     const isPaid = paidAmount > 0 && !!paidDate
-    // 水電：此列僅用於登記收款，仍需已繳金額與繳款日期
-    if (kind === 'UTILITY' && !isPaid) return res.status(400).json({ error: '請輸入已繳金額與繳費日期' })
 
     if (kind === 'UTILITY') {
       const reading = await prisma.utilityReading.findFirst({ where: { id: b.utilityReadingId, leaseId: lease.id } })
       if (!reading) return res.status(404).json({ error: '找不到水電明細' })
+      // 登記收款需繳款日期；金額可為 0——應繳 0 元的帳單允許以 0 元登記收款
+      if (!paidDate) return res.status(400).json({ error: '請選擇繳費日期' })
+      if ((reading.amount || 0) > 0 && paidAmount <= 0) return res.status(400).json({ error: '請輸入已繳金額與繳費日期' })
       const marker = utilityReceiptMarker(reading.id)
       const existingRecord = await prisma.managementRecord.findFirst({
         where: { managedPropertyId: lease.managedPropertyId, leaseId: lease.id, type: 'INCOME', category: 'UTILITY', description: { startsWith: marker } },

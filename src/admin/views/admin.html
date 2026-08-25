@@ -9188,7 +9188,8 @@ async function saveUtilityPayment(leaseId, readingId, key) {
     payMethod: document.getElementById(key + '_method').value,
     receiptUrl: val(key + '_receipt')
   }
-  if (!body.paidAmount || !body.paidDate) { showToast('❌ 請輸入已繳金額與繳費日期'); return }
+  // 應繳 0 元的帳單允許以 0 元登記收款：僅要求繳費日期；金額是否必填由後端依應繳金額判斷
+  if (!body.paidDate) { showToast('❌ 請選擇繳費日期'); return }
   var res = await fetch('/admin/api/managed/lease/' + leaseId + '/payment?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
   })
