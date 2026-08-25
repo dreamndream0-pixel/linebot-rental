@@ -6601,7 +6601,7 @@ function renderManagedDetail() {
         '<select id="rec_type" style="padding:8px;border:1px solid #E5E0D5;border-radius:8px;"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select>' +
         '<select id="rec_category" style="padding:8px;border:1px solid #E5E0D5;border-radius:8px;"><option value="RENT">租金</option><option value="REPAIR">維修</option><option value="UTILITY">水電</option><option value="OTHER">其他</option></select>' +
         '<input id="rec_amount" type="number" placeholder="金額" style="width:100px;padding:8px;border:1px solid #E5E0D5;border-radius:8px;">' +
-        '<input id="rec_date" type="date" value="' + new Date().toISOString().slice(0,10) + '" style="padding:8px;border:1px solid #E5E0D5;border-radius:8px;">' +
+        '<input id="rec_date" type="date" min="2000-01-01" max="2100-12-31" value="' + new Date().toISOString().slice(0,10) + '" style="padding:8px;border:1px solid #E5E0D5;border-radius:8px;">' +
         '<input id="rec_desc" placeholder="說明" style="flex:1;min-width:100px;padding:8px;border:1px solid #E5E0D5;border-radius:8px;">' +
         '<button class="btn" style="padding:8px 16px;" onclick="addRecord()">新增</button>' +
       '</div>' +
@@ -6648,7 +6648,7 @@ async function addRecord() {
   var res = await fetch('/admin/api/managed/' + MANAGED.current.id + '/record?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
   })
-  if (!res.ok) { showToast('❌ 新增失敗'); return }
+  if (!res.ok) { var d={}; try{d=await res.json()}catch(e){}; showToast('❌ 新增失敗：' + (d.error || res.status)); return }
   showToast('✅ 已新增')
   openManagedDetail(MANAGED.current.id, true)
 }
@@ -7291,7 +7291,7 @@ function openUtilityExpenseModal() {
       '<select id="uexp_kind" style="' + inp + '"><option value="台電">台電（電費）</option><option value="台水">台水（水費）</option></select>' +
       '<div style="display:flex;gap:10px;">' +
         '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">金額</label><input id="uexp_amount" type="number" placeholder="NT$" style="' + inp + '"></div>' +
-        '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">費用日期</label><input id="uexp_date" type="date" value="' + today + '" style="' + di + '"></div>' +
+        '<div style="flex:1;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">費用日期</label><input id="uexp_date" type="date" min="2000-01-01" max="2100-12-31" value="' + today + '" style="' + di + '"></div>' +
       '</div>' +
       '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">備註（選填，例：帳單月份）</label>' +
       '<input id="uexp_note" placeholder="例：2026年7-8月" style="' + inp + '">' +
@@ -8876,7 +8876,7 @@ async function openLeaseLedger(leaseId) {
             '<div style="' + c(96) + '"><label style="' + lb + '">類型</label><select id="lease_rec_type" style="' + iw + '"><option value="INCOME">收入</option><option value="EXPENSE">支出</option></select></div>' +
             '<div style="' + c(104) + '"><label style="' + lb + '">項目</label><select id="lease_rec_category" style="' + iw + '"><option value="RENT">租金</option><option value="UTILITY">水電</option><option value="REPAIR">維修</option><option value="PARKING">汽車位</option><option value="OTHER">其他</option></select></div>' +
             '<div style="' + c(92) + '"><label style="' + lb + '">金額</label><input id="lease_rec_amount" type="number" placeholder="金額" style="' + iw + '"></div>' +
-            '<div style="' + c(150) + '"><label style="' + lb + '">日期</label><input id="lease_rec_date" type="date" value="' + today + '" style="' + di + '"></div>' +
+            '<div style="' + c(150) + '"><label style="' + lb + '">日期</label><input id="lease_rec_date" type="date" min="2000-01-01" max="2100-12-31" value="' + today + '" style="' + di + '"></div>' +
             '<div style="' + c(150) + '"><label style="' + lb + '">說明</label><input id="lease_rec_desc" placeholder="說明" style="' + iw + '"></div>' +
           '</div>' })() +
       '</div>' +
@@ -9323,7 +9323,7 @@ async function addLeaseRecord(managedId, leaseId) {
   var res = await fetch('/admin/api/managed/' + managedId + '/record?key=' + encodeURIComponent(KEY), {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
   })
-  if (!res.ok) { showToast('❌ 新增失敗'); return }
+  if (!res.ok) { var d={}; try{d=await res.json()}catch(e){}; showToast('❌ 新增失敗：' + (d.error || res.status)); return }
   showToast('✅ 已新增收支')
   openLeaseLedger(leaseId)
 }

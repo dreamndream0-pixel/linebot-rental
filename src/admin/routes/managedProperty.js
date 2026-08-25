@@ -702,6 +702,18 @@ router.post('/admin/api/managed/:id/record', express.json(), async (req, res) =>
       }
     }
 
+    // 日期驗證：避免日期欄位被輸入到超範圍年份（例：把 2025-08 誤打成 6 位數年份
+    // 202508），造成 new Date() 產生天文數字年份而讓 Prisma 以難懂的錯誤中斷儲存。
+    let recordDate = new Date()
+    if (b.recordDate) {
+      const d = new Date(b.recordDate)
+      const y = d.getFullYear()
+      if (isNaN(d.getTime()) || y < 2000 || y > 2100) {
+        return res.status(400).json({ error: `日期格式不正確（${b.recordDate}），請重新選擇日期` })
+      }
+      recordDate = d
+    }
+
     const record = await prisma.managementRecord.create({
       data: {
         managedPropertyId: req.params.id,
@@ -709,7 +721,7 @@ router.post('/admin/api/managed/:id/record', express.json(), async (req, res) =>
         type: b.type === 'EXPENSE' ? 'EXPENSE' : 'INCOME',
         category: b.category || 'RENT',
         amount: parseInt(b.amount) || 0,
-        recordDate: b.recordDate ? new Date(b.recordDate) : new Date(),
+        recordDate,
         description: b.description || null,
       },
     })
