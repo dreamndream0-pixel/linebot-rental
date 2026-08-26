@@ -6469,8 +6469,10 @@ function openManagedForm(id) {
 }
 
 function mInput(label, id, val, type) {
+  // 統一欄位樣式：白底、左對齊、去 iOS date 灰膠囊、固定高度，避免日期欄位看起來「跑位」
+  var st = 'width:100%;box-sizing:border-box;height:42px;padding:0 10px;border:1px solid #E5E0D5;border-radius:8px;font-size:14px;color:#333;background:#fff;line-height:1.2;-webkit-appearance:none;appearance:none;'
   return '<div style="margin-bottom:10px;min-width:0;"><label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">' + label + '</label>' +
-    '<input id="' + id + '" type="' + (type||'text') + '" value="' + esc(val==null?'':val) + '" style="width:100%;box-sizing:border-box;padding:9px;border:1px solid #E5E0D5;border-radius:8px;"></div>'
+    '<input id="' + id + '" type="' + (type||'text') + '" value="' + esc(val==null?'':val) + '" style="' + st + '"></div>'
 }
 
 function toggleFeeFields() {
@@ -7762,15 +7764,20 @@ async function openLeaseForm(leaseId, prefillRoom) {
         '<div style="font-size:11px;color:#999;margin-top:10px;">系統每天早上檢查，只對尚未繳清的房客推播</div>' +
       '</div>'
     })() +
-    // 房源連結
-    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">🔗 連結網站房源頁</label>' +
-    '<select id="l_propertyId" style="width:100%;padding:9px;border:1px solid #E5E0D5;border-radius:8px;margin-bottom:14px;">' + propOptions + '</select>' +
-    // 租約文件
-    '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">租約文件</label>' +
-    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +
-      (l.contractFile ? '<a href="' + esc(l.contractFile) + '" target="_blank" style="font-size:13px;color:#4A6741;">📄 現有文件</a>' : '<span style="font-size:13px;color:#aaa;">無</span>') +
-      '<input type="file" id="l_file" accept="image/*,application/pdf" onchange="uploadLeaseFile(this)" style="font-size:12px;">' +
-      '<span id="l_file_status" style="font-size:12px;color:#4A8A4A;"></span>' +
+    // 房源連結 + 租約文件（並排）
+    '<div style="display:flex;gap:10px;margin-bottom:12px;">' +
+      '<div style="flex:1;min-width:0;">' +
+        '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">🔗 連結網站房源頁</label>' +
+        '<select id="l_propertyId" style="width:100%;box-sizing:border-box;height:42px;padding:0 8px;border:1px solid #E5E0D5;border-radius:8px;background:#fff;font-size:14px;">' + propOptions + '</select>' +
+      '</div>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">租約文件</label>' +
+        '<div style="display:flex;align-items:center;gap:6px;height:42px;">' +
+          (l.contractFile ? '<a href="' + esc(l.contractFile) + '" target="_blank" style="font-size:13px;color:#4A6741;white-space:nowrap;">📄 現有</a>' : '<span style="font-size:13px;color:#aaa;">無</span>') +
+          '<input type="file" id="l_file" accept="image/*,application/pdf" onchange="uploadLeaseFile(this)" style="font-size:12px;min-width:0;flex:1;">' +
+          '<span id="l_file_status" style="font-size:12px;color:#4A8A4A;"></span>' +
+        '</div>' +
+      '</div>' +
     '</div>' +
     '<div style="display:flex;gap:8px;margin-top:14px;align-items:center;">' +
       '<button class="btn" style="flex:1;width:auto;background:var(--deep-sage,#4A6741);padding:13px;font-size:15px;font-weight:700;" onclick="saveLease(' + (leaseId ? "'" + leaseId + "'" : 'null') + ')">儲存租約</button>' +
