@@ -1791,7 +1791,14 @@ router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
   try {
     const lease = await getOwnedLease(auth, req.params.leaseId)
     if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
-    const backfill = await ensureLeaseLedgerRecords(lease)
+    // 60 秒內剛補建過就略過，避免反覆開啟同一張對帳表單每次都重跑補建（加快開啟速度）
+    const _ensureKey = 'lease:' + lease.id
+    const lastEnsured = _ledgerEnsuredAt.get(_ensureKey)
+    let backfill = { rentCreated: 0, rentLinked: 0, utilityCreated: 0, utilityLinked: 0, hiddenRentDuplicates: 0, skipped: true }
+    if (!lastEnsured || Date.now() - lastEnsured > LEDGER_ENSURE_TTL) {
+      backfill = await ensureLeaseLedgerRecords(lease)
+      _ledgerEnsuredAt.set(_ensureKey, Date.now())
+    }
     const [records, utilityReadings, rentPayments] = await Promise.all([
       prisma.managementRecord.findMany({ where: { managedPropertyId: lease.managedPropertyId, leaseId: lease.id }, orderBy: { recordDate: 'asc' } }),
       prisma.utilityReading.findMany({ where: { leaseId: lease.id }, orderBy: { endDate: 'desc' } }),

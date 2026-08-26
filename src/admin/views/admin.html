@@ -7816,10 +7816,11 @@ async function editLeaseFromList(leaseId) {
   var all = (d.active || []).concat(d.expiring || [], d.expired || [], d.ended || [])
   var l = all.filter(function(x){ return x.id === leaseId })[0]
   if (!l) { showToast('❌ 找不到租約'); return }
-  // 兩支彼此無關，平行打可省掉一次來回的等待時間
+  // 編輯租約只需物業基本資料，改用 light 模式跳過收支帳補建（ensureManagedPropertyLedgerRecords），
+  // 大幅加快開啟速度；兩支彼此無關，平行打省一次來回
   var results = await Promise.all([
-    fetch('/admin/api/managed/' + l.managedId),
-    fetch('/admin/api/managed/' + l.managedId + '/leases'),
+    fetch('/admin/api/managed/' + l.managedId + '?light=1&key=' + encodeURIComponent(KEY)),
+    fetch('/admin/api/managed/' + l.managedId + '/leases?key=' + encodeURIComponent(KEY)),
   ])
   if (!results[0].ok) { showToast('❌ 載入租約失敗'); return }
   MANAGED.current = await results[0].json()
