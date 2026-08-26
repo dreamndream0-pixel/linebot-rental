@@ -141,7 +141,9 @@ function isValidRentPeriod(p) {
 
 function rentPeriodsOverlap(a, b) {
   if (!isValidRentPeriod(a) || !isValidRentPeriod(b)) return false
-  return dateTime(a.periodStart) <= dateTime(b.periodEnd) && dateTime(b.periodStart) <= dateTime(a.periodEnd)
+  // 需「實質重疊」才算重複：僅在同一天邊界相接（前一期迄日＝下一期起日，
+  // 常見於 Ragic 同步的日期位移）不算重疊，避免把相鄰期別誤判為重複而漏掉一期。
+  return dateTime(a.periodStart) < dateTime(b.periodEnd) && dateTime(b.periodStart) < dateTime(a.periodEnd)
 }
 
 function rentPeriodDuration(p) {
@@ -245,40 +247,47 @@ function buildRentSchedule(lease, rentPayments, opts = {}) {
     })
   })
 
-  const lastStoredEnd = dedupedStored.reduce((max, p) => {
-    const t = new Date(p.periodEnd).getTime()
-    return t > max ? t : max
-  }, 0)
-  let periodStart = lastStoredEnd ? new Date(lastStoredEnd + 86400000) : new Date(start)
-  if (periodStart < start) periodStart = new Date(start)
-  let idx = 1
-  while (!opts.skipGenerated && periodStart <= leaseEnd && idx <= 120) {
+  // ── 產生尚未儲存的期別：自租約起日逐期推進到迄日，與已儲存期別「實質重疊」者略過
+  //    （已儲存為準）。舊版只把產生期別接在最後一筆之後，導致開頭若缺一期（例如首期
+  //    只記在收支明細、未建立租金期別，或因日期位移被去重）就永遠補不回來；改為全期間
+  //    掃描後，開頭／中間／結尾任何缺漏的期別都能補齊。 ──
+  const genOverlapsStored = (s, e) => dedupedStored.some(p =>
+    dateTime(p.periodStart) < e.getTime() && s.getTime() < dateTime(p.periodEnd))
+  let periodStart = new Date(start)
+  let guard = 0
+  while (!opts.skipGenerated && periodStart <= leaseEnd && guard < 120) {
+    guard += 1
     const nextStart = addMonths(periodStart, months)
-    const periodEnd = new Date(Math.min(addMonths(periodStart, months).getTime() - 86400000, leaseEnd.getTime()))
-    // 預設應繳日期：期別起始日前 3 天（CONTRACT_START 模式維持＝期別起始日）
-    const due = lease.paymentDueMode === 'CONTRACT_START'
-      ? new Date(periodStart)
-      : new Date(new Date(periodStart).getTime() - 3 * 86400000)
-    const amount = effectiveRent(lease) * months
-    rows.push({
-      id: null,
-      index: rows.length + 1,
-      label: `${ymd(periodStart)}~${ymd(periodEnd)}`,
-      periodStart,
-      periodEnd,
-      amount,
-      dueDate: due,
-      paidAmount: 0,
-      paidDate: null,
-      payMethod: null,
-      receiptUrl: null,
-      note: opts.generatedNote || null,
-      locked: false,
-      unpaid: amount,
-    })
+    const periodEnd = new Date(Math.min(nextStart.getTime() - 86400000, leaseEnd.getTime()))
+    if (!genOverlapsStored(periodStart, periodEnd)) {
+      // 預設應繳日期：期別起始日前 3 天（CONTRACT_START 模式維持＝期別起始日）
+      const due = lease.paymentDueMode === 'CONTRACT_START'
+        ? new Date(periodStart)
+        : new Date(periodStart.getTime() - 3 * 86400000)
+      const amount = effectiveRent(lease) * months
+      rows.push({
+        id: null,
+        index: 0,
+        label: `${ymd(periodStart)}~${ymd(periodEnd)}`,
+        periodStart: new Date(periodStart),
+        periodEnd,
+        amount,
+        dueDate: due,
+        paidAmount: 0,
+        paidDate: null,
+        payMethod: null,
+        receiptUrl: null,
+        note: opts.generatedNote || null,
+        locked: false,
+        unpaid: amount,
+      })
+    }
     periodStart = nextStart
-    idx++
   }
+
+  // 依期別起日排序並重新編號，補齊的開頭期別才能正確排到最前面（期別 1）
+  rows.sort((a, b) => dateTime(a.periodStart) - dateTime(b.periodStart))
+  rows.forEach((r, i) => { r.index = i + 1 })
   return rows
 }
 
