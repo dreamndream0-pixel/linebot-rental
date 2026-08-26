@@ -986,12 +986,27 @@ router.get('/admin/api/managed-report', async (req, res) => {
     const costEnd = new Date(Math.min((end || now).getTime(), now.getTime()))
     const fixedMonths = start ? monthsBetween(start, costEnd) : null
 
+    // ── 保管款（押金/預收）：以合約計算「目前保管中」餘額（未結算合約才算保管中）──
+    // 押金、預收款屬負債（代/保管款），不是營業收入；結算退還亦非營業支出。
+    const custodyByProp = {}
+    let custodyHeldTotal = 0
+    leases.forEach(l => {
+      if (l.settledAt) return  // 已結算＝已退還/處理，不再保管
+      const held = (l.deposit || 0) + (l.prepaidUtility || 0)
+      if (held <= 0) return
+      custodyByProp[l.managedPropertyId] = (custodyByProp[l.managedPropertyId] || 0) + held
+      custodyHeldTotal += held
+    })
+
     // ── 逐物業彙總 ──
-    let actualIncome = 0, expenseTotal = 0, mgmtFeeTotal = 0, paidOutTotal = 0, pendingPayout = 0
+    let actualIncome = 0, expenseTotal = 0, operatingExpenseTotal = 0, custodyRefundTotal = 0, mgmtFeeTotal = 0, paidOutTotal = 0, pendingPayout = 0
     let unpaidRentTotal = 0, unpaidUtilTotal = 0, profitTotal = 0, ownerCostTotal = 0
     const byProperty = props.map(p => {
       const income = p.incomes.filter(r => r.type === 'INCOME').reduce((s, r) => s + r.amount, 0)  // 期間實收
       const expense = p.incomes.filter(r => r.type === 'EXPENSE').reduce((s, r) => s + r.amount, 0)
+      // 結算退款（押金/預收退還）屬「保管款退還」，非營業支出——單獨拆出，不計入營業損益
+      const custodyRefund = p.incomes.filter(r => r.type === 'EXPENSE' && r.category === '退款').reduce((s, r) => s + r.amount, 0)
+      const opExpense = expense - custodyRefund   // 營業支出（不含保管款退還）
       const mgmtFee = p.payouts.reduce((s, r) => s + r.mgmtFee, 0)
       const paidOut = p.payouts.filter(r => r.status === 'PAID').reduce((s, r) => s + r.payoutAmount, 0)
       const pending = p.payouts.filter(r => r.status === 'PENDING').reduce((s, r) => s + r.payoutAmount, 0)
@@ -1001,16 +1016,17 @@ router.get('/admin/api/managed-report', async (req, res) => {
       // 承租成本＝每月付屋主 × 月數（固定期間用期間月數；全部用合約起日至今）
       const ownerMonths = fixedMonths != null ? fixedMonths : (p.contractStart ? monthsBetween(p.contractStart, now) : 1)
       const ownerCost = isSublease ? (p.leaseCost || 0) * ownerMonths : 0
-      // 平台利潤：代管=管理費；包租=實收-承租成本-支出
-      const profit = p.manageType === 'TRUST' ? mgmtFee : (income - ownerCost - expense)
+      // 平台利潤：代管=管理費；包租=實收-承租成本-營業支出（不含保管款退還）
+      const profit = p.manageType === 'TRUST' ? mgmtFee : (income - ownerCost - opExpense)
 
-      actualIncome += income; expenseTotal += expense; mgmtFeeTotal += mgmtFee
+      actualIncome += income; expenseTotal += expense; operatingExpenseTotal += opExpense; custodyRefundTotal += custodyRefund; mgmtFeeTotal += mgmtFee
       paidOutTotal += paidOut; pendingPayout += pending
       unpaidRentTotal += unpaidRent; unpaidUtilTotal += unpaidUtil; profitTotal += profit; ownerCostTotal += ownerCost
 
       return {
         id: p.id, title: p.title, ownerName: p.ownerName, manageType: p.manageType,
-        income, expense, mgmtFee, paidOut, pending, unpaidRent, unpaidUtil,
+        income, expense, opExpense, custodyRefund, custodyHeld: custodyByProp[p.id] || 0,
+        mgmtFee, paidOut, pending, unpaidRent, unpaidUtil,
         unpaid: unpaidRent + unpaidUtil, ownerCost, leaseCost: p.leaseCost || 0, ownerMonths, profit,
       }
     })
@@ -1053,6 +1069,10 @@ router.get('/admin/api/managed-report', async (req, res) => {
       summary: {
         count: props.length,
         actualIncome, expense: expenseTotal, mgmtFee: mgmtFeeTotal,
+        // 營業支出（不含保管款退還）＋保管款（押金/預收）獨立呈現，讓損益不被保管款進出扭曲
+        operatingExpense: operatingExpenseTotal,
+        custodyRefund: custodyRefundTotal,  // 本期結算退還的押金/預收
+        custodyHeld: custodyHeldTotal,       // 目前保管中（未結算合約的押金＋預收）
         unpaidRent: unpaidRentTotal, unpaidUtil: unpaidUtilTotal, unpaidTotal: unpaidRentTotal + unpaidUtilTotal,
         ownerCost: ownerCostTotal,
         paidOut: paidOutTotal, pendingPayout, profit: profitTotal, netCashflow,

@@ -6874,8 +6874,8 @@ function renderUnpaidList(list) {
 }
 function exportReportCSV() {
   var d = REPORT_DATA; if (!d) { showToast('請先載入報表'); return }
-  var rows = [['物業','屋主','類型','實收','未收','支出','承租成本','平台利潤','待付']]
-  d.byProperty.forEach(function(p){ rows.push([p.title, p.ownerName, mtLabel(p.manageType), p.income, p.unpaid, p.expense, p.ownerCost||0, p.profit, p.pending]) })
+  var rows = [['物業','屋主','類型','實收','未收','營業支出','保管中(押金/預收)','承租成本','平台利潤','待付']]
+  d.byProperty.forEach(function(p){ rows.push([p.title, p.ownerName, mtLabel(p.manageType), p.income, p.unpaid, (p.opExpense!=null?p.opExpense:p.expense), p.custodyHeld||0, p.ownerCost||0, p.profit, p.pending]) })
   rows.push([]); rows.push(['未收催收清單']); rows.push(['房客','物業','房號','項目','未收','應繳日','逾期天'])
   ;(d.unpaidList||[]).forEach(function(u){ rows.push([u.tenant||'', u.property||'', u.roomLabel||'', u.kind==='RENT'?'租金':'水電', u.amount, u.dueDate?leaseDate(u.dueDate):'', u.overdueDays]) })
   var csv = '﻿' + rows.map(function(r){ return r.map(function(c){ var s = String(c==null?'':c); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s }).join(',') }).join('\n')
@@ -6920,7 +6920,7 @@ async function showManagedReport() {
       '<td style="padding:8px;font-size:13px;white-space:nowrap;">' + esc(p.title) + '<br><span style="font-size:11px;color:#999;">' + esc(p.ownerName) + '・' + typeLabel + '</span>' + costHint + '</td>' +
       '<td style="padding:8px;font-size:13px;color:#4A8A4A;text-align:right;white-space:nowrap;">' + Number(p.income).toLocaleString() + '</td>' +
       '<td style="padding:8px;font-size:13px;color:' + (p.unpaid>0?'#C0524A':'#aaa') + ';text-align:right;white-space:nowrap;">' + Number(p.unpaid).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:13px;color:#C0524A;text-align:right;white-space:nowrap;">' + Number(p.expense).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:13px;color:#C0524A;text-align:right;white-space:nowrap;">' + Number(p.opExpense != null ? p.opExpense : p.expense).toLocaleString() + '</td>' +
       '<td style="padding:8px;font-size:13px;font-weight:700;color:#4A6741;text-align:right;white-space:nowrap;">' + Number(p.profit).toLocaleString() + '</td>' +
       '<td style="padding:8px;font-size:13px;text-align:right;color:' + (p.pending>0?'#E5A33C':'#aaa') + ';white-space:nowrap;">' + (p.pending>0 ? ('待付 ' + Number(p.pending).toLocaleString()) : '已結清') + '</td>' +
     '</tr>'
@@ -6948,18 +6948,27 @@ async function showManagedReport() {
       reportStat('委託物業', s.count + ' 件', '#7A9E7E') +
       reportStat('期間實收', 'NT$ ' + Number(s.actualIncome).toLocaleString(), '#4A8A4A') +
       reportStat('未收合計', 'NT$ ' + Number(s.unpaidTotal).toLocaleString(), s.unpaidTotal>0?'#C0524A':'#7A9E7E', '租金 ' + Number(s.unpaidRent).toLocaleString() + '＋水電 ' + Number(s.unpaidUtil).toLocaleString()) +
-      reportStat('期間支出', 'NT$ ' + Number(s.expense).toLocaleString(), '#C0524A') +
+      reportStat('營業支出', 'NT$ ' + Number(s.operatingExpense != null ? s.operatingExpense : s.expense).toLocaleString(), '#C0524A', '不含押金/預收退還') +
       reportStat('承租成本', 'NT$ ' + Number(s.ownerCost||0).toLocaleString(), '#8A6D3B', '包租付屋主') +
       reportStat('平台利潤', 'NT$ ' + Number(s.profit).toLocaleString(), s.profit>=0?'#4A6741':'#C0524A') +
       reportStat('待撥屋主', 'NT$ ' + Number(s.pendingPayout).toLocaleString(), '#E5A33C') +
       reportStat('淨現金流', 'NT$ ' + Number(s.netCashflow).toLocaleString(), s.netCashflow>=0?'#2E7D46':'#C0524A', '實收−支出−已撥') +
+    '</div>' +
+    // 保管款（押金/預收）——與營業收支分開呈現（負債，非收入/支出）
+    '<div style="background:#F3F6FA;border:1px solid #DCE6F0;border-radius:10px;padding:11px 14px;margin-bottom:16px;">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:baseline;">' +
+        '<div style="font-size:13px;font-weight:700;color:#3C5A7B;">🔒 保管款（押金/預收）</div>' +
+        '<div style="font-size:12px;color:#33465C;">目前保管中：<b style="font-size:14px;">NT$ ' + Number(s.custodyHeld||0).toLocaleString() + '</b></div>' +
+        '<div style="font-size:12px;color:#33465C;">本期結算退還：<b style="font-size:14px;">NT$ ' + Number(s.custodyRefund||0).toLocaleString() + '</b></div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#8896AA;margin-top:5px;">押金、預收款為代/保管款（負債），非營業收入；結算退還亦非營業支出，故單獨列示、不計入上方營業損益。</div>' +
     '</div>' +
     '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;">' +
       '<table style="width:100%;border-collapse:collapse;min-width:520px;"><thead><tr style="background:#F5F0EA;">' +
       '<th style="padding:8px;text-align:left;font-size:12px;white-space:nowrap;">物業</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">實收</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">未收</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">支出</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">平台利潤</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">待付</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>' +
     '</div>' +
-    '<div style="font-size:11px;color:#aaa;margin-top:10px;">＊實收＝期間內已入帳收入；未收＝截至期末的應收未收（租金＋水電）；平台利潤：代管＝管理費，包租＝實收−承租成本−支出（需在委託物業設定承租成本）。</div>' +
+    '<div style="font-size:11px;color:#aaa;margin-top:10px;">＊實收＝期間內已入帳收入；未收＝截至期末的應收未收（租金＋水電）；支出為營業支出（不含押金/預收退還）；平台利潤：代管＝管理費，包租＝實收−承租成本−營業支出（需在委託物業設定承租成本）。押金/預收為保管款（負債），見上方獨立區塊。</div>' +
     // 收入結構
     '<div style="margin-top:18px;"><div style="font-size:14px;font-weight:700;color:#4A6741;margin-bottom:10px;">📈 收入結構（' + rangeLabel(REPORT_FILTER.range) + '）</div>' + renderIncomeCategory(data.incomeByCategory) + '</div>' +
     // 近12月趨勢
