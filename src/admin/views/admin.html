@@ -5654,9 +5654,18 @@ async function renderManagedTab() {
     ? '<div class="empty">尚無委託物業，點上方「+ 新增委託」開始</div>'
     : MANAGED.list.map(managedCard).join('')
 
-  // 工具列改放到最上面「包租代管」下拉選單；此頁只保留內容區，預設載入代管清單
+  // 工具列改放到最上面「包租代管」下拉選單；此頁只保留內容區
   el.innerHTML = '<div id="managedReportBox"></div>'
-  if (!_navRunPending) { try { showLeaseList() } catch (e) {} }
+  // 重新整理時停留在使用者上次的子頁（委託列表／待繳費清單／收支報表），而非固定跳回預設
+  if (!_navRunPending) {
+    var mv = ''; try { mv = sessionStorage.getItem('managedView') || '' } catch (e) {}
+    try {
+      if (mv === 'commission') showCommissionList()
+      else if (mv === 'pending') showPendingList()
+      else if (mv === 'report') showManagedReport()
+      else showLeaseList()
+    } catch (e) {}
+  }
 }
 // 由「包租代管」選單項目觸發：切到包租代管頁後執行對應功能
 var _navRunPending = false
@@ -6723,6 +6732,7 @@ async function togglePayout(pid, status) {
 
 // ── 委託列表 ───────────────────────────────────────────────────
 function showCommissionList() {
+  try { sessionStorage.setItem('managedView', 'commission') } catch (e) {}
   var box = document.getElementById('managedReportBox')
   var cards = MANAGED.list.length === 0
     ? '<div class="empty">尚無委託物業</div>'
@@ -6864,8 +6874,8 @@ function renderUnpaidList(list) {
 }
 function exportReportCSV() {
   var d = REPORT_DATA; if (!d) { showToast('請先載入報表'); return }
-  var rows = [['物業','屋主','類型','實收','未收','支出','承租成本','平台利潤','待付']]
-  d.byProperty.forEach(function(p){ rows.push([p.title, p.ownerName, mtLabel(p.manageType), p.income, p.unpaid, p.expense, p.ownerCost||0, p.profit, p.pending]) })
+  var rows = [['物業','屋主','類型','實收','未收','營業支出','保管中(押金/預收)','承租成本','平台利潤','待付']]
+  d.byProperty.forEach(function(p){ rows.push([p.title, p.ownerName, mtLabel(p.manageType), p.income, p.unpaid, (p.opExpense!=null?p.opExpense:p.expense), p.custodyHeld||0, p.ownerCost||0, p.profit, p.pending]) })
   rows.push([]); rows.push(['未收催收清單']); rows.push(['房客','物業','房號','項目','未收','應繳日','逾期天'])
   ;(d.unpaidList||[]).forEach(function(u){ rows.push([u.tenant||'', u.property||'', u.roomLabel||'', u.kind==='RENT'?'租金':'水電', u.amount, u.dueDate?leaseDate(u.dueDate):'', u.overdueDays]) })
   var csv = '﻿' + rows.map(function(r){ return r.map(function(c){ var s = String(c==null?'':c); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s }).join(',') }).join('\n')
@@ -6879,6 +6889,7 @@ function setReportRange(r) { REPORT_FILTER.range = r; showManagedReport() }
 function setReportOwner(v) { REPORT_FILTER.ownerName = v; REPORT_FILTER.propertyId = ''; showManagedReport() }
 function setReportProperty(v) { REPORT_FILTER.propertyId = v; showManagedReport() }
 async function showManagedReport() {
+  try { sessionStorage.setItem('managedView', 'report') } catch (e) {}
   var box = document.getElementById('managedReportBox')
   box.innerHTML = '<div class="empty">載入報表中...</div>'
   var qs = 'key=' + encodeURIComponent(KEY) + '&range=' + encodeURIComponent(REPORT_FILTER.range) +
@@ -6909,7 +6920,7 @@ async function showManagedReport() {
       '<td style="padding:8px;font-size:13px;white-space:nowrap;">' + esc(p.title) + '<br><span style="font-size:11px;color:#999;">' + esc(p.ownerName) + '・' + typeLabel + '</span>' + costHint + '</td>' +
       '<td style="padding:8px;font-size:13px;color:#4A8A4A;text-align:right;white-space:nowrap;">' + Number(p.income).toLocaleString() + '</td>' +
       '<td style="padding:8px;font-size:13px;color:' + (p.unpaid>0?'#C0524A':'#aaa') + ';text-align:right;white-space:nowrap;">' + Number(p.unpaid).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:13px;color:#C0524A;text-align:right;white-space:nowrap;">' + Number(p.expense).toLocaleString() + '</td>' +
+      '<td style="padding:8px;font-size:13px;color:#C0524A;text-align:right;white-space:nowrap;">' + Number(p.opExpense != null ? p.opExpense : p.expense).toLocaleString() + '</td>' +
       '<td style="padding:8px;font-size:13px;font-weight:700;color:#4A6741;text-align:right;white-space:nowrap;">' + Number(p.profit).toLocaleString() + '</td>' +
       '<td style="padding:8px;font-size:13px;text-align:right;color:' + (p.pending>0?'#E5A33C':'#aaa') + ';white-space:nowrap;">' + (p.pending>0 ? ('待付 ' + Number(p.pending).toLocaleString()) : '已結清') + '</td>' +
     '</tr>'
@@ -6937,18 +6948,27 @@ async function showManagedReport() {
       reportStat('委託物業', s.count + ' 件', '#7A9E7E') +
       reportStat('期間實收', 'NT$ ' + Number(s.actualIncome).toLocaleString(), '#4A8A4A') +
       reportStat('未收合計', 'NT$ ' + Number(s.unpaidTotal).toLocaleString(), s.unpaidTotal>0?'#C0524A':'#7A9E7E', '租金 ' + Number(s.unpaidRent).toLocaleString() + '＋水電 ' + Number(s.unpaidUtil).toLocaleString()) +
-      reportStat('期間支出', 'NT$ ' + Number(s.expense).toLocaleString(), '#C0524A') +
+      reportStat('營業支出', 'NT$ ' + Number(s.operatingExpense != null ? s.operatingExpense : s.expense).toLocaleString(), '#C0524A', '不含押金/預收退還') +
       reportStat('承租成本', 'NT$ ' + Number(s.ownerCost||0).toLocaleString(), '#8A6D3B', '包租付屋主') +
       reportStat('平台利潤', 'NT$ ' + Number(s.profit).toLocaleString(), s.profit>=0?'#4A6741':'#C0524A') +
       reportStat('待撥屋主', 'NT$ ' + Number(s.pendingPayout).toLocaleString(), '#E5A33C') +
       reportStat('淨現金流', 'NT$ ' + Number(s.netCashflow).toLocaleString(), s.netCashflow>=0?'#2E7D46':'#C0524A', '實收−支出−已撥') +
+    '</div>' +
+    // 保管款（押金/預收）——與營業收支分開呈現（負債，非收入/支出）
+    '<div style="background:#F3F6FA;border:1px solid #DCE6F0;border-radius:10px;padding:11px 14px;margin-bottom:16px;">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:baseline;">' +
+        '<div style="font-size:13px;font-weight:700;color:#3C5A7B;">🔒 保管款（押金/預收）</div>' +
+        '<div style="font-size:12px;color:#33465C;">目前保管中：<b style="font-size:14px;">NT$ ' + Number(s.custodyHeld||0).toLocaleString() + '</b></div>' +
+        '<div style="font-size:12px;color:#33465C;">本期結算退還：<b style="font-size:14px;">NT$ ' + Number(s.custodyRefund||0).toLocaleString() + '</b></div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#8896AA;margin-top:5px;">押金、預收款為代/保管款（負債），非營業收入；結算退還亦非營業支出，故單獨列示、不計入上方營業損益。</div>' +
     '</div>' +
     '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;">' +
       '<table style="width:100%;border-collapse:collapse;min-width:520px;"><thead><tr style="background:#F5F0EA;">' +
       '<th style="padding:8px;text-align:left;font-size:12px;white-space:nowrap;">物業</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">實收</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">未收</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">支出</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">平台利潤</th><th style="padding:8px;text-align:right;font-size:12px;white-space:nowrap;">待付</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>' +
     '</div>' +
-    '<div style="font-size:11px;color:#aaa;margin-top:10px;">＊實收＝期間內已入帳收入；未收＝截至期末的應收未收（租金＋水電）；平台利潤：代管＝管理費，包租＝實收−承租成本−支出（需在委託物業設定承租成本）。</div>' +
+    '<div style="font-size:11px;color:#aaa;margin-top:10px;">＊實收＝期間內已入帳收入；未收＝截至期末的應收未收（租金＋水電）；支出為營業支出（不含押金/預收退還）；平台利潤：代管＝管理費，包租＝實收−承租成本−營業支出（需在委託物業設定承租成本）。押金/預收為保管款（負債），見上方獨立區塊。</div>' +
     // 收入結構
     '<div style="margin-top:18px;"><div style="font-size:14px;font-weight:700;color:#4A6741;margin-bottom:10px;">📈 收入結構（' + rangeLabel(REPORT_FILTER.range) + '）</div>' + renderIncomeCategory(data.incomeByCategory) + '</div>' +
     // 近12月趨勢
@@ -7961,6 +7981,7 @@ function pendingSortCompare(a, b) {
   return d * dir
 }
 async function showPendingList() {
+  try { sessionStorage.setItem('managedView', 'pending') } catch (e) {}
   var box = document.getElementById('managedReportBox')
   box.innerHTML = '<div class="empty">載入待繳費清單中...</div>'
   try {
@@ -8066,6 +8087,7 @@ function renderPendingList() {
 }
 
 async function showLeaseList() {
+  try { sessionStorage.setItem('managedView', 'lease') } catch (e) {}
   var box = document.getElementById('managedReportBox')
   box.innerHTML = '<div class="empty">載入代管清單中...</div>'
   var res = await fetch('/admin/api/managed-leases?key=' + encodeURIComponent(KEY))
@@ -9113,6 +9135,43 @@ function rentReceiptPreviewHtml(d) {
   '</div>'
 }
 
+// 水電費收款確認：房客將收到的 LINE 卡片預覽（模擬 utilReceiptFlex 版面，琥珀色系）
+function utilityReceiptPreviewHtml(d) {
+  var subtitle = esc(d.title || '') + (d.room ? '　·　' + esc(d.room) : '')
+  var r = d.reading || null
+  var rows = []
+  if (r) {
+    rows.push(['抄表期間', leaseDateInput(r.startDate) + ' → ' + leaseDateInput(r.endDate)])
+    rows.push(['度數', Number(r.startDegree || 0).toLocaleString() + ' → ' + Number(r.endDegree || 0).toLocaleString() + ' 度'])
+    rows.push(['本期使用', Number(r.usedDegree || 0).toLocaleString() + ' 度'])
+    if (r.rate) rows.push(['每度費率', 'NT$ ' + Number(r.rate).toLocaleString()])
+  }
+  rows.push(['繳款日期', d.paidDate || '—'])
+  rows.push(['繳費方式', d.payMethod || '—'])
+  var rowHtml = rows.map(function(row) {
+    return '<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:12px;">' +
+      '<span style="color:#8C877D;">' + row[0] + '</span>' +
+      '<span style="color:#43413B;font-weight:600;text-align:right;">' + esc(row[1]) + '</span></div>'
+  }).join('')
+  return '<div style="text-align:left;border:1px solid #E5E0D5;border-radius:14px;overflow:hidden;max-width:320px;margin:0 auto 4px;">' +
+    '<div style="background:#C6982E;padding:12px 14px;">' +
+      '<div style="color:#fff;font-weight:700;font-size:15px;">水電費收款確認</div>' +
+      '<div style="color:#F3E6C6;font-size:12px;margin-top:2px;">' + subtitle + '</div>' +
+    '</div>' +
+    '<div style="padding:14px;">' +
+      '<div style="font-weight:700;font-size:14px;color:#2B2B2B;">' + esc(d.tenant || '房客') + ' 您好</div>' +
+      '<div style="font-size:12px;color:#8C877D;margin:2px 0 10px;">已收到您的水電費，感謝您的配合</div>' +
+      '<div style="background:#FBF4E4;border-radius:10px;padding:11px 13px;margin-bottom:10px;">' +
+        '<div style="font-size:11px;color:#A9781E;">本次已收金額</div>' +
+        '<div style="font-size:20px;font-weight:800;color:#A9781E;">NT$ ' + Number(d.paidAmount || 0).toLocaleString() + '</div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#B0A891;font-weight:700;margin-bottom:2px;">繳費明細</div>' +
+      rowHtml +
+    '</div>' +
+    '<div style="border-top:1px solid #eee;padding:8px;text-align:center;font-size:11px;color:#AEA89C;">如有疑問請與我們聯繫，謝謝您</div>' +
+  '</div>'
+}
+
 async function saveRentPayment(leaseId, key, rentPaymentId, kind) {
   kind = kind || 'RENT'
   var startEl = document.getElementById(key + '_start')
@@ -9196,10 +9255,21 @@ async function saveUtilityPayment(leaseId, readingId, key) {
   var data = {}; try { data = await res.json() } catch(e) {}
   if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || res.status)); return }
   showToast('✅ 水電繳費已儲存')
-  // 詢問是否推播「收款確認」給房客
+  // 詢問是否推播「收款確認」給房客——顯示房客將收到的卡片預覽（與租金一致）
+  var _uLease = (_LAST_BILLING && _LAST_BILLING.lease) || {}
+  var _uReading = ((_LAST_BILLING && _LAST_BILLING.utilityReadings) || []).filter(function(x){ return x.id === readingId })[0] || null
+  var _uPreview = utilityReceiptPreviewHtml({
+    tenant: _uLease.tenantName,
+    title: (_uLease.managedProperty && _uLease.managedProperty.title) || '',
+    room: _uLease.roomLabel || '',
+    paidAmount: body.paidAmount,
+    paidDate: body.paidDate,
+    payMethod: body.payMethod,
+    reading: _uReading
+  })
   showConfirm({
-    icon: '📩', title: '發送收款確認給房客？',
-    msg: '將以 LINE 推播「水電費收款確認」給房客（已收金額 NT$ ' + Number(body.paidAmount).toLocaleString() + '）。',
+    title: '發送收款確認給房客？',
+    msg: '<div style="font-size:12px;color:#8C877D;margin-bottom:10px;">以下為房客將收到的 LINE 卡片，確認無誤再送出：</div>' + _uPreview,
     okLabel: '發送', cancelLabel: '不用',
     onOk: async function() {
       try {
