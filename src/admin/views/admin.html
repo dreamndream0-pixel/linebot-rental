@@ -9126,6 +9126,43 @@ function rentReceiptPreviewHtml(d) {
   '</div>'
 }
 
+// 水電費收款確認：房客將收到的 LINE 卡片預覽（模擬 utilReceiptFlex 版面，琥珀色系）
+function utilityReceiptPreviewHtml(d) {
+  var subtitle = esc(d.title || '') + (d.room ? '　·　' + esc(d.room) : '')
+  var r = d.reading || null
+  var rows = []
+  if (r) {
+    rows.push(['抄表期間', leaseDateInput(r.startDate) + ' → ' + leaseDateInput(r.endDate)])
+    rows.push(['度數', Number(r.startDegree || 0).toLocaleString() + ' → ' + Number(r.endDegree || 0).toLocaleString() + ' 度'])
+    rows.push(['本期使用', Number(r.usedDegree || 0).toLocaleString() + ' 度'])
+    if (r.rate) rows.push(['每度費率', 'NT$ ' + Number(r.rate).toLocaleString()])
+  }
+  rows.push(['繳款日期', d.paidDate || '—'])
+  rows.push(['繳費方式', d.payMethod || '—'])
+  var rowHtml = rows.map(function(row) {
+    return '<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:12px;">' +
+      '<span style="color:#8C877D;">' + row[0] + '</span>' +
+      '<span style="color:#43413B;font-weight:600;text-align:right;">' + esc(row[1]) + '</span></div>'
+  }).join('')
+  return '<div style="text-align:left;border:1px solid #E5E0D5;border-radius:14px;overflow:hidden;max-width:320px;margin:0 auto 4px;">' +
+    '<div style="background:#C6982E;padding:12px 14px;">' +
+      '<div style="color:#fff;font-weight:700;font-size:15px;">水電費收款確認</div>' +
+      '<div style="color:#F3E6C6;font-size:12px;margin-top:2px;">' + subtitle + '</div>' +
+    '</div>' +
+    '<div style="padding:14px;">' +
+      '<div style="font-weight:700;font-size:14px;color:#2B2B2B;">' + esc(d.tenant || '房客') + ' 您好</div>' +
+      '<div style="font-size:12px;color:#8C877D;margin:2px 0 10px;">已收到您的水電費，感謝您的配合</div>' +
+      '<div style="background:#FBF4E4;border-radius:10px;padding:11px 13px;margin-bottom:10px;">' +
+        '<div style="font-size:11px;color:#A9781E;">本次已收金額</div>' +
+        '<div style="font-size:20px;font-weight:800;color:#A9781E;">NT$ ' + Number(d.paidAmount || 0).toLocaleString() + '</div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#B0A891;font-weight:700;margin-bottom:2px;">繳費明細</div>' +
+      rowHtml +
+    '</div>' +
+    '<div style="border-top:1px solid #eee;padding:8px;text-align:center;font-size:11px;color:#AEA89C;">如有疑問請與我們聯繫，謝謝您</div>' +
+  '</div>'
+}
+
 async function saveRentPayment(leaseId, key, rentPaymentId, kind) {
   kind = kind || 'RENT'
   var startEl = document.getElementById(key + '_start')
@@ -9209,10 +9246,21 @@ async function saveUtilityPayment(leaseId, readingId, key) {
   var data = {}; try { data = await res.json() } catch(e) {}
   if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || res.status)); return }
   showToast('✅ 水電繳費已儲存')
-  // 詢問是否推播「收款確認」給房客
+  // 詢問是否推播「收款確認」給房客——顯示房客將收到的卡片預覽（與租金一致）
+  var _uLease = (_LAST_BILLING && _LAST_BILLING.lease) || {}
+  var _uReading = ((_LAST_BILLING && _LAST_BILLING.utilityReadings) || []).filter(function(x){ return x.id === readingId })[0] || null
+  var _uPreview = utilityReceiptPreviewHtml({
+    tenant: _uLease.tenantName,
+    title: (_uLease.managedProperty && _uLease.managedProperty.title) || '',
+    room: _uLease.roomLabel || '',
+    paidAmount: body.paidAmount,
+    paidDate: body.paidDate,
+    payMethod: body.payMethod,
+    reading: _uReading
+  })
   showConfirm({
-    icon: '📩', title: '發送收款確認給房客？',
-    msg: '將以 LINE 推播「水電費收款確認」給房客（已收金額 NT$ ' + Number(body.paidAmount).toLocaleString() + '）。',
+    title: '發送收款確認給房客？',
+    msg: '<div style="font-size:12px;color:#8C877D;margin-bottom:10px;">以下為房客將收到的 LINE 卡片，確認無誤再送出：</div>' + _uPreview,
     okLabel: '發送', cancelLabel: '不用',
     onOk: async function() {
       try {
