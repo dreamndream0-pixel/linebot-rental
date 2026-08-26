@@ -8728,17 +8728,19 @@ function saveSettle(leaseId, alreadySettled) {
           if (!res.ok) { showToast('❌ 結算失敗'); resolve(); return }
           showToast('✅ 已結算')
           var m = document.getElementById('settleModal'); if (m) m.remove()
-          await showLeaseList()
-          // 結算完成後，直接開啟結算明細預覽（可預覽後再確認傳送給房客）
-          settleNotify(leaseId)
+          // 先跳出結算明細推播預覽（可取消或確認傳送），關閉預覽後才回到清單，
+          // 避免「先跳出去、預覽才出現」的順序問題。
+          settleNotify(leaseId, function() { showLeaseList() })
         } catch (e) { showToast('❌ 結算失敗') }
         resolve()
       }
     })
   })
 }
-// 傳送結算明細給房客（LINE）：先預覽卡片再確認送出
-async function settleNotify(leaseId) {
+// 傳送結算明細給房客（LINE）：先預覽卡片再確認送出。
+// onDone：預覽關閉（取消或確認傳送）後執行，供結算流程「關閉預覽後才回到清單」。
+async function settleNotify(leaseId, onDone) {
+  function finish() { if (typeof onDone === 'function') { var f = onDone; onDone = null; f() } }
   // 先取得卡片預覽（不實際推播）
   var preview = null
   try {
@@ -8746,10 +8748,10 @@ async function settleNotify(leaseId) {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ preview: true })
     })
     var pd = {}; try { pd = await pres.json() } catch (e) {}
-    if (!pres.ok) { showInfoModal('❌ 無法產生預覽', pd.error || ('HTTP ' + pres.status)); return }
+    if (!pres.ok) { showInfoModal('❌ 無法產生預覽', pd.error || ('HTTP ' + pres.status)); finish(); return }
     preview = pd.preview
-  } catch (e) { showToast('❌ 預覽失敗'); return }
-  // 顯示預覽 → 確認後才實際傳送
+  } catch (e) { showToast('❌ 預覽失敗'); finish(); return }
+  // 顯示預覽 → 確認後才實際傳送；預覽關閉後（取消/傳送）再執行 onDone
   showLinePreview('結算明細', preview, async function() {
     try {
       var res = await fetch('/admin/api/managed/lease/' + leaseId + '/settle-notify?key=' + encodeURIComponent(KEY), {
@@ -8759,7 +8761,7 @@ async function settleNotify(leaseId) {
       if (!res.ok) { showInfoModal('❌ 傳送結算明細失敗', (d.error || ('HTTP ' + res.status)) + '\n\n若顯示 invalid（無效的 to），代表此房客尚未加入該 LINE Bot，或合約內的 LINE userID 有誤。'); return }
       showToast('✅ 已傳送結算明細給房客' + (d.via ? '（' + d.via + '）' : ''))
     } catch (e) { showToast('❌ 傳送結算明細失敗') }
-  })
+  }, finish)
 }
 function paymentCycleLabel(v) {
   return { MONTHLY:'月繳', BIMONTHLY:'雙月繳', QUARTERLY:'季繳', SEMIANNUAL:'半年繳', YEARLY:'年繳' }[v] || '月繳'
@@ -8920,7 +8922,10 @@ async function openLeaseLedger(leaseId) {
   var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'汽車位', OTHER:'其他' }
   var today = new Date().toISOString().slice(0, 10)
   var lastReading = (billing.utilityReadings || [])[0]
-  var readingStartDate = lastReading ? leaseDateInput(lastReading.endDate) : leaseDateInput(l.leaseStart)
+  // 首次抄表起算日：有上期抄表→接續上期迄日；否則以「合約抄表日」為準（電錶抄表日常與租約起日不同），
+  // 無合約抄表日才退回租約起日。
+  var _meterReadDate = (billing.lease && billing.lease.meterReadDate) || l.meterReadDate || null
+  var readingStartDate = lastReading ? leaseDateInput(lastReading.endDate) : leaseDateInput(_meterReadDate || l.leaseStart)
   var readingStartDegree = lastReading ? Number(lastReading.endDegree || 0) : Number((billing.lease && billing.lease.meterInitial) || 0)
   var defaultRate = Number((billing.lease && billing.lease.meterRate) || l.meterRate || 0)
   var depositVal = (billing.lease && billing.lease.deposit != null) ? billing.lease.deposit : (l.deposit || 0)
@@ -9395,27 +9400,37 @@ function linePreviewHtml(msg) {
     (b.footer ? '<div style="border-top:1px solid #eee;">' + _flexNode(b.footer, false) + '</div>' : '') +
   '</div>'
 }
-function showLinePreview(label, msg, onSend) {
+// onClose：預覽關閉後（取消、按 ×、或確認傳送完成）都會被呼叫一次，供呼叫端接續流程。
+function showLinePreview(label, msg, onSend, onClose) {
   var html = '<div id="linePreviewModal" class="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:400;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;">' +
     '<div style="background:#EDE9E3;border-radius:16px;padding:18px;max-width:360px;width:100%;margin:auto;">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
         '<h3 style="margin:0;font-size:16px;">📲 預覽 ' + label + ' 提醒</h3>' +
-        '<button onclick="var m=document.getElementById(\'linePreviewModal\');if(m)m.remove()" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
+        '<button id="linePreviewClose" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>' +
       '</div>' +
       '<div style="font-size:12px;color:#7A756B;margin-bottom:12px;">以下為房客將收到的卡片，確認後傳送：</div>' +
       linePreviewHtml(msg) +
       '<div style="display:flex;gap:8px;margin-top:16px;">' +
-        '<button onclick="var m=document.getElementById(\'linePreviewModal\');if(m)m.remove()" style="flex:1;padding:12px;border:1px solid #D8D2C6;background:#fff;border-radius:10px;font-size:14px;cursor:pointer;">取消</button>' +
+        '<button id="linePreviewCancel" style="flex:1;padding:12px;border:1px solid #D8D2C6;background:#fff;border-radius:10px;font-size:14px;cursor:pointer;">取消</button>' +
         '<button id="linePreviewSend" class="spin-btn" style="flex:2;padding:12px;border:none;background:#06C755;color:#fff;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">確認傳送</button>' +
       '</div>' +
     '</div></div>'
   var ex = document.getElementById('linePreviewModal'); if (ex) ex.remove()
   document.body.insertAdjacentHTML('beforeend', html)
+  var closed = false
+  function done() {
+    if (closed) return
+    closed = true
+    var m = document.getElementById('linePreviewModal'); if (m) m.remove()
+    if (typeof onClose === 'function') { try { onClose() } catch (e) {} }
+  }
+  var xBtn = document.getElementById('linePreviewClose'); if (xBtn) xBtn.onclick = done
+  var cancelBtn = document.getElementById('linePreviewCancel'); if (cancelBtn) cancelBtn.onclick = done
   var btn = document.getElementById('linePreviewSend')
   btn.onclick = function() {
     btnLoad(btn, async function() {
       await onSend()
-      var m = document.getElementById('linePreviewModal'); if (m) m.remove()
+      done()
     })
   }
 }
