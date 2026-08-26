@@ -5654,9 +5654,18 @@ async function renderManagedTab() {
     ? '<div class="empty">尚無委託物業，點上方「+ 新增委託」開始</div>'
     : MANAGED.list.map(managedCard).join('')
 
-  // 工具列改放到最上面「包租代管」下拉選單；此頁只保留內容區，預設載入代管清單
+  // 工具列改放到最上面「包租代管」下拉選單；此頁只保留內容區
   el.innerHTML = '<div id="managedReportBox"></div>'
-  if (!_navRunPending) { try { showLeaseList() } catch (e) {} }
+  // 重新整理時停留在使用者上次的子頁（委託列表／待繳費清單／收支報表），而非固定跳回預設
+  if (!_navRunPending) {
+    var mv = ''; try { mv = sessionStorage.getItem('managedView') || '' } catch (e) {}
+    try {
+      if (mv === 'commission') showCommissionList()
+      else if (mv === 'pending') showPendingList()
+      else if (mv === 'report') showManagedReport()
+      else showLeaseList()
+    } catch (e) {}
+  }
 }
 // 由「包租代管」選單項目觸發：切到包租代管頁後執行對應功能
 var _navRunPending = false
@@ -6723,6 +6732,7 @@ async function togglePayout(pid, status) {
 
 // ── 委託列表 ───────────────────────────────────────────────────
 function showCommissionList() {
+  try { sessionStorage.setItem('managedView', 'commission') } catch (e) {}
   var box = document.getElementById('managedReportBox')
   var cards = MANAGED.list.length === 0
     ? '<div class="empty">尚無委託物業</div>'
@@ -6879,6 +6889,7 @@ function setReportRange(r) { REPORT_FILTER.range = r; showManagedReport() }
 function setReportOwner(v) { REPORT_FILTER.ownerName = v; REPORT_FILTER.propertyId = ''; showManagedReport() }
 function setReportProperty(v) { REPORT_FILTER.propertyId = v; showManagedReport() }
 async function showManagedReport() {
+  try { sessionStorage.setItem('managedView', 'report') } catch (e) {}
   var box = document.getElementById('managedReportBox')
   box.innerHTML = '<div class="empty">載入報表中...</div>'
   var qs = 'key=' + encodeURIComponent(KEY) + '&range=' + encodeURIComponent(REPORT_FILTER.range) +
@@ -7961,6 +7972,7 @@ function pendingSortCompare(a, b) {
   return d * dir
 }
 async function showPendingList() {
+  try { sessionStorage.setItem('managedView', 'pending') } catch (e) {}
   var box = document.getElementById('managedReportBox')
   box.innerHTML = '<div class="empty">載入待繳費清單中...</div>'
   try {
@@ -8066,6 +8078,7 @@ function renderPendingList() {
 }
 
 async function showLeaseList() {
+  try { sessionStorage.setItem('managedView', 'lease') } catch (e) {}
   var box = document.getElementById('managedReportBox')
   box.innerHTML = '<div class="empty">載入代管清單中...</div>'
   var res = await fetch('/admin/api/managed-leases?key=' + encodeURIComponent(KEY))
