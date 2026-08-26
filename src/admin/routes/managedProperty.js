@@ -988,15 +988,31 @@ router.get('/admin/api/managed-report', async (req, res) => {
 
     // ── 保管款（押金/預收）：以合約計算「目前保管中」餘額（未結算合約才算保管中）──
     // 押金、預收款屬負債（代/保管款），不是營業收入；結算退還亦非營業支出。
+    const propOwnerById = {}; props.forEach(p => { propOwnerById[p.id] = p.ownerName })
     const custodyByProp = {}
     let custodyHeldTotal = 0
+    const custodyList = []   // 逐筆保管款明細（每張生效未結算合約的押金/預收）
     leases.forEach(l => {
       if (l.settledAt) return  // 已結算＝已退還/處理，不再保管
-      const held = (l.deposit || 0) + (l.prepaidUtility || 0)
+      const deposit = l.deposit || 0
+      const prepaid = l.prepaidUtility || 0
+      const held = deposit + prepaid
       if (held <= 0) return
       custodyByProp[l.managedPropertyId] = (custodyByProp[l.managedPropertyId] || 0) + held
       custodyHeldTotal += held
+      custodyList.push({
+        leaseId: l.id,
+        ownerName: propOwnerById[l.managedPropertyId] || '（未填房東）',
+        managedTitle: propTitleById[l.managedPropertyId] || '未連結物業',
+        roomLabel: l.roomLabel || '',
+        tenantName: l.tenantName || '',
+        deposit, prepaid, total: held,
+      })
     })
+    custodyList.sort((a, b) =>
+      String(a.ownerName).localeCompare(String(b.ownerName), 'zh-Hant') ||
+      String(a.managedTitle).localeCompare(String(b.managedTitle), 'zh-Hant') ||
+      String(a.roomLabel).localeCompare(String(b.roomLabel), 'zh-Hant', { numeric: true }))
 
     // ── 逐物業彙總 ──
     let actualIncome = 0, expenseTotal = 0, operatingExpenseTotal = 0, custodyRefundTotal = 0, mgmtFeeTotal = 0, paidOutTotal = 0, pendingPayout = 0
@@ -1064,6 +1080,7 @@ router.get('/admin/api/managed-report', async (req, res) => {
       range, from: start, to: end,
       incomeByCategory,
       unpaidList: unpaidList.slice(0, 200),
+      custodyList,
       trend,
       filters: { owners, properties: allProps, ownerName: req.query.ownerName || '', propertyId: req.query.propertyId || '' },
       summary: {

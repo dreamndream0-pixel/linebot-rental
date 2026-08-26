@@ -6872,6 +6872,62 @@ function renderUnpaidList(list) {
     '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '<div style="text-align:right;font-size:12px;color:#C0524A;font-weight:700;margin-top:6px;">未收合計 NT$ ' + Number(total).toLocaleString() + '</div>'
 }
+// 保管款明細懸浮視窗：逐筆押金/預收，依 房東 → 棟別 分組（可開合）
+function openCustodyDetail() {
+  var list = (REPORT_DATA && REPORT_DATA.custodyList) || []
+  var gDep = list.reduce(function(s,x){ return s + (x.deposit||0) }, 0)
+  var gPre = list.reduce(function(s,x){ return s + (x.prepaid||0) }, 0)
+  var grand = gDep + gPre
+  var groups = {}, order = []
+  list.forEach(function(it){
+    var k = it.ownerName || '（未填房東）'
+    if (!groups[k]) { groups[k] = { items: [], byB: {}, bOrder: [] }; order.push(k) }
+    var g = groups[k]; g.items.push(it)
+    var b = it.managedTitle || '（未連結物業）'
+    if (!g.byB[b]) { g.byB[b] = []; g.bOrder.push(b) }
+    g.byB[b].push(it)
+  })
+  var body = order.length ? order.map(function(owner, gi){
+    var g = groups[owner]; var gid = 'cd_' + gi
+    var oSub = g.items.reduce(function(s,x){ return s + x.total }, 0)
+    var bHtml = g.bOrder.map(function(bldg, bi){
+      var rowsArr = g.byB[bldg]; var bid = gid + '_b' + bi
+      var sub = rowsArr.reduce(function(s,x){ return s + x.total }, 0)
+      var rowHtml = rowsArr.map(function(r){
+        return '<tr>' +
+          '<td style="padding:6px 8px;font-size:12px;white-space:nowrap;">' + esc(r.roomLabel||'—') + ' <span style="color:#999;">' + esc(r.tenantName||'') + '</span></td>' +
+          '<td style="padding:6px 8px;font-size:12px;text-align:right;white-space:nowrap;">' + Number(r.deposit||0).toLocaleString() + '</td>' +
+          '<td style="padding:6px 8px;font-size:12px;text-align:right;white-space:nowrap;">' + Number(r.prepaid||0).toLocaleString() + '</td>' +
+          '<td style="padding:6px 8px;font-size:12px;text-align:right;font-weight:700;white-space:nowrap;">' + Number(r.total||0).toLocaleString() + '</td>' +
+        '</tr>'
+      }).join('')
+      return '<tbody><tr onclick="var x=document.getElementById(\'' + bid + '\');var o=x.style.display!==\'none\';x.style.display=o?\'none\':\'\';this.querySelector(\'.arw\').textContent=o?\'▸\':\'▾\';" style="cursor:pointer;background:#EAF0F6;"><td colspan="4" style="padding:7px 10px;border-left:3px solid #5A7D8C;"><span style="display:flex;justify-content:space-between;font-weight:700;font-size:12px;color:#33465C;"><span>🏢 ' + esc(bldg) + '　<span style="font-weight:400;color:#6E8091;">' + rowsArr.length + ' 筆</span></span><span>NT$ ' + Number(sub).toLocaleString() + '　<span class="arw">▾</span></span></span></td></tr></tbody>' +
+        '<tbody id="' + bid + '">' + rowHtml + '</tbody>'
+    }).join('')
+    return '<div style="border:1px solid #E5E0D5;border-radius:10px;overflow:hidden;margin-bottom:10px;">' +
+      '<div onclick="var x=document.getElementById(\'' + gid + '\');var o=x.style.display!==\'none\';x.style.display=o?\'none\':\'\';this.querySelector(\'.arw\').textContent=o?\'▸\':\'▾\';" style="display:flex;justify-content:space-between;align-items:center;background:#EDE8E0;padding:9px 12px;cursor:pointer;font-weight:700;font-size:13px;"><span>👤 房東：' + esc(owner) + '　<span style="font-weight:400;color:#888;font-size:12px;">' + g.items.length + ' 筆</span></span><span>NT$ ' + Number(oSub).toLocaleString() + '　<span class="arw">▾</span></span></div>' +
+      '<div id="' + gid + '"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#FAF8F4;"><th style="padding:6px 8px;text-align:left;font-size:11px;white-space:nowrap;">房號 / 承租人</th><th style="padding:6px 8px;text-align:right;font-size:11px;">押金</th><th style="padding:6px 8px;text-align:right;font-size:11px;">預收</th><th style="padding:6px 8px;text-align:right;font-size:11px;">小計</th></tr></thead>' + bHtml + '</table></div>' +
+    '</div>'
+  }).join('') : '<div style="padding:26px;text-align:center;color:#999;font-size:13px;">目前沒有保管中的押金/預收</div>'
+
+  var html = '<div id="custodyModal" style="position:fixed;inset:0;z-index:1200;background:rgba(46,45,42,0.42);display:flex;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)this.remove()">' +
+    '<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:86vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(46,45,42,0.3);">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #EEE;">' +
+        '<div style="font-size:15px;font-weight:700;color:#3C5A7B;">🔒 保管款明細（押金/預收）</div>' +
+        '<button onclick="document.getElementById(\'custodyModal\').remove()" style="border:none;background:none;font-size:20px;color:#999;cursor:pointer;">×</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:10px 16px;background:#F3F6FA;font-size:12px;color:#33465C;border-bottom:1px solid #E7EDF3;">' +
+        '<div>合計保管中：<b style="font-size:13px;">NT$ ' + Number(grand).toLocaleString() + '</b></div>' +
+        '<div>押金：<b>NT$ ' + Number(gDep).toLocaleString() + '</b></div>' +
+        '<div>預收：<b>NT$ ' + Number(gPre).toLocaleString() + '</b></div>' +
+      '</div>' +
+      '<div style="overflow-y:auto;padding:14px 16px;">' + body + '</div>' +
+    '</div>' +
+  '</div>'
+  var ex = document.getElementById('custodyModal'); if (ex) ex.remove()
+  document.body.insertAdjacentHTML('beforeend', html)
+}
+
 function exportReportCSV() {
   var d = REPORT_DATA; if (!d) { showToast('請先載入報表'); return }
   var rows = [['物業','屋主','類型','實收','未收','營業支出','保管中(押金/預收)','承租成本','平台利潤','待付']]
@@ -6960,6 +7016,7 @@ async function showManagedReport() {
         '<div style="font-size:13px;font-weight:700;color:#3C5A7B;">🔒 保管款（押金/預收）</div>' +
         '<div style="font-size:12px;color:#33465C;">目前保管中：<b style="font-size:14px;">NT$ ' + Number(s.custodyHeld||0).toLocaleString() + '</b></div>' +
         '<div style="font-size:12px;color:#33465C;">本期結算退還：<b style="font-size:14px;">NT$ ' + Number(s.custodyRefund||0).toLocaleString() + '</b></div>' +
+        '<button onclick="openCustodyDetail()" style="margin-left:auto;border:1px solid #5A7D8C;background:#fff;color:#3C5A7B;border-radius:8px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">明細 ▾</button>' +
       '</div>' +
       '<div style="font-size:11px;color:#8896AA;margin-top:5px;">押金、預收款為代/保管款（負債），非營業收入；結算退還亦非營業支出，故單獨列示、不計入上方營業損益。</div>' +
     '</div>' +
