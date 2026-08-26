@@ -1796,6 +1796,25 @@ router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
   }
 })
 
+// ── 更新租約的保管款（保證金/預收款）——供對帳表單直接編輯 ──────────
+router.post('/admin/api/managed/lease/:leaseId/custody', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    const data = {}
+    if (req.body.deposit !== undefined) data.deposit = Math.max(0, parseInt(req.body.deposit) || 0)
+    if (req.body.prepaidUtility !== undefined) data.prepaidUtility = Math.max(0, parseInt(req.body.prepaidUtility) || 0)
+    if (!Object.keys(data).length) return res.status(400).json({ error: '沒有可更新的欄位' })
+    const updated = await prisma.lease.update({ where: { id: lease.id }, data })
+    res.json({ ok: true, deposit: updated.deposit, prepaidUtility: updated.prepaidUtility })
+  } catch (e) {
+    console.error('更新保管款失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ── 合約結算：預覽（押金、預收電費、建議扣除項目） ──────────────
 router.get('/admin/api/managed/lease/:leaseId/settle-preview', async (req, res) => {
   const auth = await resolveRole(req.query.key)

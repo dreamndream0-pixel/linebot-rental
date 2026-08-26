@@ -8923,6 +8923,8 @@ async function openLeaseLedger(leaseId) {
   var readingStartDate = lastReading ? leaseDateInput(lastReading.endDate) : leaseDateInput(l.leaseStart)
   var readingStartDegree = lastReading ? Number(lastReading.endDegree || 0) : Number((billing.lease && billing.lease.meterInitial) || 0)
   var defaultRate = Number((billing.lease && billing.lease.meterRate) || l.meterRate || 0)
+  var depositVal = (billing.lease && billing.lease.deposit != null) ? billing.lease.deposit : (l.deposit || 0)
+  var prepaidVal = (billing.lease && billing.lease.prepaidUtility != null) ? billing.lease.prepaidUtility : (l.prepaidUtility || 0)
   var rows = inPeriod.map(function(r){
     return '<tr><td style="padding:8px;font-size:12px;">' + leaseDate(r.recordDate) + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + (catLabel[r.category] || r.category) + '</td>' +
@@ -8946,6 +8948,18 @@ async function openLeaseLedger(leaseId) {
       '<div style="flex:1;min-width:0;background:#F0F7F1;border-radius:10px;padding:10px 6px;text-align:center;"><div style="font-size:11px;color:#888;">收入</div><div style="font-weight:700;color:#2E7D32;white-space:nowrap;"><span style="font-size:10px;">NT$</span> <span style="font-size:15px;">' + income.toLocaleString() + '</span></div></div>' +
       '<div style="flex:1;min-width:0;background:#FBF0EF;border-radius:10px;padding:10px 6px;text-align:center;"><div style="font-size:11px;color:#888;">支出</div><div style="font-weight:700;color:#C0524A;white-space:nowrap;"><span style="font-size:10px;">NT$</span> <span style="font-size:15px;">' + expense.toLocaleString() + '</span></div></div>' +
       '<div style="flex:1;min-width:0;background:#F5F0EA;border-radius:10px;padding:10px 6px;text-align:center;"><div style="font-weight:700;white-space:nowrap;"><div style="font-size:11px;color:#888;">淨額</div><span style="font-size:10px;">NT$</span> <span style="font-size:15px;">' + (income - expense).toLocaleString() + '</span></div></div>' +
+    '</div>' +
+    // 保管款（押金/預收）——負債，非收入/支出；可直接於對帳表單編輯
+    '<div style="background:#F3F6FA;border:1px solid #DCE6F0;border-radius:12px;padding:12px 14px;margin-bottom:14px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+        '<div style="font-size:14px;font-weight:700;color:#3C5A7B;">🔒 保管款（押金/預收）</div>' +
+        '<span style="font-size:11px;color:#8896AA;">代/保管款（負債），非收入</span>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">' +
+        '<div style="flex:1;min-width:100px;"><label style="font-size:11px;color:#8896AA;display:block;margin-bottom:3px;">保證金</label><input id="lease_deposit" type="number" min="0" value="' + Number(depositVal||0) + '" style="width:100%;box-sizing:border-box;height:40px;padding:0 10px;border:1px solid #DCE6F0;border-radius:8px;font-size:14px;"></div>' +
+        '<div style="flex:1;min-width:100px;"><label style="font-size:11px;color:#8896AA;display:block;margin-bottom:3px;">預收款</label><input id="lease_prepaid" type="number" min="0" value="' + Number(prepaidVal||0) + '" style="width:100%;box-sizing:border-box;height:40px;padding:0 10px;border:1px solid #DCE6F0;border-radius:8px;font-size:14px;"></div>' +
+        '<button class="btn spin-btn" style="flex:none;height:40px;width:auto;padding:0 18px;font-size:13px;background:#5A7D8C;" onclick="btnLoad(this,function(){return saveLeaseCustody(\'' + l.id + '\')})">儲存</button>' +
+      '</div>' +
     '</div>' +
     '<div style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:14px;">' +
       '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">＋ 新增收支</div>' +
@@ -9435,6 +9449,18 @@ function sendLeasePaymentReminder(leaseId, kind, amount, dueDate, readingId, per
       } catch (e) { showToast('❌ 發送失敗') }
     })
   })()
+}
+
+async function saveLeaseCustody(leaseId) {
+  var body = { deposit: val('lease_deposit'), prepaidUtility: val('lease_prepaid') }
+  var res = await fetch('/admin/api/managed/lease/' + leaseId + '/custody?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  })
+  var d = {}; try { d = await res.json() } catch(e) {}
+  if (!res.ok) { showToast('❌ 儲存失敗：' + (d.error || res.status)); return }
+  // 同步更新快取，讓保管款明細/報表下次載入即為新值
+  if (_LAST_BILLING && _LAST_BILLING.lease) { _LAST_BILLING.lease.deposit = d.deposit; _LAST_BILLING.lease.prepaidUtility = d.prepaidUtility }
+  showToast('✅ 已更新保管款（押金 ' + Number(d.deposit||0).toLocaleString() + '・預收 ' + Number(d.prepaidUtility||0).toLocaleString() + '）')
 }
 
 async function addLeaseRecord(managedId, leaseId) {
