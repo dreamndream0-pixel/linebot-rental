@@ -6928,9 +6928,9 @@ async function showManagedReport() {
 
   box.innerHTML =
     '<div style="background:#fff;border:1px solid #E5E0D5;border-radius:14px;padding:20px;margin-bottom:18px;">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
-      '<h3 style="margin:0;font-size:16px;">📊 收支報表</h3>' +
-      '<div style="display:flex;gap:8px;align-items:center;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' +
+      '<h3 style="margin:0;font-size:16px;white-space:nowrap;">📊 收支報表</h3>' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
         ((DATA && DATA.isBroker) ? '<button onclick="importTaipower()" style="border:1px solid #B07A2E;background:#fff;color:#B07A2E;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">⚡ 匯入台電</button>' : '') +
         '<button onclick="openUtilityExpenseModal()" style="border:1px solid #C0524A;background:#fff;color:#C0524A;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">＋ 水電支出</button>' +
         '<button onclick="exportReportCSV()" style="border:1px solid #4A6741;background:#fff;color:#4A6741;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">⬇ 匯出 CSV</button>' +
@@ -6944,7 +6944,7 @@ async function showManagedReport() {
       '<select onchange="setReportProperty(this.value)" style="' + selStyle + '">' + propOpts + '</select>' +
     '</div>' +
     // KPI 卡
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:10px;margin-bottom:16px;">' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px;">' +
       reportStat('委託物業', s.count + ' 件', '#7A9E7E') +
       reportStat('期間實收', 'NT$ ' + Number(s.actualIncome).toLocaleString(), '#4A8A4A') +
       reportStat('未收合計', 'NT$ ' + Number(s.unpaidTotal).toLocaleString(), s.unpaidTotal>0?'#C0524A':'#7A9E7E', '租金 ' + Number(s.unpaidRent).toLocaleString() + '＋水電 ' + Number(s.unpaidUtil).toLocaleString()) +
@@ -7340,9 +7340,9 @@ async function saveUtilityExpense() {
 }
 
 function reportStat(label, value, color, sub) {
-  return '<div style="background:#F8F6F2;border-radius:10px;padding:12px;text-align:center;">' +
+  return '<div style="background:#F8F6F2;border-radius:10px;padding:12px 10px;text-align:center;display:flex;flex-direction:column;justify-content:center;min-height:64px;">' +
     '<div style="font-size:11px;color:#999;margin-bottom:4px;">' + label + '</div>' +
-    '<div style="font-size:15px;font-weight:700;color:' + color + ';white-space:nowrap;">' + value + '</div>' +
+    '<div style="font-size:15px;font-weight:700;color:' + color + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + value + '</div>' +
     (sub ? '<div style="font-size:10px;color:#b3ab9c;margin-top:3px;line-height:1.3;">' + sub + '</div>' : '') +
     '</div>'
 }
