@@ -8989,7 +8989,7 @@ async function openLeaseLedger(leaseId) {
     ) : '') +
     '<h4 style="margin:14px 0 10px;font-size:15px;">水電明細表</h4>'
  +
-    '<div id="util_add_form" style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:12px;">' +
+    '<div id="util_add_form" data-default-start="' + readingStartDate + '" data-default-degree="' + readingStartDegree + '" data-default-rate="' + defaultRate + '" data-today="' + today + '" style="background:#F7F5F1;border-radius:14px;padding:14px;margin-bottom:12px;">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
         '<div id="util_form_title" style="font-size:15px;font-weight:700;">＋ 新增抄表度數</div>' +
         '<button id="util_cancel_btn" onclick="cancelEditUtilityReading(\'' + l.id + '\')" style="display:none;border:none;background:none;color:#C0524A;font-size:13px;cursor:pointer;padding:0;">✕ 取消</button>' +
@@ -9071,7 +9071,14 @@ function cancelEditUtilityReading(leaseId) {
   var tt = document.getElementById('util_form_title'); if (tt) tt.textContent = '＋ 新增抄表度數'
   var sb = document.getElementById('util_submit_btn'); if (sb) sb.textContent = '新增抄表'
   var cb = document.getElementById('util_cancel_btn'); if (cb) cb.style.display = 'none'
+  // 還原為「新增」預設值：起算日／度數回到合約抄表日、上期迄止（避免留下被編輯的舊值）
+  var form = document.getElementById('util_add_form'); var d = (form && form.dataset) || {}
+  var sd = document.getElementById('util_start_date'); if (sd) sd.value = d.defaultStart || ''
+  var sg = document.getElementById('util_start_degree'); if (sg) sg.value = d.defaultDegree || 0
+  var ed = document.getElementById('util_end_date'); if (ed) ed.value = d.today || ''
   var eg = document.getElementById('util_end_degree'); if (eg) eg.value = ''
+  var rt = document.getElementById('util_rate'); if (rt) rt.value = d.defaultRate || 0
+  var dd = document.getElementById('util_due_date'); if (dd) dd.value = d.today || ''
   var nt = document.getElementById('util_note'); if (nt) nt.value = ''
 }
 
