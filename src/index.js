@@ -159,6 +159,9 @@ prisma.$connect()
       await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "settleDeductions" TEXT`)
       await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "settleRefund" INTEGER`)
       await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "settleNote" TEXT`)
+      // 租金提醒時機：FIXED_DAY=每月固定號、BEFORE_DUE=期別應繳日前 N 天
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "rentRemindMode" TEXT NOT NULL DEFAULT 'BEFORE_DUE'`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE leases ADD COLUMN IF NOT EXISTS "rentRemindDaysBefore" INTEGER NOT NULL DEFAULT 7`)
       await prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS utility_readings (
           id TEXT PRIMARY KEY,

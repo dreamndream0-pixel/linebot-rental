@@ -702,6 +702,8 @@ model Lease {
   // 繳費提醒設定
   rentPayDay    Int       @default(5)      // 每月幾號繳租
   rentRemindOn  Boolean   @default(true)   // 是否推播租金提醒
+  rentRemindMode String   @default("BEFORE_DUE") // 提醒時機：FIXED_DAY=每月固定號、BEFORE_DUE=期別應繳日前 N 天
+  rentRemindDaysBefore Int @default(7)      // BEFORE_DUE 模式：應繳日前幾天提醒
   utilPayDay    Int?      // 水電繳費日（每月幾號，null=不提醒）
   utilRemindOn  Boolean   @default(false)  // 是否推播水電提醒
   utilAmount    Int       @default(0)      // 水電金額（固定費率金額，或按表計算後的金額）

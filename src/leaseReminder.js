@@ -538,16 +538,27 @@ async function checkLeaseReminders() {
       rentPayInfo: buildPayInfo(mp, mp.landlord ? mp.landlord.rentPayInfo : null),
     }
 
-    // 租金提醒：以「實際下期應繳日」為準，應繳日前 REMIND_BEFORE 天內（或已逾期）即提醒；
-    // 只在「本期尚未繳清」時處理，並以該期應繳日去重（同一期只觸發一次）。
+    // 租金提醒：兩種時機模式，只在「本期尚未繳清」時處理。
+    //  1) FIXED_DAY：每月固定 X 號（＝rentPayDay）提醒，當月只提醒一次。
+    //  2) BEFORE_DUE：該期別應繳日前 N 天（＝rentRemindDaysBefore）內（或已逾期）提醒，同一期只觸發一次。
     const mode = await modeFor(mp ? mp.landlordId : null)
     if (lease.rentRemindOn && mode !== 'off') {
       const dueRow = await findDueUnpaidRow(lease)
       if (dueRow && dueRow.dueDate) {
-        const dueD = new Date(dueRow.dueDate); dueD.setHours(0, 0, 0, 0)
-        const daysUntil = Math.round((dueD.getTime() - startOfToday.getTime()) / 86400000)
-        const alreadyHandled = _sameDay(lease.lastRemindCycleDue, dueRow.dueDate)
-        if (daysUntil <= REMIND_BEFORE && !alreadyHandled) {
+        const remindMode = lease.rentRemindMode === 'FIXED_DAY' ? 'FIXED_DAY' : 'BEFORE_DUE'
+        let shouldRemind = false
+        if (remindMode === 'FIXED_DAY') {
+          // 每月固定號提醒；若當月天數不足（例如 31 號遇到只有 30 天的月份），落在該月最後一天觸發
+          const daysInMonth = new Date(startOfToday.getFullYear(), startOfToday.getMonth() + 1, 0).getDate()
+          const remindDay = Math.min(Math.max(1, lease.rentPayDay || 5), daysInMonth)
+          shouldRemind = today === remindDay && !alreadyRemindedThisMonth(lease.lastRentRemind)
+        } else {
+          const nBefore = lease.rentRemindDaysBefore > 0 ? lease.rentRemindDaysBefore : REMIND_BEFORE
+          const dueD = new Date(dueRow.dueDate); dueD.setHours(0, 0, 0, 0)
+          const daysUntil = Math.round((dueD.getTime() - startOfToday.getTime()) / 86400000)
+          shouldRemind = daysUntil <= nBefore && !_sameDay(lease.lastRemindCycleDue, dueRow.dueDate)
+        }
+        if (shouldRemind) {
           if (mode === 'confirm') {
             // 先推播給房東確認，房東按「確認送出」才會發給房客
             const ok = await sendRentApprovalToLandlord(lease, mp.landlord, dueRow)
@@ -559,25 +570,11 @@ async function checkLeaseReminders() {
               await pushToLeaseTenant(lease, rentReminderFlex(remindData))
               await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: dueRow.dueDate, lastRemindCycleDue: dueRow.dueDate } })
               await writeReminderAudit(lease, remindData.rent, '系統自動', 'system', '租金提醒（自動發送）')
-              console.log(`✅ 已推租金提醒：${lease.tenantName}（應繳日 ${fmtYMD(dueRow.dueDate)}，剩 ${daysUntil} 天）`)
+              console.log(`✅ 已推租金提醒：${lease.tenantName}（${remindMode === 'FIXED_DAY' ? '每月 ' + (lease.rentPayDay || 5) + ' 號' : '應繳日 ' + fmtYMD(dueRow.dueDate) + ' 前 ' + (lease.rentRemindDaysBefore || REMIND_BEFORE) + ' 天'}）`)
             } catch (e) {
               console.error(`租金提醒推播失敗（${lease.tenantName}）:`, e.message)
             }
           }
-        }
-      }
-    }
-
-    // 水電提醒：繳費日前 N 天
-    if (lease.utilRemindOn && lease.utilPayDay) {
-      const remindDay = ((lease.utilPayDay - REMIND_BEFORE - 1 + 31) % 31) + 1
-      if (today === remindDay && !alreadyRemindedThisMonth(lease.lastUtilRemind)) {
-        try {
-          await pushToLeaseTenant(lease, utilReminderFlex(data))
-          await prisma.lease.update({ where: { id: lease.id }, data: { lastUtilRemind: new Date() } })
-          console.log(`✅ 已推水電提醒：${lease.tenantName}`)
-        } catch (e) {
-          console.error(`水電提醒推播失敗（${lease.tenantName}）:`, e.message)
         }
       }
     }

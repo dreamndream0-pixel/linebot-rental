@@ -1418,6 +1418,8 @@ router.post('/admin/api/managed/:id/lease', express.json(), async (req, res) => 
       paymentCycle: ['MONTHLY','BIMONTHLY','QUARTERLY','SEMIANNUAL','YEARLY'].includes(b.paymentCycle) ? b.paymentCycle : 'MONTHLY',
       paymentDueMode: ['FIXED_DAY','CONTRACT_START'].includes(b.paymentDueMode) ? b.paymentDueMode : 'FIXED_DAY',
       rentRemindOn: b.rentRemindOn !== false && b.rentRemindOn !== 'false',
+      rentRemindMode: b.rentRemindMode === 'FIXED_DAY' ? 'FIXED_DAY' : 'BEFORE_DUE',
+      rentRemindDaysBefore: [1,3,5,7,10,15,20,30].includes(parseInt(b.rentRemindDaysBefore)) ? parseInt(b.rentRemindDaysBefore) : 7,
       utilPayDay: b.utilPayDay ? parseInt(b.utilPayDay) : null,
       utilRemindOn: b.utilRemindOn === true || b.utilRemindOn === 'true',
       utilAmount: parseInt(b.utilAmount) || 0,
