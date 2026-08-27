@@ -7,7 +7,7 @@ const express = require('express')
 const path = require('path')
 const crypto = require('crypto')
 const prisma = require('./db')
-const { createAdminSession, createLandlordSessionById, hashAdminKey, SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } = require('./admin/helpers')
+const { createAdminSession, createLandlordSessionById, createOperatorSession, findOperatorLandlord, hashAdminKey, SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } = require('./admin/helpers')
 
 const router = express.Router()
 
@@ -165,8 +165,14 @@ router.get('/member/api/me', async (req, res) => {
     const favCount = await prisma.favorite.count({ where: { userId: user.id } })
     const isSuper = isSuperEmail(user.email)
     const landlord = isSuper ? null : await findLandlordByEmail(user.email)
-    const canManage = isSuper || !!landlord
-    res.json({ ok: true, user, favCount, isLandlord: !!landlord, isSuper, canManage })
+    // 非本人房東時，檢查此 email 是否被某房東加為「操作人員」（可用房東模式進該房東後台）
+    const operatorOf = (isSuper || landlord) ? null : await findOperatorLandlord(user.email)
+    const canManage = isSuper || !!landlord || !!operatorOf
+    res.json({
+      ok: true, user, favCount, isLandlord: !!landlord, isSuper, canManage,
+      isOperator: !!operatorOf,
+      operatorOf: operatorOf ? { landlordName: operatorOf.landlord.name, permission: operatorOf.operator.permission } : null,
+    })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
@@ -276,10 +282,21 @@ router.post('/member/api/switch-to-landlord', async (req, res) => {
     if (!process.env.ADMIN_KEY) return res.status(500).json({ error: 'ADMIN_KEY 未設定' })
     session = await createAdminSession(process.env.ADMIN_KEY)
   } else {
-    // 已是房東 → 進自己的後台；還不是房東 → 自動建立房東帳號後進入
+    // 1) 已是房東本人 → 進自己的後台
     let landlord = await findLandlordByEmail(email)
-    if (!landlord) landlord = await autoCreateLandlord(user)
-    if (landlord) session = await createLandlordSessionById(landlord.id)
+    if (landlord) {
+      session = await createLandlordSessionById(landlord.id)
+    } else {
+      // 2) 被某房東加為操作人員 → 以操作人員身分進該房東後台（依權限）
+      const op = await findOperatorLandlord(email)
+      if (op) {
+        session = await createOperatorSession(op.landlord.id, op.operator)
+      } else {
+        // 3) 都不是 → 自動建立自己的房東帳號後進入
+        landlord = await autoCreateLandlord(user)
+        if (landlord) session = await createLandlordSessionById(landlord.id)
+      }
+    }
   }
   if (!session) return res.status(403).json({ error: 'not_landlord' })
   // 後台管理員 session cookie（Path=/admin，與 admin 端一致）
