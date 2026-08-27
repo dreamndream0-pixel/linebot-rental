@@ -121,6 +121,7 @@ prisma.$connect()
       await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "supportNotifyLineUserId" TEXT`)
       await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "supportBotEnabled" BOOLEAN NOT NULL DEFAULT true`)
       await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "rentPayInfo" TEXT`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE landlords ADD COLUMN IF NOT EXISTS "operators" TEXT`)
       console.log('✅ 客服 Bot 欄位已確認')
     } catch (e) {
       console.error('⚠️ 智慧門鎖欄位確認失敗:', e.message)

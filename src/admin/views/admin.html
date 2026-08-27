@@ -626,12 +626,17 @@
   <p>🐌 載入中...</p>
 </div>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <div id="loginView">
   <div class="login-card">
     <img class="login-logo" src="/admin/assets/xiaowo-logo.png" alt="小蝸出租">
     <p>管理後台</p>
     <input type="password" id="keyInput" placeholder="輸入管理密碼" onkeydown="if(event.key==='Enter')login()">
     <button class="btn" onclick="login()">登入</button>
+    <div id="googleBtnWrap" style="display:none;margin-top:18px;padding-top:18px;border-top:1px solid #EEE;">
+      <div style="font-size:12px;color:#999;margin-bottom:10px;">操作人員請用被授權的 Gmail 登入</div>
+      <div id="googleBtn" style="display:flex;justify-content:center;"></div>
+    </div>
   </div>
 </div>
 
@@ -701,6 +706,7 @@
               </div>
             </div>
             <div id="umSwitchItem"></div>
+            <div id="umOperatorItem"></div>
             <div class="um-item" onclick="backToMember()">🏠 返回租客模式</div>
             <div class="um-item um-danger" onclick="logout()">🚪 登出</div>
           </div>
@@ -872,13 +878,118 @@ var KEY = ''
 // 未登入/過期時的處理：預設導回前站會員中心（社群登入後可從「房東模式」再進來），
 // 不再停留在金鑰登入頁。金鑰登入頁保留為緊急備援，網址加 ?login=key 可叫出。
 function adminReloginRedirect() {
-  if (new URLSearchParams(location.search).get('login') === 'key') {
+  // ?login=key（或任意 login 參數）叫出後台登入頁（含金鑰登入與操作人員 Google 登入）
+  if (new URLSearchParams(location.search).has('login')) {
     var mv = document.getElementById('mainView'); if (mv) mv.style.display = 'none'
     var lv = document.getElementById('loadingView'); if (lv) lv.style.display = 'none'
     var login = document.getElementById('loginView'); if (login) login.style.display = 'flex'
+    initGoogleLogin()
     return
   }
   location.href = 'https://xiaowo-rental.vercel.app/api/sso/linebot'
+}
+
+// ── 操作人員 Google（Gmail）登入 ─────────────────────────────────
+var _googleLoginInited = false
+async function initGoogleLogin() {
+  if (_googleLoginInited) return
+  try {
+    var cfg = await (await fetch('/admin/api/google-config')).json()
+    if (!cfg || !cfg.clientId) return   // 未設定 GOOGLE_CLIENT_ID → 不顯示 Google 登入
+    _googleLoginInited = true
+    ;(function render() {
+      if (!(window.google && google.accounts && google.accounts.id)) { setTimeout(render, 300); return }
+      google.accounts.id.initialize({ client_id: cfg.clientId, callback: onGoogleCredential })
+      var el = document.getElementById('googleBtn')
+      if (el) google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', text: 'signin_with', locale: 'zh_TW' })
+      var wrap = document.getElementById('googleBtnWrap'); if (wrap) wrap.style.display = 'block'
+    })()
+  } catch (e) {}
+}
+async function onGoogleCredential(resp) {
+  try {
+    var res = await fetch('/admin/api/operator-login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential: resp && resp.credential })
+    })
+    var d = {}; try { d = await res.json() } catch (e) {}
+    if (!res.ok) { showToast('❌ ' + (d.error || 'Google 登入失敗')); return }
+    var dataRes = await fetch('/admin/api/data')
+    if (!dataRes.ok) throw new Error('session data failed')
+    DATA = await dataRes.json()
+    enterAdmin()
+  } catch (e) { showToast('❌ 連線失敗') }
+}
+
+// ── 操作人員管理（房東本人）─────────────────────────────────────
+var _OP_PERM_LABELS = { full: '完整權限', limited: '有限操作', view: '僅檢視' }
+async function openOperatorManager() {
+  var ex = document.getElementById('operatorModal'); if (ex) ex.remove()
+  var overlay = document.createElement('div')
+  overlay.id = 'operatorModal'
+  overlay.className = 'admin-modal-overlay'
+  overlay.innerHTML = '<div class="admin-modal" style="max-width:560px;">' +
+    '<div class="admin-modal-head"><div><h3 class="admin-modal-title">👥 操作人員管理</h3>' +
+      '<p class="admin-modal-subtitle">加入操作人員的 Gmail，對方即可用 Google 登入此後台。可分別設定權限。</p></div>' +
+      '<button class="admin-modal-close" onclick="closeOperatorManager()">×</button></div>' +
+    '<div class="admin-modal-body">' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;">' +
+        '<div style="flex:2;min-width:180px;"><label style="font-size:12px;color:#6B7280;display:block;margin-bottom:4px;">Gmail</label>' +
+          '<input id="opEmailInput" type="email" placeholder="name@gmail.com" onkeydown="if(event.key===\'Enter\')addOperator()" style="width:100%;box-sizing:border-box;height:40px;padding:0 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;"></div>' +
+        '<div style="flex:1;min-width:120px;"><label style="font-size:12px;color:#6B7280;display:block;margin-bottom:4px;">權限</label>' +
+          '<select id="opPermInput" style="width:100%;box-sizing:border-box;height:40px;padding:0 8px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:#fff;">' +
+            '<option value="full">完整權限</option><option value="limited">有限操作</option><option value="view" selected>僅檢視</option></select></div>' +
+        '<button class="btn" style="height:40px;width:auto;padding:0 18px;background:var(--deep-sage);" onclick="addOperator()">加入</button>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#9CA3AF;line-height:1.7;margin-bottom:14px;">完整權限＝與房東相同｜有限操作＝可日常編輯，不可刪除/改設定/管理操作人員｜僅檢視＝只能看不能改</div>' +
+      '<div id="operatorList"></div>' +
+    '</div></div>'
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) closeOperatorManager() })
+  await refreshOperatorList()
+}
+function closeOperatorManager() { var m = document.getElementById('operatorModal'); if (m) m.remove() }
+async function refreshOperatorList() {
+  var box = document.getElementById('operatorList'); if (!box) return
+  box.innerHTML = '<div style="color:#aaa;font-size:13px;padding:12px;text-align:center;">載入中…</div>'
+  try {
+    var res = await fetch('/admin/api/operators')
+    var d = {}; try { d = await res.json() } catch (e) {}
+    if (!res.ok) { box.innerHTML = '<div style="color:#C0524A;font-size:13px;padding:12px;">' + esc(d.error || '讀取失敗') + '</div>'; return }
+    var ops = d.operators || []
+    if (!ops.length) { box.innerHTML = '<div style="color:#aaa;font-size:13px;padding:18px;text-align:center;border:1px dashed var(--line);border-radius:10px;">尚未加入操作人員</div>'; return }
+    box.innerHTML = ops.map(function (o) {
+      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;">' +
+        '<div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#1F2937;word-break:break-all;">' + esc(o.email) + '</div>' +
+        '<select onchange="updateOperatorPerm(\'' + esc(o.email) + '\', this.value)" style="height:34px;padding:0 8px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff;">' +
+          ['full', 'limited', 'view'].map(function (p) { return '<option value="' + p + '"' + (o.permission === p ? ' selected' : '') + '>' + _OP_PERM_LABELS[p] + '</option>' }).join('') +
+        '</select>' +
+        '<button class="action-btn danger" style="padding:6px 10px;" onclick="removeOperator(\'' + esc(o.email) + '\')">移除</button>' +
+      '</div>'
+    }).join('')
+  } catch (e) { box.innerHTML = '<div style="color:#C0524A;font-size:13px;padding:12px;">連線失敗</div>' }
+}
+async function addOperator() {
+  var email = (document.getElementById('opEmailInput').value || '').trim()
+  var perm = document.getElementById('opPermInput').value
+  if (!email) { showToast('請輸入 Gmail'); return }
+  var res = await fetch('/admin/api/operators', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, permission: perm }) })
+  var d = {}; try { d = await res.json() } catch (e) {}
+  if (!res.ok) { showToast('❌ ' + (d.error || '加入失敗')); return }
+  document.getElementById('opEmailInput').value = ''
+  showToast('✅ 已加入操作人員')
+  refreshOperatorList()
+}
+async function updateOperatorPerm(email, perm) {
+  var res = await fetch('/admin/api/operators', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, permission: perm }) })
+  if (!res.ok) { showToast('❌ 更新失敗'); return }
+  showToast('✅ 已更新權限')
+}
+async function removeOperator(email) {
+  var res = await fetch('/admin/api/operators?email=' + encodeURIComponent(email), { method: 'DELETE' })
+  if (!res.ok) { showToast('❌ 移除失敗'); return }
+  showToast('✅ 已移除')
+  refreshOperatorList()
 }
 
 var _sessionExpiredShown = false
@@ -952,7 +1063,7 @@ async function login(savedKey) {
       showToast('❌ 密碼錯誤')
       sessionStorage.removeItem('adminKey')
       document.getElementById('loadingView').style.display = 'none'
-      document.getElementById('loginView').style.display = 'flex'
+      document.getElementById('loginView').style.display = 'flex'; initGoogleLogin()
       return
     }
     var dataRes = await fetch('/admin/api/data')
@@ -964,7 +1075,7 @@ async function login(savedKey) {
   } catch (e) {
     showToast('❌ 連線失敗')
     document.getElementById('loadingView').style.display = 'none'
-    document.getElementById('loginView').style.display = 'flex'
+    document.getElementById('loginView').style.display = 'flex'; initGoogleLogin()
   }
 }
 
@@ -976,7 +1087,10 @@ function enterAdmin() {
     if (DATA.account) {
       document.getElementById('accountLabel').textContent = DATA.account
       var initial = (DATA.account || '?')[0]
-      var roleLabel = impersonating ? '仲介視角' : (DATA.role === 'super' ? '總管理員' : '房東帳號')
+      var _permLabels = { full: '完整權限', limited: '有限操作', view: '僅檢視' }
+      var roleLabel = impersonating ? '仲介視角'
+        : (DATA.operator ? ('操作人員・' + (_permLabels[DATA.operator.permission] || ''))
+          : (DATA.role === 'super' ? '總管理員' : '房東帳號'))
       var ucAvatar = document.getElementById('ucAvatar')
       var ucRoleLabel = document.getElementById('ucRoleLabel')
       var umAvatar = document.getElementById('umAvatar')
@@ -1009,6 +1123,10 @@ function enterAdmin() {
     var mobileSwitchItem = document.getElementById('mobileSwitchItem')
     if (umSwitchItem) umSwitchItem.innerHTML = switchDesktop
     if (mobileSwitchItem) mobileSwitchItem.innerHTML = switchMobile
+    // 操作人員管理：僅「房東本人」（非操作人員）可見
+    var umOperatorItem = document.getElementById('umOperatorItem')
+    if (umOperatorItem) umOperatorItem.innerHTML = (DATA.role === 'landlord' && !DATA.operator)
+      ? '<div class="um-item" onclick="openOperatorManager()">👥 操作人員管理</div>' : ''
     // 關閉可能開著的選單
     var umDd = document.getElementById('umDropdown'); if (umDd) umDd.classList.remove('open')
     var mDd = document.getElementById('mobileAccountMenu'); if (mDd) mDd.classList.remove('open')

@@ -163,6 +163,8 @@ router.get('/admin/api/data', async (req, res) => {
     account: auth.label, role: auth.role,
     landlordId: auth.landlordId || null,
     impersonating: auth.imp === true,   // 總管理員切換成仲介視角時為 true
+    // 操作人員（Gmail 登入）：帶出 email 與權限，供前端顯示身分標記與隱藏敏感操作
+    operator: auth.operator ? { email: auth.operator.email, permission: auth.operator.permission } : null,
     // 台電匯入／批次預收電費為原始小蝸（仲介）房東專用功能：super 或該房東才顯示
     isBroker: auth.role === 'super' || auth.landlordId === (process.env.BROKER_LANDLORD_ID || 'cmqbys4qr0004keruq1niq5xz'),
     siteUrl: process.env.SITE_URL || 'https://xiaowo-rental.vercel.app'

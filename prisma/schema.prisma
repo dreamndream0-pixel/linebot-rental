@@ -97,6 +97,7 @@ model Landlord {
   supportBotEnabled      Boolean   @default(true)
   rentPayInfo            String?   @db.Text   // 租金匯款資訊（顯示於租金提醒卡；銀行＋帳號）
   features               String?   @db.Text   // 功能模組開關（JSON）
+  operators              String?   @db.Text   // 操作人員（JSON 陣列：[{email, permission}]，permission=full/limited/view）
   socialConfig           String?   @db.Text   // 社群媒體串接設定（JSON：instagram/facebook/threads 帳號與權杖）
   ttlockConfig           String?   @db.Text   // TTLock 智慧門鎖帳密（JSON：clientId/clientSecret/username/password）
   lockRooms              String?   @db.Text   // 門鎖房間設定（JSON：{ roomKey: { type, ids, userId } }，移植自 rubyclean lock_db）
