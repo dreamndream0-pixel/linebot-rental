@@ -192,7 +192,7 @@
 <div id="toast"></div>
 
 <script>
-var ME = null, CAN_MANAGE = false, IS_SUPER = false
+var ME = null, CAN_MANAGE = false, IS_SUPER = false, OPERATOR_OF = null
 var FAVS = null
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}) }
@@ -219,7 +219,7 @@ async function init() {
       return
     }
     var data = await res.json()
-    ME = data.user; CAN_MANAGE = !!data.canManage; IS_SUPER = !!data.isSuper
+    ME = data.user; CAN_MANAGE = !!data.canManage; IS_SUPER = !!data.isSuper; OPERATOR_OF = data.operatorOf || null
     document.getElementById('app').classList.remove('hidden')
     renderHero(data)
     // 依網址參數開啟指定分頁 / 直接進房東模式確認
@@ -266,7 +266,9 @@ function askLandlord() {
     '<div class="modal-box">' +
       '<div class="m-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/></svg></div>' +
       '<h3>開啟房東後台管理</h3>' +
-      '<p>確認後將以您的帳號開啟房東後台，可管理您的房源、租客與收支。<br>是否進入？</p>' +
+      (OPERATOR_OF
+        ? '<p>您是「' + esc(OPERATOR_OF.landlordName) + '」的操作人員（權限：' + ({full:'完整權限',limited:'有限操作',view:'僅檢視'}[OPERATOR_OF.permission] || OPERATOR_OF.permission) + '）。<br>確認後將以操作人員身分進入該房東後台，是否進入？</p>'
+        : '<p>確認後將以您的帳號開啟房東後台，可管理您的房源、租客與收支。<br>是否進入？</p>') +
       '<div class="modal-actions">' +
         '<button class="btn-no" onclick="confirmLandlord(false)">否，返回租客</button>' +
         '<button class="btn-yes" onclick="confirmLandlord(true)">是，進入後台</button>' +

@@ -122,23 +122,6 @@ async function findOperatorLandlord(email) {
   return null
 }
 
-// 驗證 Google 登入的 ID Token（透過 Google tokeninfo 端點；檢查 aud 與 email 已驗證）
-async function verifyGoogleIdToken(idToken) {
-  const clientId = process.env.GOOGLE_CLIENT_ID
-  if (!clientId || !idToken) return null
-  try {
-    const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken))
-    if (!r.ok) return null
-    const d = await r.json()
-    if (d.aud !== clientId) return null
-    if (d.email_verified !== 'true' && d.email_verified !== true) return null
-    if (!d.email) return null
-    return { email: String(d.email).toLowerCase(), name: d.name || d.email }
-  } catch (e) {
-    console.error('verifyGoogleIdToken 失敗:', e.message)
-    return null
-  }
-}
 
 async function createAdminSession(key) {
   const auth = await resolveRole(key)
@@ -318,7 +301,6 @@ module.exports = {
   createLandlordSessionById,
   createOperatorSession,
   findOperatorLandlord,
-  verifyGoogleIdToken,
   parseOperators,
   normalizeOperatorPermission,
   hashAdminKey,

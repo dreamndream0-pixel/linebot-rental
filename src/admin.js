@@ -5,9 +5,6 @@ const router = express.Router()
 const {
   createAdminSession,
   createImpersonationSession,
-  createOperatorSession,
-  findOperatorLandlord,
-  verifyGoogleIdToken,
   resolveRole,
   hashAdminKey,
   SESSION_COOKIE_NAME,
@@ -100,24 +97,6 @@ router.post('/admin/api/login', express.json(), async (req, res) => {
 router.post('/admin/api/logout', (_req, res) => {
   clearSessionCookie(res)
   res.json({ ok: true })
-})
-
-// 提供前端 Google 登入所需的 client id（未設定則回傳空字串，前端隱藏 Google 登入）
-router.get('/admin/api/google-config', (_req, res) => {
-  res.json({ clientId: process.env.GOOGLE_CLIENT_ID || '' })
-})
-
-// 操作人員以 Google（Gmail）登入：驗證 ID Token → 找出把此 email 加入的房東 → 建立操作人員 session
-router.post('/admin/api/operator-login', express.json(), async (req, res) => {
-  const idToken = String(req.body?.credential || '')
-  const g = await verifyGoogleIdToken(idToken)
-  if (!g) return res.status(401).json({ error: 'Google 驗證失敗，請確認已設定 GOOGLE_CLIENT_ID' })
-  const match = await findOperatorLandlord(g.email)
-  if (!match) return res.status(403).json({ error: '此 Gmail（' + g.email + '）尚未被任何房東加入為操作人員' })
-  const session = await createOperatorSession(match.landlord.id, match.operator)
-  if (!session) return res.status(500).json({ error: '建立操作人員 session 失敗' })
-  setSessionCookie(res, session.token)
-  res.json({ ok: true, account: match.landlord.name, role: 'landlord', operator: true, permission: match.operator.permission, email: g.email })
 })
 
 // 後台金鑰可放在 HTTP header（X-Admin-Key），避免金鑰出現在網址 / 伺服器日誌。
