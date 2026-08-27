@@ -882,9 +882,16 @@ function adminReloginRedirect() {
   location.href = 'https://xiaowo-rental.vercel.app/api/sso/linebot'
 }
 
-// ── 操作人員管理（房東本人）─────────────────────────────────────
+// ── 操作人員管理（房東本人；總管理員可帶 landlordId 管理指定房東）────
 var _OP_PERM_LABELS = { full: '完整權限', limited: '有限操作', view: '僅檢視' }
-async function openOperatorManager() {
+var _opMgrLandlordId = null
+function _opQs(extra) {
+  var qs = _opMgrLandlordId ? ('landlordId=' + encodeURIComponent(_opMgrLandlordId)) : ''
+  if (extra) qs += (qs ? '&' : '') + extra
+  return qs ? ('?' + qs) : ''
+}
+async function openOperatorManager(landlordId) {
+  _opMgrLandlordId = landlordId || null
   var ex = document.getElementById('operatorModal'); if (ex) ex.remove()
   var overlay = document.createElement('div')
   overlay.id = 'operatorModal'
@@ -914,7 +921,7 @@ async function refreshOperatorList() {
   var box = document.getElementById('operatorList'); if (!box) return
   box.innerHTML = '<div style="color:#aaa;font-size:13px;padding:12px;text-align:center;">載入中…</div>'
   try {
-    var res = await fetch('/admin/api/operators')
+    var res = await fetch('/admin/api/operators' + _opQs())
     var d = {}; try { d = await res.json() } catch (e) {}
     if (!res.ok) { box.innerHTML = '<div style="color:#C0524A;font-size:13px;padding:12px;">' + esc(d.error || '讀取失敗') + '</div>'; return }
     var ops = d.operators || []
@@ -934,7 +941,7 @@ async function addOperator() {
   var email = (document.getElementById('opEmailInput').value || '').trim()
   var perm = document.getElementById('opPermInput').value
   if (!email) { showToast('請輸入 Gmail'); return }
-  var res = await fetch('/admin/api/operators', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, permission: perm }) })
+  var res = await fetch('/admin/api/operators' + _opQs(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, permission: perm }) })
   var d = {}; try { d = await res.json() } catch (e) {}
   if (!res.ok) { showToast('❌ ' + (d.error || '加入失敗')); return }
   document.getElementById('opEmailInput').value = ''
@@ -942,12 +949,12 @@ async function addOperator() {
   refreshOperatorList()
 }
 async function updateOperatorPerm(email, perm) {
-  var res = await fetch('/admin/api/operators', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, permission: perm }) })
+  var res = await fetch('/admin/api/operators' + _opQs(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, permission: perm }) })
   if (!res.ok) { showToast('❌ 更新失敗'); return }
   showToast('✅ 已更新權限')
 }
 async function removeOperator(email) {
-  var res = await fetch('/admin/api/operators?email=' + encodeURIComponent(email), { method: 'DELETE' })
+  var res = await fetch('/admin/api/operators' + _opQs('email=' + encodeURIComponent(email)), { method: 'DELETE' })
   if (!res.ok) { showToast('❌ 移除失敗'); return }
   showToast('✅ 已移除')
   refreshOperatorList()
@@ -2970,6 +2977,7 @@ function renderLandlords() {
       '<button class="action-btn" onclick="event.stopPropagation();setupSupportBot(\'' + l.id + '\', \'' + esc(l.name).replace(/'/g, '') + '\')">🎧 客服 Bot' + (l.supportBotConfigured ? ' ✅' : '') + '</button>' +
       '<button class="action-btn" onclick="event.stopPropagation();btnLoad(this, function(){ return checkBotStatus(\'' + l.id + '\') })">🔍 檢查啟用</button>' +
       '<button class="action-btn" onclick="openFeaturesEditor(\'' + l.id + '\')">⚙️ 權限設定</button>' +
+      '<button class="action-btn" onclick="openOperatorManager(\'' + l.id + '\')">👥 操作人員</button>' +
       '<button class="action-btn" onclick="openLineRichMenuPanel(\'' + l.id + '\')">📱 LINE 圖文</button>' +
       '<button class="action-btn ' + (l.isActive ? 'danger' : '') + '" onclick="toggleLandlord(\'' + l.id + '\', ' + (!l.isActive) + ')">' + (l.isActive ? '停用' : '啟用') + '</button>' +
       '<button class="action-btn danger" onclick="event.stopPropagation();deleteLandlord(\'' + l.id + '\', \'' + esc(l.name).replace(/'/g, '') + '\', ' + propCount + ')">🗑️ 刪除</button>' +
