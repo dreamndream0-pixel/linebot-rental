@@ -306,7 +306,14 @@
   .overview-row span { font-size:12px;color:var(--muted); }
   .admin-toolbar { display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap; }
   .admin-toolbar-left, .admin-toolbar-right { display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
+  .admin-toolbar-actions { display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
+  .admin-toolbar-add { flex:0 0 auto; }
   .admin-primary { background:var(--deep-sage)!important;color:white!important;border:none!important;box-shadow:0 10px 24px rgba(47,107,70,.22); }
+  .prop-search-bar { position:relative;margin:0 0 12px; }
+  .prop-search-icon { position:absolute;left:14px;top:50%;transform:translateY(-50%);opacity:.5;pointer-events:none;font-size:14px; }
+  .prop-search-bar input { width:100%;box-sizing:border-box;height:44px;padding:0 40px;border:1px solid var(--line);border-radius:999px;background:white;font-size:14px;color:#1F2937;outline:none;font-family:inherit; }
+  .prop-search-bar input:focus { border-color:var(--deep-sage); }
+  .prop-search-clear { position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border:0;border-radius:999px;background:#F1F1EE;color:#6B7280;cursor:pointer;font-size:16px;line-height:1; }
   .property-table { background:white;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);overflow:hidden; }
   .property-tabs { display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px; }
   .property-tab { border:1px solid var(--line);background:white;border-radius:999px;padding:9px 14px;font-size:13px;font-weight:800;color:#4B5563;cursor:pointer;display:inline-flex;align-items:center;gap:7px; }
@@ -435,6 +442,8 @@
     .um-dropdown { top:calc(100% + 8px);right:0;min-width:156px;z-index:80; }
     .admin-toolbar { align-items:stretch;gap:10px; }
     .admin-toolbar-left, .admin-toolbar-right { width:100%;display:grid;grid-template-columns:1fr;gap:8px; }
+    .admin-toolbar-add { width:100%; }
+    .admin-toolbar-actions { width:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px; }
     .admin-toolbar .action-btn, .admin-toolbar .admin-primary { width:100%;justify-content:center; }
     .property-table { border:none;box-shadow:none;background:transparent;overflow:visible; }
     .property-filter-row { display:flex;overflow-x:auto;gap:8px;background:white;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;padding:10px;box-shadow:0 8px 22px rgba(20,40,28,.04); }
@@ -1656,7 +1665,7 @@ function renderPendingSection() {
 
 // ── 房源篩選（總篩選 / 房東區塊篩選）─────────────────────────────
 var propertyViewTab = 'overview'
-var propFilters = { location: '', type: '', rent: '', size: '', status: '', featured: '' }
+var propFilters = { location: '', type: '', rent: '', size: '', status: '', featured: '', keyword: '' }
 var groupPropertyViewTabs = {}
 var openPropertyGroups = {}
 var groupPropFilters = {}
@@ -1708,6 +1717,14 @@ function matchPropFilters(p, filters) {
     var feat = DATA.role !== 'super' ? p.siteFeatured : p.featured
     if (filters.featured === 'yes' && !feat) return false
     if (filters.featured === 'no' && feat) return false
+  }
+  if (filters.keyword) {
+    var kw = String(filters.keyword).trim().toLowerCase()
+    if (kw) {
+      var hay = [p.title, p.city, p.district, p.address, p.roomNo, p.communityName, p.type]
+        .filter(Boolean).join(' ').toLowerCase()
+      if (hay.indexOf(kw) === -1) return false
+    }
   }
   return true
 }
@@ -1859,7 +1876,21 @@ function setGroupPropFilter(groupKey, key, value) {
   rerenderPropertiesTab()
 }
 function clearGroupPropFilter(groupKey) { groupPropFilters[groupKey] = {}; rerenderPropertiesTab() }
-function clearPropFilter() { propFilters = { location: '', type: '', rent: '', size: '', status: '', featured: '' }; rerenderPropertiesTab() }
+function clearPropFilter() { propFilters = { location: '', type: '', rent: '', size: '', status: '', featured: '', keyword: '' }; rerenderPropertiesTab() }
+function setPropKeyword(val) {
+  propFilters.keyword = val
+  rerenderPropertiesTab()
+  var inp = document.getElementById('propSearchInput')
+  if (inp) { inp.focus(); var v = inp.value; try { inp.setSelectionRange(v.length, v.length) } catch (e) {} }
+}
+function propSearchBarHtml() {
+  var kw = propFilters.keyword || ''
+  return '<div class="prop-search-bar">' +
+    '<span class="prop-search-icon" aria-hidden="true">🔍</span>' +
+    '<input id="propSearchInput" type="search" value="' + esc(kw) + '" oninput="setPropKeyword(this.value)" placeholder="搜尋房源名稱、房號、地區、地址…" autocomplete="off">' +
+    (kw ? '<button type="button" class="prop-search-clear" onclick="setPropKeyword(\'\')" aria-label="清除搜尋">×</button>' : '') +
+    '</div>'
+}
 function rerenderPropertiesTab() {
   var el = document.getElementById('content')
   if (el) { el.innerHTML = renderProperties(); setTimeout(renderImgPreview, 50) }
@@ -1868,12 +1899,14 @@ function rerenderPropertiesTab() {
 function renderProperties() {
   var csvBtns = feat('csvImport')
     ? '<button class="action-btn" onclick="exportProperties()">匯出 CSV</button>' +
-      '<label class="action-btn" style="cursor:pointer;">匯入 CSV<input type="file" accept=".csv,text/csv" style="display:none;" onchange="importProperties(this)"></label>' +
+      '<label class="action-btn" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">匯入 CSV<input type="file" accept=".csv,text/csv" style="display:none;" onchange="importProperties(this)"></label>' +
       '<button class="action-btn" onclick="downloadTemplate()">下載範本</button>'
     : ''
   var addBtn = '<div class="admin-toolbar">' +
-    '<div class="admin-toolbar-left"><button class="action-btn admin-primary" onclick="openAddPropertyModal()">＋ 新增房源</button>' + csvBtns + '</div>' +
-    '<div class="admin-toolbar-right"><button class="action-btn" onclick="reload()">重新整理</button></div>' +
+    '<button class="action-btn admin-primary admin-toolbar-add" onclick="openAddPropertyModal()">＋ 新增房源</button>' +
+    '<div class="admin-toolbar-actions">' + csvBtns +
+      '<button class="action-btn" onclick="reload()">重新整理</button>' +
+    '</div>' +
     '</div>' +
     '<div id="importResult" style="display:none;margin-bottom:12px;padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.7;"></div>'
   var pendingSection = renderPendingSection()
@@ -1882,7 +1915,7 @@ function renderProperties() {
   if (!allNonPending.length) {
     return addBtn + pendingSection + (pendingSection ? '' : '<div class="empty">還沒有房源，按上方按鈕新增第一間！</div>')
   }
-  var filterBar = propFilterBarHtml()
+  var filterBar = propSearchBarHtml() + propFilterBarHtml()
   var toolbar = batchToolbarHtml()
   var tabbedList = propertyTabList(allNonPending)
   var nonPending = filterPropList(tabbedList)
