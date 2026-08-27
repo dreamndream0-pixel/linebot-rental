@@ -5,6 +5,9 @@ const router = express.Router()
 const {
   createAdminSession,
   createImpersonationSession,
+  createOperatorSession,
+  findOperatorLandlord,
+  verifyGoogleIdToken,
   resolveRole,
   hashAdminKey,
   SESSION_COOKIE_NAME,
@@ -99,6 +102,24 @@ router.post('/admin/api/logout', (_req, res) => {
   res.json({ ok: true })
 })
 
+// 提供前端 Google 登入所需的 client id（未設定則回傳空字串，前端隱藏 Google 登入）
+router.get('/admin/api/google-config', (_req, res) => {
+  res.json({ clientId: process.env.GOOGLE_CLIENT_ID || '' })
+})
+
+// 操作人員以 Google（Gmail）登入：驗證 ID Token → 找出把此 email 加入的房東 → 建立操作人員 session
+router.post('/admin/api/operator-login', express.json(), async (req, res) => {
+  const idToken = String(req.body?.credential || '')
+  const g = await verifyGoogleIdToken(idToken)
+  if (!g) return res.status(401).json({ error: 'Google 驗證失敗，請確認已設定 GOOGLE_CLIENT_ID' })
+  const match = await findOperatorLandlord(g.email)
+  if (!match) return res.status(403).json({ error: '此 Gmail（' + g.email + '）尚未被任何房東加入為操作人員' })
+  const session = await createOperatorSession(match.landlord.id, match.operator)
+  if (!session) return res.status(500).json({ error: '建立操作人員 session 失敗' })
+  setSessionCookie(res, session.token)
+  res.json({ ok: true, account: match.landlord.name, role: 'landlord', operator: true, permission: match.operator.permission, email: g.email })
+})
+
 // 後台金鑰可放在 HTTP header（X-Admin-Key），避免金鑰出現在網址 / 伺服器日誌。
 // 為了相容舊呼叫，header 不存在時仍沿用網址上的 ?key=。
 // 注意：Express 的 req.query 是 getter（每次存取重新解析 URL），直接改 req.query.key
@@ -112,6 +133,35 @@ router.use((req, _res, next) => {
   else if (q.key && process.env.ALLOW_ADMIN_QUERY_KEY !== 'true') delete q.key
   Object.defineProperty(req, 'query', { value: q, configurable: true, writable: true })
   next()
+})
+
+// ── 操作人員權限守門（在 session-key 中介層之後，才讀得到 req.query.key）──────────
+// full＝與房東相同；view（僅檢視）＝只允許 GET；limited（有限操作）＝可日常編輯，
+// 但不可刪除、不可改房東/Bot 設定與金鑰、不可管理操作人員、不可改門鎖設定。
+const OPERATOR_LIMITED_DENY = [
+  /^\/admin\/api\/operators/,          // 操作人員管理
+  /^\/admin\/api\/landlord/,           // 房東 / Bot 設定、金鑰
+  /^\/admin\/api\/smartlock/,          // 智慧門鎖設定
+  /^\/admin\/api\/features/,           // 功能開關
+  /^\/admin\/api\/internal-landlord/,  // 內部房東
+]
+router.use(async (req, res, next) => {
+  if (!req.path.startsWith('/admin/api/')) return next()
+  const method = req.method.toUpperCase()
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return next()
+  let auth = null
+  try { auth = await resolveRole(req.query.key) } catch (_) {}
+  if (!auth || !auth.operator) return next()   // 非操作人員（房東本人／總管理員／未登入）照舊
+  const perm = auth.operator.permission
+  if (perm === 'full') return next()
+  if (perm === 'view') {
+    return res.status(403).json({ error: '此帳號為「僅檢視」權限，無法執行變更操作' })
+  }
+  // limited：擋刪除與敏感設定
+  if (method === 'DELETE' || OPERATOR_LIMITED_DENY.some(re => re.test(req.path))) {
+    return res.status(403).json({ error: '此操作人員為「有限操作」權限，無法執行此項操作' })
+  }
+  return next()
 })
 
 // 操作紀錄（審計軌跡）：記錄所有寫入類 /admin/api/* 操作。
@@ -208,6 +258,7 @@ router.use(require('./admin/routes/tenant'))
 router.use(require('./admin/routes/property'))
 router.use(require('./admin/routes/upload'))
 router.use(require('./admin/routes/landlord'))
+router.use(require('./admin/routes/operators'))
 router.use(require('./admin/routes/community'))
 router.use(require('./admin/routes/importexport'))
 router.use(require('./admin/routes/features'))

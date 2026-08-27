@@ -31,10 +31,17 @@ function makeSessionToken(auth) {
     label: auth.label || '',
     source: auth.source || null,
     imp: auth.imp === true,   // 總管理員切換成仲介視角時為 true（僅此類 session 可返回總管理員）
+    // 操作人員 session：帶入 email 與權限（full/limited/view）；一般房東/總管理員為 null
+    op: auth.operator ? { email: auth.operator.email, permission: auth.operator.permission } : null,
     exp: Date.now() + SESSION_MAX_AGE_MS,
     nonce: crypto.randomBytes(12).toString('base64url'),
   }))
   return `${payload}.${signPayload(payload)}`
+}
+
+const OPERATOR_PERMISSIONS = ['full', 'limited', 'view']
+function normalizeOperatorPermission(p) {
+  return OPERATOR_PERMISSIONS.indexOf(p) !== -1 ? p : 'view'
 }
 
 async function verifySessionToken(token) {
@@ -53,13 +60,84 @@ async function verifySessionToken(token) {
     try {
       const landlord = await prisma.landlord.findUnique({ where: { id: data.landlordId } })
       if (landlord && landlord.isActive) {
-        return { role: 'landlord', landlordId: landlord.id, label: landlord.name, source: landlord.source, imp: data.imp === true }
+        const auth = { role: 'landlord', landlordId: landlord.id, label: landlord.name, source: landlord.source, imp: data.imp === true }
+        // 操作人員 session：驗證該 email 仍在房東的操作人員名單內（隨時可被移除即失效），並帶入權限
+        if (data.op && data.op.email) {
+          const ops = parseOperators(landlord.operators)
+          const still = ops.find(o => o.email === String(data.op.email).toLowerCase())
+          if (!still) return null
+          auth.operator = { email: still.email, permission: normalizeOperatorPermission(still.permission) }
+          auth.permission = auth.operator.permission
+          auth.label = landlord.name + '（操作人員）'
+        }
+        return auth
       }
     } catch (e) {
       console.error('verifySessionToken 查詢房東失敗:', e.message)
     }
   }
   return null
+}
+
+// 解析房東的操作人員名單（JSON）
+function parseOperators(raw) {
+  try {
+    const arr = JSON.parse(raw || '[]')
+    if (!Array.isArray(arr)) return []
+    return arr
+      .filter(o => o && o.email)
+      .map(o => ({ email: String(o.email).trim().toLowerCase(), permission: normalizeOperatorPermission(o.permission) }))
+  } catch (_) { return [] }
+}
+
+// 建立「操作人員」session（綁定某房東 + 權限）
+async function createOperatorSession(landlordId, operator) {
+  let landlord = null
+  try {
+    landlord = await prisma.landlord.findUnique({ where: { id: landlordId } })
+  } catch (e) { console.error('createOperatorSession 查詢房東失敗:', e.message); return null }
+  if (!landlord || !landlord.isActive) return null
+  const auth = {
+    role: 'landlord', landlordId: landlord.id, label: landlord.name, source: landlord.source,
+    operator: { email: String(operator.email).toLowerCase(), permission: normalizeOperatorPermission(operator.permission) },
+  }
+  return { auth, token: makeSessionToken(auth), name: landlord.name, maxAgeMs: SESSION_MAX_AGE_MS }
+}
+
+// 依 Gmail 找出把此 email 加為操作人員的房東（回傳 { landlord, operator }）
+async function findOperatorLandlord(email) {
+  const target = String(email || '').trim().toLowerCase()
+  if (!target) return null
+  let landlords = []
+  try {
+    landlords = await prisma.landlord.findMany({
+      where: { isActive: true, operators: { not: null } },
+      select: { id: true, name: true, source: true, operators: true },
+    })
+  } catch (e) { console.error('findOperatorLandlord 查詢失敗:', e.message); return null }
+  for (const l of landlords) {
+    const op = parseOperators(l.operators).find(o => o.email === target)
+    if (op) return { landlord: l, operator: op }
+  }
+  return null
+}
+
+// 驗證 Google 登入的 ID Token（透過 Google tokeninfo 端點；檢查 aud 與 email 已驗證）
+async function verifyGoogleIdToken(idToken) {
+  const clientId = process.env.GOOGLE_CLIENT_ID
+  if (!clientId || !idToken) return null
+  try {
+    const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken))
+    if (!r.ok) return null
+    const d = await r.json()
+    if (d.aud !== clientId) return null
+    if (d.email_verified !== 'true' && d.email_verified !== true) return null
+    if (!d.email) return null
+    return { email: String(d.email).toLowerCase(), name: d.name || d.email }
+  } catch (e) {
+    console.error('verifyGoogleIdToken 失敗:', e.message)
+    return null
+  }
 }
 
 async function createAdminSession(key) {
@@ -238,6 +316,11 @@ module.exports = {
   createAdminSession,
   createImpersonationSession,
   createLandlordSessionById,
+  createOperatorSession,
+  findOperatorLandlord,
+  verifyGoogleIdToken,
+  parseOperators,
+  normalizeOperatorPermission,
   hashAdminKey,
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_MS,
