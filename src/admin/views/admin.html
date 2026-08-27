@@ -1877,18 +1877,24 @@ function setGroupPropFilter(groupKey, key, value) {
 }
 function clearGroupPropFilter(groupKey) { groupPropFilters[groupKey] = {}; rerenderPropertiesTab() }
 function clearPropFilter() { propFilters = { location: '', type: '', rent: '', size: '', status: '', featured: '', keyword: '' }; rerenderPropertiesTab() }
-function setPropKeyword(val) {
+function applyPropKeyword(val) {
+  if ((propFilters.keyword || '') === (val || '')) return
   propFilters.keyword = val
   rerenderPropertiesTab()
   var inp = document.getElementById('propSearchInput')
   if (inp) { inp.focus(); var v = inp.value; try { inp.setSelectionRange(v.length, v.length) } catch (e) {} }
 }
+// 中文（注音）組字中先不重繪，避免輸入框被重建、組字被打斷變成注音；組字完成（compositionend）才過濾
+function onPropSearchInput(ev, el) {
+  if (ev && ev.isComposing) return
+  applyPropKeyword(el.value)
+}
 function propSearchBarHtml() {
   var kw = propFilters.keyword || ''
   return '<div class="prop-search-bar">' +
     '<span class="prop-search-icon" aria-hidden="true">🔍</span>' +
-    '<input id="propSearchInput" type="search" value="' + esc(kw) + '" oninput="setPropKeyword(this.value)" placeholder="搜尋房源名稱、房號、地區、地址…" autocomplete="off">' +
-    (kw ? '<button type="button" class="prop-search-clear" onclick="setPropKeyword(\'\')" aria-label="清除搜尋">×</button>' : '') +
+    '<input id="propSearchInput" type="search" value="' + esc(kw) + '" oninput="onPropSearchInput(event, this)" oncompositionend="applyPropKeyword(this.value)" placeholder="搜尋房源名稱、房號、地區、地址…" autocomplete="off">' +
+    (kw ? '<button type="button" class="prop-search-clear" onclick="applyPropKeyword(\'\')" aria-label="清除搜尋">×</button>' : '') +
     '</div>'
 }
 function rerenderPropertiesTab() {
