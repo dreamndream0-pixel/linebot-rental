@@ -1218,7 +1218,7 @@ var MENU_GROUPS = [
     { label: '\u7dad\u4fee\u7ba1\u7406', icon: 'wrench', tab: 'repairs' },
   ] },
   { label: '\u793e\u7fa4\u7ba1\u7406', icon: 'share', tab: 'socialPosting' },
-  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings', { label: '\u64cd\u4f5c\u7d00\u9304', icon: 'clipboard', run: 'audit' }, { label: '租金提醒設定', icon: 'clock', run: 'rent-reminder', feat: 'rentReminder' }, { label: 'Ragic \u540c\u6b65', icon: 'share', run: 'ragic-menu', feat: 'ragic' }] },
+  { label: '\u7cfb\u7d71\u8a2d\u7f6e', icon: 'wrench', children: ['heroSettings', 'community', 'footerSettings', 'landlords', 'botSettings', { label: '\u64cd\u4f5c\u4eba\u54e1', icon: 'clipboard', run: 'operators' }, { label: '\u64cd\u4f5c\u7d00\u9304', icon: 'clipboard', run: 'audit' }, { label: '租金提醒設定', icon: 'clock', run: 'rent-reminder', feat: 'rentReminder' }, { label: 'Ragic \u540c\u6b65', icon: 'share', run: 'ragic-menu', feat: 'ragic' }] },
 ]
 
 function renderTabBar() {
@@ -5799,6 +5799,11 @@ function navRun(key) {
   document.querySelectorAll('.nav-group.open').forEach(function(x){ x.classList.remove('open') })
   if (key === 'ragic-menu') { openRagicSyncMenu(); return }
   if (key === 'audit') { openAuditLog(); return }
+  if (key === 'operators') {
+    // 總管理員需指定房東 → 引導到房東卡片；房東本人／仲介視角管理自己的
+    if (DATA && DATA.role === 'super' && !DATA.impersonating) { showToast('請到「房東管理」展開房東卡片 →「👥 操作人員」設定'); return }
+    openOperatorManager(); return
+  }
   if (key === 'rent-reminder') { openRentReminderSetting(); return }
   _navRunPending = true
   if (currentTab !== 'managed') switchTab('managed')
