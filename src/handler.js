@@ -742,18 +742,16 @@ async function handleMessage(event, client, landlordId = null, scope = 'all') {
   else if (allowSupport && require('./smartlock').isPasscodeConfirm(text)) {
     const sl = require('./smartlock')
     if (await sl.isSmartlockEnabled(landlordId)) {
-      // 先立即回覆「處理中」，再用 push 送出密碼卡，避免產碼等待時無回饋
-      try {
-        await client.replyMessage(event.replyToken, { type: 'text', text: '⏳ 作業處理中，請稍後…' })
-      } catch (e) { console.error('回覆處理中失敗:', e.message) }
+      // 直接產碼並「以 reply 回覆」密碼卡（不再先回「處理中」再 push）。
+      // 原本 reply 處理中→push 密碼的作法：一旦 LINE 推播失敗或超出當月推播額度，
+      // 房客就只會停在「作業處理中」而收不到密碼。改用 reply 不受推播額度限制、必定送達。
       try {
         const card = await sl.handleTenantPasscode(landlordId, userId)
-        if (card) await client.pushMessage(userId, card)
+        reply = card || null
       } catch (e) {
         console.error('門鎖密碼處理失敗:', e.message)
-        try { await client.pushMessage(userId, { type: 'text', text: '產生密碼失敗，請稍後再試或聯絡房東。' }) } catch (_) {}
+        reply = { type: 'text', text: '產生密碼失敗，請稍後再試或聯絡房東。' }
       }
-      reply = null  // 已自行回覆，避免下方再次 replyMessage
     }
   }
   else if (allowSupport && require('./smartlock').isPasscodeRequest(text)) {
