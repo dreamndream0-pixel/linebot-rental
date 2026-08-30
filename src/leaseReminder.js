@@ -87,6 +87,24 @@ async function getLeaseClients(lease) {
   return clients
 }
 
+function lineErrorMessage(e) {
+  const data = e && e.originalError && e.originalError.response && e.originalError.response.data
+  if (!data) return e && e.message ? e.message : String(e)
+  const parts = []
+  if (data.message) parts.push(data.message)
+  if (Array.isArray(data.details) && data.details.length) {
+    parts.push(data.details.map(d => [d.property, d.message].filter(Boolean).join(': ')).filter(Boolean).join(' / '))
+  }
+  return parts.filter(Boolean).join('：') || JSON.stringify(data)
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(label + ' timeout')), ms)),
+  ])
+}
+
 // 推播給租約綁定的房客：依序嘗試各 Bot，任一成功即回傳；全部失敗則丟出含 LINE 詳細訊息的錯誤。
 async function pushToLeaseTenant(lease, message) {
   if (!lease.lineUserId) throw new Error('此租約尚未綁定 LINE 租客（LINE userID 為空）')
@@ -96,11 +114,10 @@ async function pushToLeaseTenant(lease, message) {
   let lastErr = null
   for (const c of clients) {
     try {
-      await c.client.pushMessage(lease.lineUserId, message)
+      await withTimeout(c.client.pushMessage(lease.lineUserId, message), 8000, c.name)
       return { ok: true, via: c.name }
     } catch (e) {
-      const data = e && e.originalError && e.originalError.response && e.originalError.response.data
-      const msg = (data && (data.message || (data.details && JSON.stringify(data.details)))) || e.message
+      const msg = lineErrorMessage(e)
       lastErr = new Error(`[${c.name}] ${msg}`)
       attempts.push(`[${c.name}] ${msg}`)
       console.error(`推播失敗（${c.name} / ${lease.tenantName}）:`, msg)
