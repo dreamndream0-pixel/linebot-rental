@@ -37,8 +37,8 @@ async function getClientForLease(lease) {
 
 // 取得某租約可用的 LINE Client 清單（依序嘗試）：
 // 已承租房客多在「客服 Bot」→ 優先客服 Bot，再退主 Bot，最後才用環境變數主 Bot。
-async function getLeaseClients(lease) {
-  const clients = []
+async function getLeaseClientCandidates(lease) {
+  const candidates = []
   try {
     const mp = await prisma.managedProperty.findUnique({
       where: { id: lease.managedPropertyId },
@@ -54,19 +54,36 @@ async function getLeaseClients(lease) {
       })
       if (landlord) {
         if (landlord.supportChannelToken && landlord.supportBotEnabled !== false) {
-          clients.push({ name: '客服Bot', client: new Client({ channelAccessToken: landlord.supportChannelToken, channelSecret: landlord.supportChannelSecret || '' }) })
+          candidates.push({ name: '客服Bot', client: new Client({ channelAccessToken: landlord.supportChannelToken, channelSecret: landlord.supportChannelSecret || '' }) })
+        } else {
+          candidates.push({ name: '客服Bot', skipReason: landlord.supportBotEnabled === false ? '已關閉' : '未設定 token' })
         }
         if (landlord.lineChannelToken) {
-          clients.push({ name: '主Bot', client: new Client({ channelAccessToken: landlord.lineChannelToken, channelSecret: landlord.lineChannelSecret || '' }) })
+          candidates.push({ name: '主Bot', client: new Client({ channelAccessToken: landlord.lineChannelToken, channelSecret: landlord.lineChannelSecret || '' }) })
+        } else {
+          candidates.push({ name: '主Bot', skipReason: '未設定 token' })
         }
       }
+    } else {
+      candidates.push({ name: '客服Bot', skipReason: '找不到房東設定' })
+      candidates.push({ name: '主Bot', skipReason: '找不到房東設定' })
     }
   } catch (e) {
     console.error('取得租約 Bot 失敗:', e.message)
+    candidates.push({ name: '房東Bot', skipReason: '讀取設定失敗：' + e.message })
   }
   if (process.env.LINE_CHANNEL_ACCESS_TOKEN) {
-    clients.push({ name: '系統Bot', client: new Client({ channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN, channelSecret: process.env.LINE_CHANNEL_SECRET || '' }) })
+    candidates.push({ name: '系統Bot', client: new Client({ channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN, channelSecret: process.env.LINE_CHANNEL_SECRET || '' }) })
+  } else {
+    candidates.push({ name: '系統Bot', skipReason: '未設定 token' })
   }
+  return candidates
+}
+
+async function getLeaseClients(lease) {
+  const candidates = await getLeaseClientCandidates(lease)
+  const clients = candidates.filter(c => c.client)
+  clients.skipped = candidates.filter(c => c.skipReason)
   return clients
 }
 
@@ -74,7 +91,8 @@ async function getLeaseClients(lease) {
 async function pushToLeaseTenant(lease, message) {
   if (!lease.lineUserId) throw new Error('此租約尚未綁定 LINE 租客（LINE userID 為空）')
   const clients = await getLeaseClients(lease)
-  if (!clients.length) throw new Error('此房東尚未設定任何 LINE Bot')
+  const attempts = (clients.skipped || []).map(c => `[${c.name}] ${c.skipReason}`)
+  if (!clients.length) throw new Error('此房東尚未設定任何可用 LINE Bot：' + attempts.join('；'))
   let lastErr = null
   for (const c of clients) {
     try {
@@ -84,10 +102,13 @@ async function pushToLeaseTenant(lease, message) {
       const data = e && e.originalError && e.originalError.response && e.originalError.response.data
       const msg = (data && (data.message || (data.details && JSON.stringify(data.details)))) || e.message
       lastErr = new Error(`[${c.name}] ${msg}`)
+      attempts.push(`[${c.name}] ${msg}`)
       console.error(`推播失敗（${c.name} / ${lease.tenantName}）:`, msg)
     }
   }
-  throw lastErr || new Error('推播失敗')
+  const err = lastErr || new Error('推播失敗')
+  err.message = 'LINE 推播失敗。已檢查：' + attempts.join('；')
+  throw err
 }
 
 // 是否同月已推過（避免重複）
