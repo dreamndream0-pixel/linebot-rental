@@ -242,6 +242,10 @@ function reminderBubble(o) {
 }
 
 const CYCLE_LABEL = { MONTHLY: '月繳', BIMONTHLY: '雙月繳', QUARTERLY: '季繳', SEMIANNUAL: '半年繳', YEARLY: '年繳' }
+const CARD_COLORS = {
+  NOTICE: { subColor: '#F3E6C6', accent: '#C6982E', tint: '#FBF4E4', deep: '#A9781E' },
+  RECEIPT: { subColor: '#DCEBDD', accent: '#5E8663', tint: '#EFF5EF', deep: '#3E6144' },
+}
 
 // 租金提醒訊息（含租期期間、繳費週期明細）
 function rentReminderFlex(lease) {
@@ -257,7 +261,7 @@ function rentReminderFlex(lease) {
   return reminderBubble({
     alt: '租金繳費通知', title: '租金繳費通知',
     subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
-    subColor: '#DCEBDD', accent: '#5E8663', tint: '#EFF5EF', deep: '#3E6144',
+    ...CARD_COLORS.NOTICE,
     tenant: lease.tenantName, intro: '提醒您本期租金即將到期',
     amountLabel: '本期應繳租金', amount: Number(lease.rent || 0), dueStr: dueStr,
     detailTitle: '租金明細', rows: rows, payInfo: lease.rentPayInfo || null,
@@ -288,7 +292,7 @@ function rentReceiptFlex(lease) {
   return reminderBubble({
     alt: '租金收款確認', title: '租金收款確認',
     subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
-    subColor: '#DCEBDD', accent: '#5E8663', tint: '#EFF5EF', deep: '#3E6144',
+    ...CARD_COLORS.RECEIPT,
     tenant: lease.tenantName, intro: '已收到您的租金，感謝您的配合',
     amountLabel: '本次已收金額', amount: Number(lease.paidAmount || 0), dueStr: null,
     detailTitle: '繳費明細', rows: rows,
@@ -311,7 +315,7 @@ function utilReceiptFlex(lease) {
   return reminderBubble({
     alt: '水電費收款確認', title: '水電費收款確認',
     subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
-    subColor: '#F3E6C6', accent: '#C6982E', tint: '#FBF4E4', deep: '#A9781E',
+    ...CARD_COLORS.RECEIPT,
     tenant: lease.tenantName, intro: '已收到您的水電費，感謝您的配合',
     amountLabel: '本次已收金額', amount: Number(lease.paidAmount || 0), dueStr: null,
     detailTitle: '繳費明細', rows: rows,
@@ -383,7 +387,7 @@ function utilReminderFlex(lease) {
   return reminderBubble({
     alt: '水電費繳費通知', title: '水電費繳費通知',
     subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
-    subColor: '#F3E6C6', accent: '#C6982E', tint: '#FBF4E4', deep: '#A9781E',
+    ...CARD_COLORS.NOTICE,
     tenant: lease.tenantName, intro: '以下為本期水電費繳費明細',
     amountLabel: '本期應繳金額', amount: amount, dueStr: dueRaw ? fmtYMD(dueRaw) : null,
     detailTitle: '用電明細', rows: rows, payInfo: lease.rentPayInfo || null,

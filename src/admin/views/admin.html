@@ -9380,7 +9380,7 @@ function rentReceiptPreviewHtml(d) {
   '</div>'
 }
 
-// 水電費收款確認：房客將收到的 LINE 卡片預覽（模擬 utilReceiptFlex 版面，琥珀色系）
+// 水電費收款確認：房客將收到的 LINE 卡片預覽（模擬 utilReceiptFlex 版面，綠色收款系）
 function utilityReceiptPreviewHtml(d) {
   var subtitle = esc(d.title || '') + (d.room ? '　·　' + esc(d.room) : '')
   var r = d.reading || null
@@ -9399,16 +9399,16 @@ function utilityReceiptPreviewHtml(d) {
       '<span style="color:#43413B;font-weight:600;text-align:right;">' + esc(row[1]) + '</span></div>'
   }).join('')
   return '<div style="text-align:left;border:1px solid #E5E0D5;border-radius:14px;overflow:hidden;max-width:320px;margin:0 auto 4px;">' +
-    '<div style="background:#C6982E;padding:12px 14px;">' +
+    '<div style="background:#5E8663;padding:12px 14px;">' +
       '<div style="color:#fff;font-weight:700;font-size:15px;">水電費收款確認</div>' +
-      '<div style="color:#F3E6C6;font-size:12px;margin-top:2px;">' + subtitle + '</div>' +
+      '<div style="color:#DCEBDD;font-size:12px;margin-top:2px;">' + subtitle + '</div>' +
     '</div>' +
     '<div style="padding:14px;">' +
       '<div style="font-weight:700;font-size:14px;color:#2B2B2B;">' + esc(d.tenant || '房客') + ' 您好</div>' +
       '<div style="font-size:12px;color:#8C877D;margin:2px 0 10px;">已收到您的水電費，感謝您的配合</div>' +
-      '<div style="background:#FBF4E4;border-radius:10px;padding:11px 13px;margin-bottom:10px;">' +
-        '<div style="font-size:11px;color:#A9781E;">本次已收金額</div>' +
-        '<div style="font-size:20px;font-weight:800;color:#A9781E;">NT$ ' + Number(d.paidAmount || 0).toLocaleString() + '</div>' +
+      '<div style="background:#EFF5EF;border-radius:10px;padding:11px 13px;margin-bottom:10px;">' +
+        '<div style="font-size:11px;color:#3E6144;">本次已收金額</div>' +
+        '<div style="font-size:20px;font-weight:800;color:#3E6144;">NT$ ' + Number(d.paidAmount || 0).toLocaleString() + '</div>' +
       '</div>' +
       '<div style="font-size:11px;color:#B0A891;font-weight:700;margin-bottom:2px;">繳費明細</div>' +
       rowHtml +
