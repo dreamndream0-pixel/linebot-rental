@@ -270,6 +270,7 @@ async function listLandlordLeases(landlordId) {
       out.push({
         id: l.id,
         buildingId: bid,   // 對應門鎖棟別（可能為 null）
+        roomLabel: l.roomLabel || '',
         label: (mp.title ? mp.title + ' ' : '') + (l.roomLabel ? l.roomLabel + ' ' : '') + (l.tenantName || ''),
         lineUserId: l.lineUserId || '',
       })

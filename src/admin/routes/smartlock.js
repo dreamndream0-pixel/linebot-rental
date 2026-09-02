@@ -55,6 +55,10 @@ function hasLockIds(entry) {
   return entry && entry.type === 'ttlock' && Array.isArray(entry.ids) && entry.ids.length > 0
 }
 
+function compactLockLabel(s) {
+  return String(s || '').trim().replace(/\s+/g, '').toUpperCase()
+}
+
 function augmentBuildingsWithRoomKeys(buildings, rooms) {
   const out = (buildings || []).map(b => ({
     ...b,
@@ -75,6 +79,46 @@ function augmentBuildingsWithRoomKeys(buildings, rooms) {
     b.rooms.sort((a, b) => String(a).localeCompare(String(b), 'zh-Hant', { numeric: true }))
   })
   return out
+}
+
+function inferLocksFromUniqueLeaseRooms(liveLocks, leases, alreadyMatchedIds) {
+  const byRoom = new Map()
+  ;(leases || []).forEach(l => {
+    if (!l || !l.buildingId || !l.roomLabel) return
+    const room = String(l.roomLabel).trim()
+    const label = compactLockLabel(room)
+    if (!label) return
+    const hit = {
+      key: `${l.buildingId}_${room}`,
+      room,
+      leaseId: l.id || '',
+      userId: l.lineUserId || '',
+    }
+    if (!byRoom.has(label)) byRoom.set(label, [])
+    byRoom.get(label).push(hit)
+  })
+
+  const byKey = {}
+  const byId = {}
+  const matched = []
+  const leaseByKey = {}
+  ;(liveLocks || []).forEach(lock => {
+    const lockId = Number(lock && lock.lockId)
+    if (!lockId || (alreadyMatchedIds && alreadyMatchedIds.has(lockId))) return
+    const name = compactLockLabel(lock.name || '')
+    if (!name) return
+    const hits = byRoom.get(name) || []
+    const uniqueKeys = [...new Set(hits.map(h => h.key))]
+    if (uniqueKeys.length !== 1) return
+    const hit = hits.find(h => h.key === uniqueKeys[0])
+    if (!hit) return
+    if (!byKey[hit.key]) byKey[hit.key] = []
+    if (!byKey[hit.key].includes(lockId)) byKey[hit.key].push(lockId)
+    byId[lockId] = hit.key
+    if (!leaseByKey[hit.key]) leaseByKey[hit.key] = hit
+    matched.push({ roomKey: hit.key, name: lock.name || '(未命名)', lockId })
+  })
+  return { byKey, byId, matched, leaseByKey }
 }
 
 // ── 門鎖設定狀態（TTLock 帳密是否已填；不回傳密鑰）+ 建物清單 ──
@@ -239,6 +283,15 @@ router.post('/admin/api/smartlock/import-ttlock', express.json(), async (req, re
     const cur = parseRoomsJson(landlord && landlord.lockRooms)
     const buildings = await buildingsForLandlord(ctx.landlordId)
     const inferred = inferLockRoomsFromLiveLocks(liveLocks, buildings, { allowNewRooms: true })
+    const leaseInferred = inferLocksFromUniqueLeaseRooms(liveLocks, await listLandlordLeases(ctx.landlordId), new Set(Object.keys(inferred.byId || {}).map(Number)))
+    for (const key of Object.keys(leaseInferred.byKey || {})) {
+      if (!inferred.byKey[key]) inferred.byKey[key] = []
+      leaseInferred.byKey[key].forEach(id => {
+        if (!inferred.byKey[key].includes(id)) inferred.byKey[key].push(id)
+        inferred.byId[id] = key
+      })
+    }
+    inferred.matched = [...(inferred.matched || []), ...(leaseInferred.matched || [])]
 
     // 先保留房東現有資料；下方再用 TTLock 雲端最新清單更新硬體設定。
     // userId / leaseId 是房客合約綁定，匯入硬體資料時一律保留。
@@ -272,6 +325,9 @@ router.post('/admin/api/smartlock/import-ttlock', express.json(), async (req, re
       // 保留已填的房客 UID 與綁定合約
       if (cur[key] && cur[key].userId) entry.userId = cur[key].userId
       if (cur[key] && cur[key].leaseId) entry.leaseId = cur[key].leaseId
+      const leaseHit = leaseInferred.leaseByKey && leaseInferred.leaseByKey[key]
+      if (leaseHit && !entry.leaseId && leaseHit.leaseId) entry.leaseId = leaseHit.leaseId
+      if (leaseHit && !entry.userId && leaseHit.userId) entry.userId = leaseHit.userId
       merged[key] = entry
     }
     // 計算所有已使用（且實際存在）的 lockId：涵蓋預設對照與既有手動綁定
