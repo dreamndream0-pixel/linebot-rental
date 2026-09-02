@@ -639,7 +639,7 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <a id="brandHomeLink" href="#" target="_blank" style="display:inline-flex;align-items:center;text-decoration:none;">
+        <a id="brandHomeLink" href="https://xiaowo-rental.vercel.app" style="display:inline-flex;align-items:center;text-decoration:none;">
           <img class="brand-logo" src="/admin/assets/xiaowo-logo.png" alt="小蝸出租">
         </a>
         <div class="mobile-account" id="mobileAccount">
@@ -653,6 +653,7 @@
           </div>
           <div class="mobile-account-menu" id="mobileAccountMenu">
             <div id="mobileSwitchItem"></div>
+            <div id="mobileLandlordHomeItem"></div>
             <button type="button" style="color:#26362D;border-bottom:1px solid var(--line);" onclick="backToMember()">🏠 返回租客模式</button>
             <button type="button" onclick="logout()">登出</button>
           </div>
@@ -702,6 +703,7 @@
             </div>
             <div id="umSwitchItem"></div>
             <div id="umOperatorItem"></div>
+            <div id="umLandlordHomeItem"></div>
             <div class="um-item" onclick="backToMember()">🏠 返回租客模式</div>
             <div class="um-item um-danger" onclick="logout()">🚪 登出</div>
           </div>
@@ -976,6 +978,19 @@ var webUsersCache = null
 var editingPropertyId = null
 var _ownFeatures = {}   // 登入後由 refreshOwnFeatures() 設定
 
+function mainSiteUrl() {
+  return ((DATA && DATA.siteUrl) ? DATA.siteUrl : 'https://xiaowo-rental.vercel.app').replace(/\/$/, '')
+}
+
+function landlordHomeUrl() {
+  return (DATA && DATA.landlordId) ? (mainSiteUrl() + '/site/' + DATA.landlordId) : ''
+}
+
+function goLandlordHome() {
+  var url = landlordHomeUrl()
+  if (url) location.href = url
+}
+
 function refreshOwnFeatures() {
   try {
     _ownFeatures = DATA && DATA.selfLandlord && DATA.selfLandlord.features
@@ -1095,16 +1110,20 @@ function enterAdmin() {
     var umOperatorItem = document.getElementById('umOperatorItem')
     if (umOperatorItem) umOperatorItem.innerHTML = (DATA.role === 'landlord' && !DATA.operator)
       ? '<div class="um-item" onclick="openOperatorManager()">👥 操作人員管理</div>' : ''
+    var landlordHomeDesktop = document.getElementById('umLandlordHomeItem')
+    var landlordHomeMobile = document.getElementById('mobileLandlordHomeItem')
+    var landlordHomeHtml = DATA.landlordId
+      ? '<div class="um-item" onclick="goLandlordHome()">🏡 回房東首頁</div>' : ''
+    var landlordHomeMobileHtml = DATA.landlordId
+      ? '<button type="button" style="color:#26362D;border-bottom:1px solid var(--line);" onclick="goLandlordHome()">🏡 回房東首頁</button>' : ''
+    if (landlordHomeDesktop) landlordHomeDesktop.innerHTML = landlordHomeHtml
+    if (landlordHomeMobile) landlordHomeMobile.innerHTML = landlordHomeMobileHtml
     // 關閉可能開著的選單
     var umDd = document.getElementById('umDropdown'); if (umDd) umDd.classList.remove('open')
     var mDd = document.getElementById('mobileAccountMenu'); if (mDd) mDd.classList.remove('open')
     refreshOwnFeatures()
-    if (DATA.siteUrl) {
-      var brandLink = document.getElementById('brandHomeLink')
-      if (brandLink) brandLink.href = DATA.role === 'landlord' && DATA.landlordId
-        ? DATA.siteUrl + '/site/' + DATA.landlordId
-        : DATA.siteUrl
-    }
+    var brandLink = document.getElementById('brandHomeLink')
+    if (brandLink) brandLink.href = mainSiteUrl()
     // \u5982\u679c\u7576\u524d tab \u88ab\u529f\u80fd\u6a21\u7d44\u95dc\u6389\uff0c\u5207\u5230\u7e3d\u89bd
     // 重新整理後留在原本的分頁
     var savedTab = sessionStorage.getItem('adminTab')
