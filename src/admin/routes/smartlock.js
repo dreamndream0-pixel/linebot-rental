@@ -38,6 +38,23 @@ function parseRoomsJson(json) {
   try { const r = JSON.parse(json); return (r && typeof r === 'object') ? r : {} } catch { return {} }
 }
 
+function normalizeLockEntry(entry) {
+  const e = entry && typeof entry === 'object' ? entry : {}
+  const type = ['keypad', 'ttlock', 'traditional'].includes(e.type) ? e.type : 'keypad'
+  const out = { type }
+  if (type === 'ttlock') {
+    const ids = Array.isArray(e.ids) ? e.ids.map(Number).filter(n => !isNaN(n) && n > 0) : []
+    if (ids.length) out.ids = [...new Set(ids)]
+  }
+  if (e.userId) out.userId = String(e.userId).trim()
+  if (e.leaseId) out.leaseId = String(e.leaseId).trim()
+  return out
+}
+
+function hasFixedLockIds(entry) {
+  return entry && entry.type === 'ttlock' && Array.isArray(entry.ids) && entry.ids.length > 0
+}
+
 // ── 門鎖設定狀態（TTLock 帳密是否已填；不回傳密鑰）+ 建物清單 ──
 router.get('/admin/api/smartlock/config', async (req, res) => {
   const ctx = await authLandlord(req, res); if (!ctx) return
@@ -154,10 +171,12 @@ router.post('/admin/api/smartlock/seed', express.json(), async (req, res) => {
       return res.json({ ok: true, count: Object.keys(cur).length, skipped: true })
     }
     const merged = {}
+    for (const k of Object.keys(cur)) merged[k] = normalizeLockEntry(cur[k])
     for (const key of Object.keys(seedDb)) {
       const def = seedDb[key]
-      const entry = { type: def.type }
-      if (def.type === 'ttlock' && Array.isArray(def.ids)) entry.ids = def.ids.slice()
+      const curEntry = normalizeLockEntry(cur[key])
+      const entry = hasFixedLockIds(curEntry) ? curEntry : { type: def.type }
+      if (!hasFixedLockIds(curEntry) && def.type === 'ttlock' && Array.isArray(def.ids)) entry.ids = def.ids.slice()
       // 保留原本已填的房客 User ID 與綁定的合約（不覆蓋）
       if (cur[key] && cur[key].userId) entry.userId = cur[key].userId
       if (cur[key] && cur[key].leaseId) entry.leaseId = cur[key].leaseId
@@ -191,17 +210,20 @@ router.post('/admin/api/smartlock/import-ttlock', express.json(), async (req, re
     const buildings = await buildingsForLandlord(ctx.landlordId)
     const inferred = inferLockRoomsFromLiveLocks(liveLocks, buildings)
 
-    // 先保留房東現有的綁定（手動綁定的房間不可被洗掉）
+    // 先保留房東現有的硬體設定與綁定（已設定的 Lock ID 不可被匯入洗掉）
     const merged = {}
-    for (const k of Object.keys(cur)) merged[k] = Object.assign({}, cur[k])
+    for (const k of Object.keys(cur)) merged[k] = normalizeLockEntry(cur[k])
     const usedIds = new Set()
     const seedDb = defaultLockDbFor(ctx.landlordId)
     const importKeys = new Set([...Object.keys(seedDb), ...Object.keys(inferred.byKey || {})])
     for (const key of importKeys) {
       const def = seedDb[key]
       let entry
+      const curEntry = normalizeLockEntry(cur[key])
       const inferredIds = ((inferred.byKey && inferred.byKey[key]) || []).map(Number).filter(id => liveIds.has(id))
-      if (inferredIds.length) {
+      if (hasFixedLockIds(curEntry)) {
+        entry = curEntry
+      } else if (inferredIds.length) {
         entry = { type: 'ttlock', ids: [...new Set(inferredIds)] }
       } else if (def && def.type === 'ttlock' && Array.isArray(def.ids)) {
         const ids = def.ids.map(Number).filter(id => liveIds.has(id))
@@ -213,16 +235,6 @@ router.post('/admin/api/smartlock/import-ttlock', express.json(), async (req, re
       if (cur[key] && cur[key].userId) entry.userId = cur[key].userId
       if (cur[key] && cur[key].leaseId) entry.leaseId = cur[key].leaseId
       merged[key] = entry
-    }
-    // 若同一把鎖已由 TTLock 名稱明確判斷到別的房間，移除舊房間的重複配對。
-    for (const k of Object.keys(merged)) {
-      const e = merged[k]
-      if (!e || e.type !== 'ttlock' || !Array.isArray(e.ids)) continue
-      e.ids = e.ids.map(Number).filter(id => {
-        const inferredKey = inferred.byId && inferred.byId[id]
-        return !inferredKey || inferredKey === k
-      })
-      if (!e.ids.length) { delete e.ids; e.type = 'keypad' }
     }
     // 計算所有已使用（且實際存在）的 lockId：涵蓋預設對照與既有手動綁定
     for (const k of Object.keys(merged)) {
