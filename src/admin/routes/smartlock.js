@@ -5,7 +5,7 @@ const express = require('express')
 const router = express.Router()
 const prisma = require('../../db')
 const { resolveRole } = require('../helpers')
-const { listLocks, parseCreds, buildingsForLandlord, defaultLockDbFor, inferLockRoomsFromLiveLocks, parseUsage, unpaidTotal, FREE_QUOTA, CHARGE_AMOUNT, syncLockRoomsFromLeases, listLandlordLeases } = require('../../smartlock')
+const { listLocks, parseCreds, buildingsForLandlord, normalizeRoomLabelForBuilding, defaultLockDbFor, inferLockRoomsFromLiveLocks, parseUsage, unpaidTotal, FREE_QUOTA, CHARGE_AMOUNT, syncLockRoomsFromLeases, listLandlordLeases } = require('../../smartlock')
 
 // smartlock 功能授權：super 一律可用；房東需被授權 features.smartlock
 async function hasSmartlock(auth) {
@@ -53,6 +53,46 @@ function normalizeLockEntry(entry) {
 
 function hasLockIds(entry) {
   return entry && entry.type === 'ttlock' && Array.isArray(entry.ids) && entry.ids.length > 0
+}
+
+function mergeLockEntries(base, extra) {
+  const a = normalizeLockEntry(base)
+  const b = normalizeLockEntry(extra)
+  if (hasLockIds(a) || hasLockIds(b)) {
+    const ids = [
+      ...(Array.isArray(a.ids) ? a.ids : []),
+      ...(Array.isArray(b.ids) ? b.ids : []),
+    ].map(Number).filter(n => !isNaN(n) && n > 0)
+    const out = { type: 'ttlock' }
+    if (ids.length) out.ids = [...new Set(ids)]
+    if (a.userId || b.userId) out.userId = a.userId || b.userId
+    if (a.leaseId || b.leaseId) out.leaseId = a.leaseId || b.leaseId
+    return out
+  }
+  const out = { type: b.type !== 'keypad' ? b.type : a.type }
+  if (a.userId || b.userId) out.userId = a.userId || b.userId
+  if (a.leaseId || b.leaseId) out.leaseId = a.leaseId || b.leaseId
+  return out
+}
+
+function normalizeRoomKey(key) {
+  const i = String(key || '').indexOf('_')
+  if (i < 1) return key
+  const buildingId = String(key).slice(0, i)
+  const room = String(key).slice(i + 1)
+  const normalizedRoom = normalizeRoomLabelForBuilding(buildingId, room)
+  return normalizedRoom ? `${buildingId}_${normalizedRoom}` : key
+}
+
+function normalizeRoomsByKey(rooms) {
+  const out = {}
+  for (const key of Object.keys(rooms || {})) {
+    const normalizedKey = normalizeRoomKey(key)
+    out[normalizedKey] = out[normalizedKey]
+      ? mergeLockEntries(out[normalizedKey], rooms[key])
+      : normalizeLockEntry(rooms[key])
+  }
+  return out
 }
 
 function compactLockLabel(s) {
@@ -143,7 +183,7 @@ router.get('/admin/api/smartlock/config', async (req, res) => {
       select: { ttlockConfig: true, lockRooms: true },
     })
     const creds = parseCreds(landlord)
-    const rooms = parseRoomsJson(landlord && landlord.lockRooms)
+    const rooms = normalizeRoomsByKey(parseRoomsJson(landlord && landlord.lockRooms))
     const buildings = augmentBuildingsWithRoomKeys(await buildingsForLandlord(ctx.landlordId), rooms)
     res.json({
       hasCreds: !!creds,
@@ -195,7 +235,7 @@ router.get('/admin/api/smartlock/rooms', async (req, res) => {
       select: { lockRooms: true },
     })
     const leases = await listLandlordLeases(ctx.landlordId)
-    const rooms = parseRoomsJson(landlord && landlord.lockRooms)
+    const rooms = normalizeRoomsByKey(parseRoomsJson(landlord && landlord.lockRooms))
     const buildings = augmentBuildingsWithRoomKeys(await buildingsForLandlord(ctx.landlordId), rooms)
     res.json({ buildings, rooms, leases })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -213,7 +253,7 @@ router.post('/admin/api/smartlock/rooms', express.json(), async (req, res) => {
       where: { id: ctx.landlordId },
       select: { lockRooms: true },
     })
-    const cur = parseRoomsJson(landlord && landlord.lockRooms)
+    const cur = normalizeRoomsByKey(parseRoomsJson(landlord && landlord.lockRooms))
     // 正規化 + 只保留合法的 roomKey：固定房號，以及已由 TTLock 匯入建立的房號。
     const validKeys = new Set()
     const buildings = augmentBuildingsWithRoomKeys(await buildingsForLandlord(ctx.landlordId), cur)
@@ -233,7 +273,8 @@ router.post('/admin/api/smartlock/rooms', express.json(), async (req, res) => {
       if (userId) entry.userId = userId
       const leaseId = (v.leaseId == null ? '' : String(v.leaseId)).trim()
       if (leaseId) entry.leaseId = leaseId
-      clean[key] = entry
+      const normalizedKey = normalizeRoomKey(key)
+      clean[normalizedKey] = clean[normalizedKey] ? mergeLockEntries(clean[normalizedKey], entry) : entry
     }
     await prisma.landlord.update({
       where: { id: ctx.landlordId },
@@ -251,7 +292,7 @@ router.post('/admin/api/smartlock/seed', express.json(), async (req, res) => {
       where: { id: ctx.landlordId },
       select: { lockRooms: true },
     })
-    const cur = parseRoomsJson(landlord && landlord.lockRooms)
+    const cur = normalizeRoomsByKey(parseRoomsJson(landlord && landlord.lockRooms))
     const seedDb = defaultLockDbFor(ctx.landlordId)
     // 非原始仲介房東沒有內建預設門鎖 → 不覆蓋，保留現有綁定
     if (!Object.keys(seedDb).length) {
@@ -293,7 +334,7 @@ router.post('/admin/api/smartlock/import-ttlock', express.json(), async (req, re
     if (result.error) return res.status(502).json(result)
     const liveLocks = result.list || []
     const liveIds = new Set(liveLocks.map(l => Number(l.lockId)))
-    const cur = parseRoomsJson(landlord && landlord.lockRooms)
+    const cur = normalizeRoomsByKey(parseRoomsJson(landlord && landlord.lockRooms))
     const buildings = await buildingsForLandlord(ctx.landlordId)
     const inferred = inferLockRoomsFromLiveLocks(liveLocks, buildings, { allowNewRooms: true })
     const leaseInferred = inferLocksFromUniqueLeaseRooms(liveLocks, await listLandlordLeases(ctx.landlordId), new Set(Object.keys(inferred.byId || {}).map(Number)))

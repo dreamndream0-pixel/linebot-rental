@@ -119,6 +119,20 @@ const DEFAULT_LOCK_DB = {
 const BROKER_LANDLORD_ID = process.env.BROKER_LANDLORD_ID || 'cmqbys4qr0004keruq1niq5xz'
 function isBrokerLandlord(landlordId) { return landlordId === BROKER_LANDLORD_ID }
 
+function normalizeRoomLabelForBuilding(buildingId, roomLabel) {
+  let room = String(roomLabel || '').trim()
+  if (!room) return ''
+  const prefixByBuilding = { HB11: '11', HB21: '21', HB28: '28', ZF22: '22' }
+  const prefix = prefixByBuilding[buildingId]
+  if (prefix) {
+    room = room.replace(new RegExp('^' + prefix + '\\s*[-－–—]\\s*', 'i'), '')
+  }
+  if (buildingId === 'QY') {
+    room = room.replace(/^25\s*[-－–—]\s*21\s*[-－–—]\s*/i, '')
+  }
+  return room.trim()
+}
+
 // 依房東取得建物清單：原始仲介房東保留內建建物，並合併代管物件內的房間；
 // 其他房東由自己的代管物件推導。
 async function buildingsForLandlord(landlordId) {
@@ -142,7 +156,10 @@ async function buildingsForLandlord(landlordId) {
       const staticId = _buildingIdForTitle(b.label)
       if (staticId) {
         if (!dynamicByStaticId.has(staticId)) dynamicByStaticId.set(staticId, new Set())
-        b.rooms.forEach(r => dynamicByStaticId.get(staticId).add(r))
+        b.rooms.forEach(r => {
+          const room = normalizeRoomLabelForBuilding(staticId, r)
+          if (room) dynamicByStaticId.get(staticId).add(room)
+        })
       } else {
         extraDynamicBuildings.push(b)
       }
@@ -304,11 +321,12 @@ async function listLandlordLeases(landlordId) {
     const bid = _buildingIdForTitle(mp.title) || ('MP' + mp.id)
     ;(mp.leases || []).forEach(l => {
       if (l.leaseEnd && new Date(l.leaseEnd) < now) return  // 已逾期 → 隱藏
+      const roomLabel = normalizeRoomLabelForBuilding(bid, l.roomLabel)
       out.push({
         id: l.id,
         buildingId: bid,
         propertyTitle: mp.title || '',
-        roomLabel: l.roomLabel || '',
+        roomLabel,
         label: (mp.title ? mp.title + ' ' : '') + (l.roomLabel ? l.roomLabel + ' ' : '') + (l.tenantName || ''),
         lineUserId: l.lineUserId || '',
       })
@@ -903,6 +921,7 @@ module.exports = {
   BUILDINGS,
   DEFAULT_LOCK_DB,
   buildingsForLandlord,
+  normalizeRoomLabelForBuilding,
   defaultLockDbFor,
   isBrokerLandlord,
   inferRoomKeyFromLockName,
