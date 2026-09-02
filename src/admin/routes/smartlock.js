@@ -51,7 +51,7 @@ function normalizeLockEntry(entry) {
   return out
 }
 
-function hasFixedLockIds(entry) {
+function hasLockIds(entry) {
   return entry && entry.type === 'ttlock' && Array.isArray(entry.ids) && entry.ids.length > 0
 }
 
@@ -175,8 +175,8 @@ router.post('/admin/api/smartlock/seed', express.json(), async (req, res) => {
     for (const key of Object.keys(seedDb)) {
       const def = seedDb[key]
       const curEntry = normalizeLockEntry(cur[key])
-      const entry = hasFixedLockIds(curEntry) ? curEntry : { type: def.type }
-      if (!hasFixedLockIds(curEntry) && def.type === 'ttlock' && Array.isArray(def.ids)) entry.ids = def.ids.slice()
+      const entry = hasLockIds(curEntry) ? curEntry : { type: def.type }
+      if (!hasLockIds(curEntry) && def.type === 'ttlock' && Array.isArray(def.ids)) entry.ids = def.ids.slice()
       // 保留原本已填的房客 User ID 與綁定的合約（不覆蓋）
       if (cur[key] && cur[key].userId) entry.userId = cur[key].userId
       if (cur[key] && cur[key].leaseId) entry.leaseId = cur[key].leaseId
@@ -210,26 +210,34 @@ router.post('/admin/api/smartlock/import-ttlock', express.json(), async (req, re
     const buildings = await buildingsForLandlord(ctx.landlordId)
     const inferred = inferLockRoomsFromLiveLocks(liveLocks, buildings)
 
-    // 先保留房東現有的硬體設定與綁定（已設定的 Lock ID 不可被匯入洗掉）
+    // 先保留房東現有資料；下方再用 TTLock 雲端最新清單更新硬體設定。
+    // userId / leaseId 是房客合約綁定，匯入硬體資料時一律保留。
     const merged = {}
     for (const k of Object.keys(cur)) merged[k] = normalizeLockEntry(cur[k])
     const usedIds = new Set()
     const seedDb = defaultLockDbFor(ctx.landlordId)
-    const importKeys = new Set([...Object.keys(seedDb), ...Object.keys(inferred.byKey || {})])
+    const importKeys = new Set([...Object.keys(cur), ...Object.keys(seedDb), ...Object.keys(inferred.byKey || {})])
     for (const key of importKeys) {
       const def = seedDb[key]
       let entry
       const curEntry = normalizeLockEntry(cur[key])
       const inferredIds = ((inferred.byKey && inferred.byKey[key]) || []).map(Number).filter(id => liveIds.has(id))
-      if (hasFixedLockIds(curEntry)) {
-        entry = curEntry
-      } else if (inferredIds.length) {
+      const defaultIds = (def && def.type === 'ttlock' && Array.isArray(def.ids))
+        ? def.ids.map(Number).filter(id => liveIds.has(id))
+        : []
+      const currentLiveIds = hasLockIds(curEntry)
+        ? curEntry.ids.map(Number).filter(id => liveIds.has(id))
+        : []
+
+      if (inferredIds.length) {
         entry = { type: 'ttlock', ids: [...new Set(inferredIds)] }
-      } else if (def && def.type === 'ttlock' && Array.isArray(def.ids)) {
-        const ids = def.ids.map(Number).filter(id => liveIds.has(id))
-        entry = ids.length ? { type: 'ttlock', ids } : { type: 'keypad' }
+      } else if (defaultIds.length) {
+        entry = { type: 'ttlock', ids: [...new Set(defaultIds)] }
+      } else if (currentLiveIds.length) {
+        // 手動配對過、且 TTLock 雲端仍存在的 Lock ID，保留為最新有效硬體資料。
+        entry = { type: 'ttlock', ids: [...new Set(currentLiveIds)] }
       } else {
-        entry = { type: (def && def.type) || (cur[key] && cur[key].type) || 'keypad' }
+        entry = { type: (def && def.type && def.type !== 'ttlock') ? def.type : (curEntry.type === 'traditional' ? 'traditional' : 'keypad') }
       }
       // 保留已填的房客 UID 與綁定合約
       if (cur[key] && cur[key].userId) entry.userId = cur[key].userId
