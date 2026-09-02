@@ -157,6 +157,75 @@ function _buildingIdForTitle(title) {
   return matches.length === 1 ? matches[0].id : null
 }
 
+function _normLockText(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[－–—_・,，、／/\\()（）[\]【】]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function _compactLockText(s) {
+  return _normLockText(s).replace(/\s|　|號|棟|樓|室|房/g, '')
+}
+
+function _buildingAliases(b) {
+  const label = String(b && b.label || '')
+  const aliases = [b.id, label, _normName(label)]
+  if (/青雲/.test(label) || b.id === 'QY') aliases.push('青雲', '青雲巷', '25-21', '2521')
+  const m = label.match(/(.+?)(\d+\s*-\s*\d+|\d+)\s*號?$/)
+  if (m) {
+    aliases.push((m[1] + m[2]).replace(/\s+/g, ''))
+    if (m[2].includes('-') || m[2].replace(/\D/g, '').length >= 4) aliases.push(m[2])
+  }
+  return [...new Set(aliases.map(_compactLockText).filter(Boolean))]
+}
+
+function _roomInLockName(name, room) {
+  const text = _normLockText(name)
+  const compact = _compactLockText(name)
+  const r = String(room || '').trim()
+  if (!r) return false
+  const escaped = r.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  if (new RegExp(`(^|[^0-9])${escaped}([^0-9]|$)`).test(text)) return true
+  return compact.endsWith(r) || compact.includes(`-${r}`)
+}
+
+// TTLock 帳號抓回的 lockAlias/lockName 若包含建物與房號，可自動對應到 roomKey。
+// 只有唯一命中才回傳，避免名字太模糊時配錯鎖。
+function inferRoomKeyFromLockName(lockName, buildings = BUILDINGS) {
+  const compact = _compactLockText(lockName)
+  if (!compact) return null
+  const hits = []
+  for (const b of buildings || []) {
+    const aliases = _buildingAliases(b)
+    const buildingHit = aliases.some(a => a && compact.includes(a))
+    if (!buildingHit) continue
+    for (const room of b.rooms || []) {
+      if (_roomInLockName(lockName, room)) hits.push(`${b.id}_${room}`)
+    }
+  }
+  return [...new Set(hits)].length === 1 ? hits[0] : null
+}
+
+function inferLockRoomsFromLiveLocks(liveLocks, buildings = BUILDINGS) {
+  const byKey = {}
+  const byId = {}
+  const matched = []
+  for (const lock of liveLocks || []) {
+    const lockId = Number(lock && lock.lockId)
+    if (!lockId) continue
+    const key = inferRoomKeyFromLockName(lock.name || '', buildings)
+    if (!key) continue
+    if (!byKey[key]) byKey[key] = []
+    if (!byKey[key].includes(lockId)) byKey[key].push(lockId)
+    byId[lockId] = key
+    matched.push({ roomKey: key, name: lock.name || '(未命名)', lockId })
+  }
+  return { byKey, byId, matched }
+}
+
 // 列出房東「承租中」合約（供門鎖管理下拉選擇）——排除已逾期、已終止
 async function listLandlordLeases(landlordId) {
   const now = new Date()
@@ -768,6 +837,8 @@ module.exports = {
   buildingsForLandlord,
   defaultLockDbFor,
   isBrokerLandlord,
+  inferRoomKeyFromLockName,
+  inferLockRoomsFromLiveLocks,
   buildingLabelOf,
   FREE_QUOTA,
   CHARGE_AMOUNT,

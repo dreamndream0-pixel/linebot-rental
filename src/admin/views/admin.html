@@ -6253,6 +6253,10 @@ async function lmImportTTLock(btn) {
       return
     }
     var html = '✅ 已匯入：帳號共 ' + d.totalLocks + ' 把門鎖，對應到房間 ' + d.matched + ' 把。'
+    if (d.autoMatched && d.autoMatched.length) {
+      html += '<br><span style="color:#3A8A5A;">已依 TTLock 名稱自動配對：</span><br>' +
+        d.autoMatched.map(function(l){ return '<code style="background:#EAF6EE;color:#2F7548;padding:1px 5px;border-radius:4px;margin:2px;display:inline-block;">' + esc(l.roomKey) + ' ⇐ ' + esc(l.name) + '=' + l.lockId + '</code>' }).join(' ')
+    }
     if (d.unmatched && d.unmatched.length) {
       html += '<br><span style="color:#B07A2E;">尚未對應到房間的新門鎖（請於下方房間手動填入 Lock ID）：</span><br>' +
         d.unmatched.map(function(l){ return '<code style="background:#f2f2f2;padding:1px 5px;border-radius:4px;margin:2px;display:inline-block;">' + esc(l.name) + '=' + l.lockId + '</code>' }).join(' ')
