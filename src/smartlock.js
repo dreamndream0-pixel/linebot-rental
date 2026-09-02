@@ -119,24 +119,47 @@ const DEFAULT_LOCK_DB = {
 const BROKER_LANDLORD_ID = process.env.BROKER_LANDLORD_ID || 'cmqbys4qr0004keruq1niq5xz'
 function isBrokerLandlord(landlordId) { return landlordId === BROKER_LANDLORD_ID }
 
-// 依房東取得建物清單：原始仲介房東用內建 BUILDINGS；其他房東由自己的代管物件推導。
+// 依房東取得建物清單：原始仲介房東保留內建建物，並合併代管物件內的房間；
+// 其他房東由自己的代管物件推導。
 async function buildingsForLandlord(landlordId) {
-  if (isBrokerLandlord(landlordId)) return BUILDINGS
   try {
     const mps = await prisma.managedProperty.findMany({
       where: { landlordId },
       select: { id: true, title: true, leases: { select: { roomLabel: true } } },
     })
-    return mps
+    const dynamicBuildings = mps
       .map(mp => {
         const rooms = [...new Set((mp.leases || []).map(l => String(l.roomLabel || '').trim()).filter(Boolean))]
           .sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }))
         return { id: 'MP' + mp.id, label: mp.title || '(未命名)', rooms }
       })
       .filter(b => b.rooms.length)
+    if (!isBrokerLandlord(landlordId)) return dynamicBuildings
+
+    const dynamicByStaticId = new Map()
+    const extraDynamicBuildings = []
+    for (const b of dynamicBuildings) {
+      const staticId = _buildingIdForTitle(b.label)
+      if (staticId) {
+        if (!dynamicByStaticId.has(staticId)) dynamicByStaticId.set(staticId, new Set())
+        b.rooms.forEach(r => dynamicByStaticId.get(staticId).add(r))
+      } else {
+        extraDynamicBuildings.push(b)
+      }
+    }
+    const staticBuildings = BUILDINGS.map(b => {
+      const rooms = new Set(b.rooms || [])
+      const extraRooms = dynamicByStaticId.get(b.id)
+      if (extraRooms) extraRooms.forEach(r => rooms.add(r))
+      return {
+        ...b,
+        rooms: [...rooms].sort((a, b) => String(a).localeCompare(String(b), 'zh-Hant', { numeric: true })),
+      }
+    })
+    return [...staticBuildings, ...extraDynamicBuildings]
   } catch (e) {
     console.error('buildingsForLandlord 失敗:', e.message)
-    return []
+    return isBrokerLandlord(landlordId) ? BUILDINGS : []
   }
 }
 
@@ -176,16 +199,27 @@ function _buildingAliases(b) {
   if (/青雲/.test(label) || b.id === 'QY') aliases.push('青雲', '青雲巷', '清雲', '清雲巷', '25-21', '2521')
   const m = label.match(/(.+?)(\d+\s*-\s*\d+|\d+)\s*號?$/)
   if (m) {
+    aliases.push(m[1])
     aliases.push((m[1] + m[2]).replace(/\s+/g, ''))
-    if (m[2].includes('-') || m[2].replace(/\D/g, '').length >= 4) aliases.push(m[2])
+    aliases.push(m[2])
   }
   return [...new Set(aliases.map(_compactLockText).filter(Boolean))]
 }
 
-function _buildingForLockName(lockName, buildings = BUILDINGS) {
+function _buildingAliasScore(lockName, building) {
   const compact = _compactLockText(lockName)
-  if (!compact) return null
-  const matches = (buildings || []).filter(b => _buildingAliases(b).some(a => a && compact.includes(a)))
+  if (!compact) return 0
+  return _buildingAliases(building).reduce((score, alias) => {
+    return alias && compact.includes(alias) ? Math.max(score, alias.length) : score
+  }, 0)
+}
+
+function _buildingForLockName(lockName, buildings = BUILDINGS) {
+  const scored = (buildings || [])
+    .map(b => ({ building: b, score: _buildingAliasScore(lockName, b) }))
+    .filter(x => x.score > 0)
+  const best = scored.reduce((m, x) => Math.max(m, x.score), 0)
+  const matches = scored.filter(x => x.score === best).map(x => x.building)
   return matches.length === 1 ? matches[0] : null
 }
 
@@ -222,10 +256,13 @@ function inferRoomKeyFromLockName(lockName, buildings = BUILDINGS, options = {})
   const compact = _compactLockText(lockName)
   if (!compact) return null
   const hits = []
-  for (const b of buildings || []) {
-    const aliases = _buildingAliases(b)
-    const buildingHit = aliases.some(a => a && compact.includes(a))
-    if (!buildingHit) continue
+  const scoredBuildings = (buildings || [])
+    .map(b => ({ building: b, score: _buildingAliasScore(lockName, b) }))
+    .filter(x => x.score > 0)
+  const bestScore = scoredBuildings.reduce((m, x) => Math.max(m, x.score), 0)
+  for (const item of scoredBuildings) {
+    if (item.score !== bestScore) continue
+    const b = item.building
     for (const room of b.rooms || []) {
       if (_roomInLockName(lockName, room)) hits.push(`${b.id}_${room}`)
     }
@@ -260,16 +297,17 @@ async function listLandlordLeases(landlordId) {
   const now = new Date()
   const mps = await prisma.managedProperty.findMany({
     where: { landlordId },
-    select: { title: true, leases: { where: { status: 'ACTIVE' }, select: { id: true, tenantName: true, roomLabel: true, lineUserId: true, leaseEnd: true } } },
+    select: { id: true, title: true, leases: { where: { status: 'ACTIVE' }, select: { id: true, tenantName: true, roomLabel: true, lineUserId: true, leaseEnd: true } } },
   })
   const out = []
   mps.forEach(mp => {
-    const bid = _buildingIdForTitle(mp.title)
+    const bid = _buildingIdForTitle(mp.title) || ('MP' + mp.id)
     ;(mp.leases || []).forEach(l => {
       if (l.leaseEnd && new Date(l.leaseEnd) < now) return  // 已逾期 → 隱藏
       out.push({
         id: l.id,
-        buildingId: bid,   // 對應門鎖棟別（可能為 null）
+        buildingId: bid,
+        propertyTitle: mp.title || '',
         roomLabel: l.roomLabel || '',
         label: (mp.title ? mp.title + ' ' : '') + (l.roomLabel ? l.roomLabel + ' ' : '') + (l.tenantName || ''),
         lineUserId: l.lineUserId || '',

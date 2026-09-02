@@ -56,7 +56,20 @@ function hasLockIds(entry) {
 }
 
 function compactLockLabel(s) {
-  return String(s || '').trim().replace(/\s+/g, '').toUpperCase()
+  return String(s || '')
+    .trim()
+    .replace(/\s|　|號|棟|樓|室|房/g, '')
+    .toUpperCase()
+}
+
+function leaseLockLabels(lease) {
+  const labels = new Set()
+  const room = compactLockLabel(lease && lease.roomLabel)
+  const title = compactLockLabel(lease && lease.propertyTitle)
+  if (room) labels.add(room)
+  if (title && room) labels.add(title + room)
+  if (title && (!room || room === title)) labels.add(title)
+  return [...labels].filter(Boolean)
 }
 
 function augmentBuildingsWithRoomKeys(buildings, rooms) {
@@ -86,16 +99,16 @@ function inferLocksFromUniqueLeaseRooms(liveLocks, leases, alreadyMatchedIds) {
   ;(leases || []).forEach(l => {
     if (!l || !l.buildingId || !l.roomLabel) return
     const room = String(l.roomLabel).trim()
-    const label = compactLockLabel(room)
-    if (!label) return
     const hit = {
       key: `${l.buildingId}_${room}`,
       room,
       leaseId: l.id || '',
       userId: l.lineUserId || '',
     }
-    if (!byRoom.has(label)) byRoom.set(label, [])
-    byRoom.get(label).push(hit)
+    leaseLockLabels(l).forEach(label => {
+      if (!byRoom.has(label)) byRoom.set(label, [])
+      byRoom.get(label).push(hit)
+    })
   })
 
   const byKey = {}
