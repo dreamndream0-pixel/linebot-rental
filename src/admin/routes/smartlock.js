@@ -55,20 +55,44 @@ function hasLockIds(entry) {
   return entry && entry.type === 'ttlock' && Array.isArray(entry.ids) && entry.ids.length > 0
 }
 
+function augmentBuildingsWithRoomKeys(buildings, rooms) {
+  const out = (buildings || []).map(b => ({
+    ...b,
+    rooms: Array.isArray(b.rooms) ? [...b.rooms] : [],
+  }))
+  const byId = new Map(out.map(b => [b.id, b]))
+  for (const key of Object.keys(rooms || {})) {
+    const i = key.indexOf('_')
+    if (i < 1) continue
+    const buildingId = key.slice(0, i)
+    const room = key.slice(i + 1)
+    if (!room) continue
+    const building = byId.get(buildingId)
+    if (!building) continue
+    if (!building.rooms.includes(room)) building.rooms.push(room)
+  }
+  out.forEach(b => {
+    b.rooms.sort((a, b) => String(a).localeCompare(String(b), 'zh-Hant', { numeric: true }))
+  })
+  return out
+}
+
 // ── 門鎖設定狀態（TTLock 帳密是否已填；不回傳密鑰）+ 建物清單 ──
 router.get('/admin/api/smartlock/config', async (req, res) => {
   const ctx = await authLandlord(req, res); if (!ctx) return
   try {
     const landlord = await prisma.landlord.findUnique({
       where: { id: ctx.landlordId },
-      select: { ttlockConfig: true },
+      select: { ttlockConfig: true, lockRooms: true },
     })
     const creds = parseCreds(landlord)
+    const rooms = parseRoomsJson(landlord && landlord.lockRooms)
+    const buildings = augmentBuildingsWithRoomKeys(await buildingsForLandlord(ctx.landlordId), rooms)
     res.json({
       hasCreds: !!creds,
       username: creds ? creds.username : '',
       landlordId: ctx.landlordId,
-      buildings: await buildingsForLandlord(ctx.landlordId),
+      buildings,
     })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -114,7 +138,9 @@ router.get('/admin/api/smartlock/rooms', async (req, res) => {
       select: { lockRooms: true },
     })
     const leases = await listLandlordLeases(ctx.landlordId)
-    res.json({ buildings: await buildingsForLandlord(ctx.landlordId), rooms: parseRoomsJson(landlord && landlord.lockRooms), leases })
+    const rooms = parseRoomsJson(landlord && landlord.lockRooms)
+    const buildings = augmentBuildingsWithRoomKeys(await buildingsForLandlord(ctx.landlordId), rooms)
+    res.json({ buildings, rooms, leases })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -125,29 +151,33 @@ router.post('/admin/api/smartlock/rooms', express.json(), async (req, res) => {
   const incoming = (req.body && req.body.rooms && typeof req.body.rooms === 'object') ? req.body.rooms : null
   if (!incoming) return res.status(400).json({ error: '缺少 rooms 資料' })
 
-  // 正規化 + 只保留合法的 roomKey（存在於該房東自己的建物清單）
-  const validKeys = new Set()
-  const buildings = await buildingsForLandlord(ctx.landlordId)
-  buildings.forEach(b => b.rooms.forEach(r => validKeys.add(b.id + '_' + r)))
-  const clean = {}
-  for (const key of Object.keys(incoming)) {
-    if (!validKeys.has(key)) continue
-    const v = incoming[key] || {}
-    const type = ['keypad', 'ttlock', 'traditional'].includes(v.type) ? v.type : 'keypad'
-    const entry = { type }
-    if (type === 'ttlock') {
-      entry.ids = Array.isArray(v.ids)
-        ? v.ids.map(Number).filter(n => !isNaN(n) && n > 0)
-        : []
-    }
-    const userId = (v.userId == null ? '' : String(v.userId)).trim()
-    if (userId) entry.userId = userId
-    const leaseId = (v.leaseId == null ? '' : String(v.leaseId)).trim()
-    if (leaseId) entry.leaseId = leaseId
-    clean[key] = entry
-  }
-
   try {
+    const landlord = await prisma.landlord.findUnique({
+      where: { id: ctx.landlordId },
+      select: { lockRooms: true },
+    })
+    const cur = parseRoomsJson(landlord && landlord.lockRooms)
+    // 正規化 + 只保留合法的 roomKey：固定房號，以及已由 TTLock 匯入建立的房號。
+    const validKeys = new Set()
+    const buildings = augmentBuildingsWithRoomKeys(await buildingsForLandlord(ctx.landlordId), cur)
+    buildings.forEach(b => b.rooms.forEach(r => validKeys.add(b.id + '_' + r)))
+    const clean = {}
+    for (const key of Object.keys(incoming)) {
+      if (!validKeys.has(key)) continue
+      const v = incoming[key] || {}
+      const type = ['keypad', 'ttlock', 'traditional'].includes(v.type) ? v.type : 'keypad'
+      const entry = { type }
+      if (type === 'ttlock') {
+        entry.ids = Array.isArray(v.ids)
+          ? v.ids.map(Number).filter(n => !isNaN(n) && n > 0)
+          : []
+      }
+      const userId = (v.userId == null ? '' : String(v.userId)).trim()
+      if (userId) entry.userId = userId
+      const leaseId = (v.leaseId == null ? '' : String(v.leaseId)).trim()
+      if (leaseId) entry.leaseId = leaseId
+      clean[key] = entry
+    }
     await prisma.landlord.update({
       where: { id: ctx.landlordId },
       data: { lockRooms: JSON.stringify(clean) },
@@ -208,7 +238,7 @@ router.post('/admin/api/smartlock/import-ttlock', express.json(), async (req, re
     const liveIds = new Set(liveLocks.map(l => Number(l.lockId)))
     const cur = parseRoomsJson(landlord && landlord.lockRooms)
     const buildings = await buildingsForLandlord(ctx.landlordId)
-    const inferred = inferLockRoomsFromLiveLocks(liveLocks, buildings)
+    const inferred = inferLockRoomsFromLiveLocks(liveLocks, buildings, { allowNewRooms: true })
 
     // 先保留房東現有資料；下方再用 TTLock 雲端最新清單更新硬體設定。
     // userId / leaseId 是房客合約綁定，匯入硬體資料時一律保留。

@@ -173,13 +173,37 @@ function _compactLockText(s) {
 function _buildingAliases(b) {
   const label = String(b && b.label || '')
   const aliases = [b.id, label, _normName(label)]
-  if (/青雲/.test(label) || b.id === 'QY') aliases.push('青雲', '青雲巷', '25-21', '2521')
+  if (/青雲/.test(label) || b.id === 'QY') aliases.push('青雲', '青雲巷', '清雲', '清雲巷', '25-21', '2521')
   const m = label.match(/(.+?)(\d+\s*-\s*\d+|\d+)\s*號?$/)
   if (m) {
     aliases.push((m[1] + m[2]).replace(/\s+/g, ''))
     if (m[2].includes('-') || m[2].replace(/\D/g, '').length >= 4) aliases.push(m[2])
   }
   return [...new Set(aliases.map(_compactLockText).filter(Boolean))]
+}
+
+function _buildingForLockName(lockName, buildings = BUILDINGS) {
+  const compact = _compactLockText(lockName)
+  if (!compact) return null
+  const matches = (buildings || []).filter(b => _buildingAliases(b).some(a => a && compact.includes(a)))
+  return matches.length === 1 ? matches[0] : null
+}
+
+function _newRoomFromLockName(lockName, building) {
+  const compact = _compactLockText(lockName)
+  const aliases = _buildingAliases(building).sort((a, b) => b.length - a.length)
+  for (const alias of aliases) {
+    const i = compact.indexOf(alias)
+    if (i < 0) continue
+    const before = compact.slice(0, i)
+    const after = compact.slice(i + alias.length)
+    const token = (after || before).replace(/^[-\s]+|[-\s]+$/g, '').trim()
+    if (!token) continue
+    if (token.length > 16) continue
+    if (!/[0-9a-z\u4e00-\u9fff]/i.test(token)) continue
+    return token.toUpperCase()
+  }
+  return null
 }
 
 function _roomInLockName(name, room) {
@@ -194,7 +218,7 @@ function _roomInLockName(name, room) {
 
 // TTLock 帳號抓回的 lockAlias/lockName 若包含建物與房號，可自動對應到 roomKey。
 // 只有唯一命中才回傳，避免名字太模糊時配錯鎖。
-function inferRoomKeyFromLockName(lockName, buildings = BUILDINGS) {
+function inferRoomKeyFromLockName(lockName, buildings = BUILDINGS, options = {}) {
   const compact = _compactLockText(lockName)
   if (!compact) return null
   const hits = []
@@ -206,17 +230,22 @@ function inferRoomKeyFromLockName(lockName, buildings = BUILDINGS) {
       if (_roomInLockName(lockName, room)) hits.push(`${b.id}_${room}`)
     }
   }
-  return [...new Set(hits)].length === 1 ? hits[0] : null
+  const uniq = [...new Set(hits)]
+  if (uniq.length === 1) return uniq[0]
+  if (!options.allowNewRooms) return null
+  const b = _buildingForLockName(lockName, buildings)
+  const room = b ? _newRoomFromLockName(lockName, b) : null
+  return room ? `${b.id}_${room}` : null
 }
 
-function inferLockRoomsFromLiveLocks(liveLocks, buildings = BUILDINGS) {
+function inferLockRoomsFromLiveLocks(liveLocks, buildings = BUILDINGS, options = {}) {
   const byKey = {}
   const byId = {}
   const matched = []
   for (const lock of liveLocks || []) {
     const lockId = Number(lock && lock.lockId)
     if (!lockId) continue
-    const key = inferRoomKeyFromLockName(lock.name || '', buildings)
+    const key = inferRoomKeyFromLockName(lock.name || '', buildings, options)
     if (!key) continue
     if (!byKey[key]) byKey[key] = []
     if (!byKey[key].includes(lockId)) byKey[key].push(lockId)
