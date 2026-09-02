@@ -36,7 +36,7 @@ const BUILDINGS = [
   { id: 'HB21', label: '紅寶石 21號', rooms: ['101','102','103','201','202','203','205','301','302','303','305','501','502','503','505','601','602','603','605','801','802'] },
   { id: 'HB28', label: '紅寶石 28號', rooms: ['101','102','103','201','202','203','205','301','302','303','305','501','502','601'] },
   { id: 'ZF22', label: '致富讚 22號', rooms: ['101','102','103','201','202','203','205','301','302','303','305','501','502','503','505','601','602'] },
-  { id: 'QY',   label: '青雲巷 25-21號', rooms: ['101','102','201','202','301','302','401','402'] },
+  { id: 'QY',   label: '青雲巷 25-21號', rooms: ['1A','1B','2A','2B','3A','3B','4A','4B'] },
 ]
 
 // ── 門鎖預設值（移植自 rubyclean DEFAULT_LOCK_DB）──
@@ -104,14 +104,14 @@ const DEFAULT_LOCK_DB = {
   'ZF22_505':{ type:'keypad' },
   'ZF22_601':{ type:'keypad' },
   'ZF22_602':{ type:'keypad' },
-  'QY_101':{ type:'keypad' },
-  'QY_102':{ type:'keypad' },
-  'QY_201':{ type:'keypad' },
-  'QY_202':{ type:'keypad' },
-  'QY_301':{ type:'keypad' },
-  'QY_302':{ type:'keypad' },
-  'QY_401':{ type:'keypad' },
-  'QY_402':{ type:'keypad' },
+  'QY_1A':{ type:'keypad' },
+  'QY_1B':{ type:'keypad' },
+  'QY_2A':{ type:'keypad' },
+  'QY_2B':{ type:'keypad' },
+  'QY_3A':{ type:'keypad' },
+  'QY_3B':{ type:'keypad' },
+  'QY_4A':{ type:'keypad' },
+  'QY_4B':{ type:'keypad' },
 }
 
 // 內建的 BUILDINGS / DEFAULT_LOCK_DB 是「原始小蝸（仲介）房東」自 rubyclean 移植的資料，
@@ -129,6 +129,10 @@ function normalizeRoomLabelForBuilding(buildingId, roomLabel) {
   }
   if (buildingId === 'QY') {
     room = room.replace(/^25\s*[-－–—]\s*21\s*[-－–—]\s*/i, '')
+    const legacyQyRoom = room.match(/^([1-4])0([12])$/)
+    if (legacyQyRoom) return `${legacyQyRoom[1]}${legacyQyRoom[2] === '1' ? 'A' : 'B'}`
+    const qyLetterRoom = room.match(/^([1-4])\s*([ab])$/i)
+    if (qyLetterRoom) return `${qyLetterRoom[1]}${qyLetterRoom[2].toUpperCase()}`
   }
   return room.trim()
 }
@@ -260,7 +264,7 @@ function _newRoomFromLockName(lockName, building) {
 function _roomInLockName(name, room) {
   const text = _normLockText(name)
   const compact = _compactLockText(name)
-  const r = String(room || '').trim()
+  const r = String(room || '').trim().toLowerCase()
   if (!r) return false
   const escaped = r.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   if (new RegExp(`(^|[^0-9])${escaped}([^0-9]|$)`).test(text)) return true
