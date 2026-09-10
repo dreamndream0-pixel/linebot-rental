@@ -2391,6 +2391,78 @@ router.post('/admin/api/managed/lease/:leaseId/rent-payment/dedup', async (req, 
   }
 })
 
+// ── 依新繳費週期重算「未收款」租金期別 ─────────────────────────────
+// 規則：已收款期別（paidAmount>0）永不變動；手動改過的未收期別（note 有自訂
+// 文字、非 Ragic 民國日期、非隱藏標記）保留；其餘未收期別若「起訖/應繳日/金額」
+// 不符合以租約起日＋新週期推算的格線＝落差，才列入可刪除重建清單。
+// 預設 dryRun（apply!==true）：只回傳落差預覽，不動資料；apply=true 才實際刪除，
+// 之後 buildRentSchedule 會依新週期自動重建未收期別（避開已收款/手動保留期別）。
+router.post('/admin/api/managed/lease/:leaseId/rent-payment/regenerate', express.json(), async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    if (!lease.leaseStart) return res.status(400).json({ error: '租約缺少起始日，無法重算' })
+
+    const _isRagicDateNote = (s) => /^\s*\d{2,4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*[~\-]/.test(String(s || ''))
+    const isManual = (p) => {
+      const n = String(p.note || '').trim()
+      return !!n && n !== HIDDEN_RENT_PAYMENT_NOTE && !_isRagicDateNote(n)
+    }
+    const sameDay = (a, b) => a && b && startOfDay(a).getTime() === startOfDay(b).getTime()
+
+    // 依新週期、從租約起日推算應有的期別格線（無 stored＝全部由 generator 產生）
+    const expected = buildRentSchedule(lease, [])
+    const conformsToGrid = (p) => expected.some(e =>
+      sameDay(e.periodStart, p.periodStart) && sameDay(e.periodEnd, p.periodEnd) &&
+      sameDay(e.dueDate, p.dueDate) && e.amount === p.amount)
+
+    const all = await prisma.rentPayment.findMany({ where: { leaseId: lease.id }, orderBy: { periodStart: 'asc' } })
+    const rentRows = all.filter(p => !isParkingRentPayment(p) && !isHiddenRentPayment(p))
+    const paidKept = rentRows.filter(p => isPaidRentPayment(p))
+    const unpaid = rentRows.filter(p => !isPaidRentPayment(p))
+    const manualKept = unpaid.filter(isManual)
+    const nonManualUnpaid = unpaid.filter(p => !isManual(p))
+    const conformKept = nonManualUnpaid.filter(conformsToGrid)
+    const toRemove = nonManualUnpaid.filter(p => !conformsToGrid(p))
+
+    // 模擬移除落差期別後、依新週期重建出的未收期別（供預覽 new）
+    const removeIds = new Set(toRemove.map(p => p.id))
+    const afterRows = all.filter(p => !removeIds.has(p.id))
+    const newSchedule = buildRentSchedule(lease, afterRows)
+      .filter(r => (r.unpaid || 0) > 0 && !r.locked)
+      .map(r => ({ label: r.label, amount: r.amount, dueDate: ymd(r.dueDate) }))
+
+    const fmt = (p) => ({ id: p.id, label: `${ymd(p.periodStart)}~${ymd(p.periodEnd)}`, amount: p.amount, dueDate: ymd(p.dueDate), note: p.note || null })
+    const preview = {
+      cycle: lease.paymentCycle,
+      toRemove: toRemove.map(fmt),
+      manualKept: manualKept.map(fmt),
+      conformKeptCount: conformKept.length,
+      paidKeptCount: paidKept.length,
+      newSchedule,
+    }
+
+    if (!req.body || req.body.apply !== true) {
+      return res.json({ dryRun: true, ...preview })
+    }
+
+    // apply：刪除落差未收期別（可由前端傳 ids 篩選；未傳＝全部 toRemove）。
+    // 安全防線：只刪 toRemove 內、且確實未收款（paidAmount=0）的期別。
+    const wantIds = Array.isArray(req.body.ids) && req.body.ids.length ? new Set(req.body.ids) : removeIds
+    const deleting = toRemove.filter(p => wantIds.has(p.id) && (p.paidAmount || 0) === 0)
+    for (const p of deleting) {
+      if (p.recordId) await prisma.managementRecord.deleteMany({ where: { id: p.recordId } })
+      await prisma.rentPayment.delete({ where: { id: p.id } })
+    }
+    res.json({ ok: true, deleted: deleting.length, newSchedule })
+  } catch (e) {
+    console.error('重算未收租金期別失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 router.delete('/admin/api/managed/lease/:leaseId/utility-reading/:readingId', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })

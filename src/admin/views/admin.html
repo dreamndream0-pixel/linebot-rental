@@ -9165,8 +9165,11 @@ async function openLeaseLedger(leaseId) {
       '</div>' +
       '<button class="btn spin-btn" style="width:100%;padding:10px;font-size:14px;" onclick="btnLoad(this,function(){return addLeaseRecord(\'' + l.managedId + '\',\'' + l.id + '\')})">新增</button>' +
     '</div>' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 10px;"><h4 style="margin:0;font-size:15px;">租金繳納明細</h4>' +
-      '<button class="btn spin-btn" style="padding:5px 12px;font-size:12px;background:#C0524A;color:#fff;" onclick="btnLoad(this,function(){return dedupRentPayments(\'' + l.id + '\')})">清除重複</button></div>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 10px;gap:8px;flex-wrap:wrap;"><h4 style="margin:0;font-size:15px;">租金繳納明細</h4>' +
+      '<div style="display:flex;gap:8px;">' +
+      '<button class="btn spin-btn" style="padding:5px 12px;font-size:12px;background:#5566EE;color:#fff;" onclick="btnLoad(this,function(){return regenerateUnpaidRent(\'' + l.id + '\')})">🔄 依新週期重算未收</button>' +
+      '<button class="btn spin-btn" style="padding:5px 12px;font-size:12px;background:#C0524A;color:#fff;" onclick="btnLoad(this,function(){return dedupRentPayments(\'' + l.id + '\')})">清除重複</button>' +
+      '</div></div>' +
     '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:1030px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="13" style="padding:6px;text-align:center;font-size:13px;">租金明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">期別</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">說明(起訖)</th><th style="padding:5px 6px;text-align:right;font-size:12px;white-space:nowrap;">應繳租金</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">應繳日期</th><th style="padding:5px 6px;text-align:right;font-size:12px;white-space:nowrap;">未繳差額</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">狀態</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">已繳金額</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">繳款日期</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">方式</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">匯款圖</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">儲存</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">提醒</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">刪除</th></tr></thead><tbody id="rentTbody_' + l.id + '">' + renderRentBillingRows(billing.rentSchedule || [], l.id) + '</tbody></table></div>' +
     (((billing.parkingSchedule || []).length || Number((billing.lease && billing.lease.parkingFee) || l.parkingFee || 0) > 0) ? (
       '<h4 style="margin:14px 0 10px;font-size:15px;">汽車位繳納明細</h4>' +
@@ -9280,6 +9283,44 @@ function unlockRow(key, leaseId, tableType) {
     var tbody = document.getElementById('utilTbody_' + leaseId)
     if (tbody) tbody.innerHTML = renderUtilityBillingRows(_LAST_BILLING.utilityReadings || [], leaseId)
   }
+}
+
+async function regenerateUnpaidRent(leaseId) {
+  // 1) dry-run：偵測未收期別與新週期規則的落差，不動任何資料
+  var res = await fetch('/admin/api/managed/lease/' + leaseId + '/rent-payment/regenerate?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apply: false })
+  })
+  var data = {}; try { data = await res.json() } catch (e) {}
+  if (!res.ok) { showToast('❌ 偵測失敗：' + (data.error || res.status)); return }
+  var cyc = (typeof paymentCycleLabel === 'function') ? paymentCycleLabel(data.cycle) : data.cycle
+  var toRemove = data.toRemove || []
+  if (!toRemove.length) { showToast('✅ 未收期別已符合「' + cyc + '」，無落差需重算'); return }
+
+  // 2) 跳通知預覽（呼應「有落差要跳出通知提醒」）
+  var lines = []
+  lines.push('偵測到 ' + toRemove.length + ' 筆未收期別不符合目前繳費週期（' + cyc + '）：')
+  lines.push('')
+  toRemove.slice(0, 12).forEach(function (p) {
+    lines.push('• ' + p.label + '　應繳 $' + Number(p.amount || 0).toLocaleString() + '　應繳日 ' + (p.dueDate || '-'))
+  })
+  if (toRemove.length > 12) lines.push('…等共 ' + toRemove.length + ' 筆')
+  lines.push('')
+  lines.push('將刪除以上未收期別，並依「' + cyc + '」重建為 ' + (data.newSchedule || []).length + ' 筆未收期別。')
+  var keepMsg = '已收款 ' + (data.paidKeptCount || 0) + ' 筆保留不動'
+  if (data.manualKept && data.manualKept.length) keepMsg = '手動改過 ' + data.manualKept.length + ' 筆、' + keepMsg
+  lines.push('（' + keepMsg + '）')
+  lines.push('')
+  lines.push('確定執行重算？')
+  if (!confirm(lines.join('\n'))) return
+
+  // 3) apply：實際刪除落差未收期別，generator 依新週期重建
+  var res2 = await fetch('/admin/api/managed/lease/' + leaseId + '/rent-payment/regenerate?key=' + encodeURIComponent(KEY), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apply: true })
+  })
+  var d2 = {}; try { d2 = await res2.json() } catch (e) {}
+  if (!res2.ok) { showToast('❌ 重算失敗：' + (d2.error || res2.status)); return }
+  showToast('✅ 已重算：刪除 ' + (d2.deleted || 0) + ' 筆舊期別，依新週期重建')
+  openLeaseLedger(leaseId)
 }
 
 async function dedupRentPayments(leaseId) {
