@@ -1610,6 +1610,9 @@ router.get('/admin/api/managed-leases', async (req, res) => {
       let fullyPaid = false     // 合約內所有期別都已繳清（含未到期）才為 true
       let reminded = false      // 目前下期是否已通知房客
       let remindedAt = null
+      let parkingArrearsCount = 0  // 車位租金尚欠期數
+      let parkingArrearsTotal = 0  // 車位租金尚欠總金額
+      let parkingOverdueCount = 0  // 車位租金其中已逾期未繳的期數
       try {
         if (l.leaseEnd) {
           daysToEnd = Math.ceil((new Date(l.leaseEnd) - now) / 86400000)
@@ -1641,6 +1644,12 @@ router.get('/admin/api/managed-leases', async (req, res) => {
             reminded = true
             remindedAt = l.lastRentRemind || null
           }
+          // 車位租金另有獨立排程，尚欠期數/金額分開計算（房租繳清不代表車位繳清）
+          const parkSched = buildParkingSchedule(l, l.rentPayments)
+          const parkUnpaid = parkSched.filter(r => (r.unpaid || 0) > 0)
+          parkingArrearsCount = parkUnpaid.length
+          parkingArrearsTotal = parkUnpaid.reduce((s, r) => s + (r.unpaid || 0), 0)
+          parkingOverdueCount = parkUnpaid.filter(r => r.dueDate && startOfDay(r.dueDate) <= today).length
         }
       } catch (e) {
         console.error('代管清單單筆計算失敗:', l.id, e.message)
@@ -1671,6 +1680,9 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         arrearsTotal,
         overdueCount,
         fullyPaid,
+        parkingArrearsCount,
+        parkingArrearsTotal,
+        parkingOverdueCount,
         reminded,
         remindedAt,
         managedTitle: l.managedProperty ? l.managedProperty.title : '未連結物業',
