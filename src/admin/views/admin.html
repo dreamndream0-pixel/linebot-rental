@@ -8380,9 +8380,12 @@ function renderLeaseList() {
       endInfo += '<br><span style="color:#888;font-size:11px;">已結算 ' + fmt(l.endedAt || l.settledAt) + '</span>'
       if (l.earlyTerminated) endInfo += ' <span style="color:#C0524A;font-size:10px;">·提前終止</span>'
     }
-    // 月租金欄：金額（繳費週期）
+    // 月租金欄：金額（繳費週期）＋（有停車位租金時）車位租金
     var monthlyRentHtml = 'NT$ ' + Number(l.rent || 0).toLocaleString() +
       '<span style="color:#888;font-size:11px;">（' + paymentCycleLabel(l.paymentCycle) + '）</span>'
+    if (Number(l.parkingFee || 0) > 0) {
+      monthlyRentHtml += '<br><span style="color:#5A7D8C;font-size:12px;white-space:nowrap;">🅿️ 車位 NT$ ' + Number(l.parkingFee).toLocaleString() + '<span style="color:#888;font-size:11px;">/月</span></span>'
+    }
     // 下期租金欄：下期應繳金額 / 日期（逾期或N天後） / 尚欠期數金額
     var nextRent = l.nextRentDate ? new Date(l.nextRentDate).toLocaleDateString('zh-TW') : ''
     var nextRentHtml

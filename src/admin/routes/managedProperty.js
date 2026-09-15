@@ -1650,6 +1650,7 @@ router.get('/admin/api/managed-leases', async (req, res) => {
         tenantName: l.tenantName,
         roomLabel: l.roomLabel,
         rent: l.rent,
+        parkingFee: l.parkingFee || 0,
         paymentCycle: l.paymentCycle,
         paymentDueMode: l.paymentDueMode,
         leaseStart: l.leaseStart,
