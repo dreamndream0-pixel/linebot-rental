@@ -6724,7 +6724,7 @@ function renderManagedDetail() {
       '<td style="padding:8px;font-size:13px;">' + new Date(r.recordDate).toLocaleDateString('zh-TW') + '</td>' +
       '<td style="padding:8px;font-size:13px;">' + catLabel + '</td>' +
       '<td style="padding:8px;font-size:13px;color:' + color + ';font-weight:700;">' + sign + ' NT$ ' + Number(r.amount).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:12px;color:#888;">' + esc(r.description || '') + '</td>' +
+      '<td style="padding:8px;font-size:12px;color:#888;">' + esc(cleanLedgerDesc(r.description)) + '</td>' +
       '<td style="padding:8px;font-size:12px;"><span style="border-radius:99px;padding:3px 8px;background:' + (settled ? '#EDE8E0' : '#EAF5EA') + ';color:' + (settled ? '#777' : '#2E7D32') + ';">' + (settled ? '已結算' : '未結算') + '</span></td>' +
       '<td style="padding:8px;"><button onclick="deleteRecord(\'' + r.id + '\')" ' + (settled ? 'disabled title="已結算收支不能直接刪除"' : '') + ' style="border:none;background:none;color:' + (settled ? '#bbb' : '#C0524A') + ';cursor:' + (settled ? 'not-allowed' : 'pointer') + ';">✕</button></td>' +
     '</tr>'
@@ -6736,7 +6736,7 @@ function renderManagedDetail() {
       var sign = r.type === 'INCOME' ? '+' : '−'
       var color = r.type === 'INCOME' ? '#4A8A4A' : '#C0524A'
       var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'汽車位', OTHER:'其他' }[r.category] || r.category
-      return '<tr><td style="padding:6px 8px;font-size:12px;">' + new Date(r.recordDate).toLocaleDateString('zh-TW') + '</td><td style="padding:6px 8px;font-size:12px;">' + catLabel + '</td><td style="padding:6px 8px;font-size:12px;color:' + color + ';font-weight:700;">' + sign + ' NT$ ' + Number(r.amount).toLocaleString() + '</td><td style="padding:6px 8px;font-size:12px;color:#888;">' + esc(r.description || '') + '</td></tr>'
+      return '<tr><td style="padding:6px 8px;font-size:12px;">' + new Date(r.recordDate).toLocaleDateString('zh-TW') + '</td><td style="padding:6px 8px;font-size:12px;">' + catLabel + '</td><td style="padding:6px 8px;font-size:12px;color:' + color + ';font-weight:700;">' + sign + ' NT$ ' + Number(r.amount).toLocaleString() + '</td><td style="padding:6px 8px;font-size:12px;color:#888;">' + esc(cleanLedgerDesc(r.description)) + '</td></tr>'
     }).join('') || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#aaa;">沒有綁定明細</td></tr>'
     var detailId = 'payout_detail_' + p.id
     return '<tr>' +
@@ -6834,7 +6834,7 @@ function renderPayoutPreview(data) {
       '<td style="padding:8px;font-size:12px;">' + new Date(r.recordDate).toLocaleDateString('zh-TW') + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + catLabel + '</td>' +
       '<td style="padding:8px;font-size:12px;color:' + color + ';font-weight:700;">' + sign + ' NT$ ' + Number(r.amount).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:12px;color:#888;">' + esc(r.description || '') + '</td>' +
+      '<td style="padding:8px;font-size:12px;color:#888;">' + esc(cleanLedgerDesc(r.description)) + '</td>' +
     '</tr>'
   }).join('') || '<tr><td colspan="4" style="padding:14px;text-align:center;color:#aaa;">目前沒有未結算收支</td></tr>'
   var confirmBtn = (data.records || []).length
@@ -8388,9 +8388,16 @@ function renderLeaseList() {
     }
     // 下期租金欄：下期應繳金額 / 日期（逾期或N天後） / 尚欠期數金額
     var nextRent = l.nextRentDate ? new Date(l.nextRentDate).toLocaleDateString('zh-TW') : ''
+    // 車位租金尚欠（獨立於房租計算）
+    var parkParts = []
+    if ((l.parkingArrearsCount || 0) > 0) {
+      var pColor = (l.parkingOverdueCount || 0) > 0 ? '#C0524A' : '#B07A2E'
+      parkParts.push('<span style="color:' + pColor + ';font-weight:700;">🅿️ 車位尚欠 ' + l.parkingArrearsCount + ' 期 NT$ ' + Number(l.parkingArrearsTotal || 0).toLocaleString() + '</span>')
+    }
     var nextRentHtml
     if (l.fullyPaid) {
-      nextRentHtml = '<span style="color:#2E7D32;font-weight:700;">已繳清</span>'
+      var paidBase = '<span style="color:#2E7D32;font-weight:700;">' + (parkParts.length ? '房租已繳清' : '已繳清') + '</span>'
+      nextRentHtml = parkParts.length ? (paidBase + '<br>' + parkParts.join('<br>')) : paidBase
     } else {
       var parts = []
       if (l.nextRentDate) {
@@ -8411,6 +8418,7 @@ function renderLeaseList() {
         var remindedWhen = l.remindedAt ? new Date(l.remindedAt).toLocaleDateString('zh-TW') : ''
         parts.push('<span style="display:inline-block;margin-top:1px;color:#2E7D32;background:#E4F1E4;border-radius:99px;padding:1px 8px;font-size:11px;">✅ 已通知' + (remindedWhen ? ' ' + remindedWhen : '') + '</span>')
       }
+      parts = parts.concat(parkParts)
       nextRentHtml = parts.length ? parts.join('<br>') : '<span style="color:#999;">—</span>'
     }
     var propLink = l.propertyId
@@ -8954,6 +8962,14 @@ async function settleNotify(leaseId, onDone) {
 function paymentCycleLabel(v) {
   return { MONTHLY:'月繳', BIMONTHLY:'雙月繳', QUARTERLY:'季繳', SEMIANNUAL:'半年繳', YEARLY:'年繳' }[v] || '月繳'
 }
+
+// 收支明細「說明」精簡化：去掉開頭的技術標記，例如
+//   [ragic-rent:2026-00028] 115/06/15~115/09/14  → 115/06/15~115/09/14
+//   [租金收款 cmu2g5j1d000510wipypvo8if] 租金 2026-09-15~... 黃玫毓 (28-502) → 租金 2026-09-15~... 黃玫毓 (28-502)
+// 只移除含「:」「收款」或長串內部 ID 的方括號標記，一般說明不受影響。
+function cleanLedgerDesc(desc) {
+  return String(desc || '').replace(/^\s*(\[[^\]]*(?::|收款|[A-Za-z0-9]{20,})[^\]]*\]\s*)+/g, '').trim()
+}
 function paymentMethodOptions(v) {
   var opts = [['', '方式'], ['匯款', '匯款'], ['現金', '現金'], ['LINE Pay', 'LINE Pay'], ['其他', '其他']]
   return opts.map(function(o){ return '<option value="' + o[0] + '"' + (v === o[0] ? ' selected' : '') + '>' + o[1] + '</option>' }).join('')
@@ -9145,7 +9161,7 @@ async function openLeaseLedger(leaseId) {
     return '<tr><td style="padding:8px;font-size:12px;">' + leaseDate(r.recordDate) + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + (catLabel[r.category] || r.category) + '</td>' +
       '<td style="padding:8px;font-size:13px;color:' + (r.type === 'INCOME' ? '#2E7D32' : '#C0524A') + ';">' + (r.type === 'INCOME' ? '+' : '−') + ' NT$ ' + Number(r.amount).toLocaleString() + '</td>' +
-      '<td style="padding:8px;font-size:12px;color:#888;">' + esc(r.description || '') + '</td>' +
+      '<td style="padding:8px;font-size:12px;color:#888;">' + esc(cleanLedgerDesc(r.description)) + '</td>' +
       '<td style="padding:8px;text-align:center;"><button onclick="deleteLeaseRecord(\'' + r.id + '\', \'' + l.id + '\')" style="border:none;background:none;color:#C0524A;font-size:18px;cursor:pointer;">×</button></td></tr>'
   }).join('') || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#aaa;">此合約期間尚無收支紀錄</td></tr>'
 
