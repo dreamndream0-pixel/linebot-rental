@@ -9058,14 +9058,37 @@ function renderUtilityBillingRows(rows, leaseId) {
 
 // 該房客「合約期間」的收支明細（從代管清單的「對帳」開啟）
 async function openLeaseLedger(leaseId) {
-  var d = MANAGED.leaseList || {}
-  var all = (d.active || []).concat(d.expiring || [], d.expired || [], d.ended || [])
-  var l = all.filter(function(x){ return x.id === leaseId })[0]
-  if (!l) { showToast('❌ 找不到租約'); return }
-
+  // 先取 billing（一定會回傳完整 lease 本體），再決定租約基本資料的來源。
+  // 這樣即使「代管清單」尚未載入（例如重新整理後直接停在待繳費清單再按對帳），
+  // 也不會誤判「找不到租約」——billing 端點本身就會做房東權限檢查。
   var billRes = await fetch('/admin/api/managed/lease/' + leaseId + '/billing?key=' + encodeURIComponent(KEY))
   if (!billRes.ok) { showToast('❌ 載入失敗'); return }
   var billing = await billRes.json()
+
+  var d = MANAGED.leaseList || {}
+  var all = (d.active || []).concat(d.expiring || [], d.expired || [], d.ended || [])
+  var l = all.filter(function(x){ return x.id === leaseId })[0]
+  if (!l) {
+    // 代管清單沒載入時，改用待繳費清單的顯示欄位 + billing.lease 的財務欄位組出租約物件。
+    var P = MANAGED.pending || {}
+    var pend = (P.rent || []).concat(P.util || [], P.other || []).filter(function(x){ return x.leaseId === leaseId })[0] || {}
+    var bl = billing.lease || {}
+    l = {
+      id: leaseId,
+      tenantName: pend.tenantName || bl.tenantName || '',
+      roomLabel: pend.roomLabel || bl.roomLabel || '',
+      ownerName: pend.ownerName || '',
+      managedTitle: pend.managedTitle || (bl.managedProperty && bl.managedProperty.title) || '',
+      leaseStart: bl.leaseStart || null,
+      leaseEnd: bl.leaseEnd || null,
+      rent: bl.rent || 0,
+      paymentCycle: bl.paymentCycle || 'MONTHLY',
+      meterReadDate: bl.meterReadDate || null,
+      meterRate: bl.meterRate || 0,
+      deposit: bl.deposit || 0,
+      prepaidUtility: bl.prepaidUtility || 0,
+    }
+  }
   UNLOCKED_ROWS = {}
   _LAST_BILLING = billing
   // records 由 billing 端點一併回傳（只含本租約收支），不再另打 /managed/:id
