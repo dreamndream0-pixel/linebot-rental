@@ -2597,6 +2597,7 @@ router.post('/admin/api/managed/lease/:leaseId/receipt', express.json(), async (
       }
       message = utilReceiptFlex(data)
     } else {
+      data.isParking = b.kind === 'PARKING'
       data.periodStartStr = b.periodStart || null
       data.periodEndStr = b.periodEnd || null
       message = rentReceiptFlex(data)
