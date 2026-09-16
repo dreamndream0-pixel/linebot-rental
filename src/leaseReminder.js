@@ -287,15 +287,17 @@ function rentReminderDataForDue(lease, dueRow) {
 
 // 租金收款確認（房東登記收款後推播給房客）
 function rentReceiptFlex(lease) {
+  const isParking = !!lease.isParking
+  const noun = isParking ? '車位租金' : '租金'
   const rows = []
-  if (lease.periodStartStr && lease.periodEndStr) rows.push(remRow('租金期間', fmtYMD(lease.periodStartStr) + ' → ' + fmtYMD(lease.periodEndStr)))
+  if (lease.periodStartStr && lease.periodEndStr) rows.push(remRow(noun + '期間', fmtYMD(lease.periodStartStr) + ' → ' + fmtYMD(lease.periodEndStr)))
   if (lease.paidDateStr) rows.push(remRow('繳款日期', fmtYMD(lease.paidDateStr)))
   if (lease.payMethod) rows.push(remRow('繳費方式', String(lease.payMethod)))
   return reminderBubble({
-    alt: '租金收款確認', title: '租金收款確認',
+    alt: noun + '收款確認', title: noun + '收款確認',
     subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
     ...CARD_COLORS.RECEIPT,
-    tenant: lease.tenantName, intro: '已收到您的租金，感謝您的配合',
+    tenant: lease.tenantName, intro: '已收到您的' + noun + '，感謝您的配合',
     amountLabel: '本次已收金額', amount: Number(lease.paidAmount || 0), dueStr: null,
     detailTitle: '繳費明細', rows: rows,
     footer: '如有疑問請與我們聯繫，謝謝您',

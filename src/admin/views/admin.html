@@ -6718,7 +6718,7 @@ function renderManagedDetail() {
   var incomeRows = (m.incomes || []).map(function(r) {
     var sign = r.type === 'INCOME' ? '+' : '−'
     var color = r.type === 'INCOME' ? '#4A8A4A' : '#C0524A'
-    var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'汽車位', OTHER:'其他' }[r.category] || r.category
+    var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'車位', OTHER:'其他' }[r.category] || r.category
     var settled = !!r.payoutId
     return '<tr>' +
       '<td style="padding:8px;font-size:13px;">' + new Date(r.recordDate).toLocaleDateString('zh-TW') + '</td>' +
@@ -6735,7 +6735,7 @@ function renderManagedDetail() {
     var detailRows = (p.records || []).map(function(r) {
       var sign = r.type === 'INCOME' ? '+' : '−'
       var color = r.type === 'INCOME' ? '#4A8A4A' : '#C0524A'
-      var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'汽車位', OTHER:'其他' }[r.category] || r.category
+      var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'車位', OTHER:'其他' }[r.category] || r.category
       return '<tr><td style="padding:6px 8px;font-size:12px;">' + new Date(r.recordDate).toLocaleDateString('zh-TW') + '</td><td style="padding:6px 8px;font-size:12px;">' + catLabel + '</td><td style="padding:6px 8px;font-size:12px;color:' + color + ';font-weight:700;">' + sign + ' NT$ ' + Number(r.amount).toLocaleString() + '</td><td style="padding:6px 8px;font-size:12px;color:#888;">' + esc(cleanLedgerDesc(r.description)) + '</td></tr>'
     }).join('') || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#aaa;">沒有綁定明細</td></tr>'
     var detailId = 'payout_detail_' + p.id
@@ -6829,7 +6829,7 @@ function renderPayoutPreview(data) {
   var rows = (data.records || []).map(function(r) {
     var sign = r.type === 'INCOME' ? '+' : '−'
     var color = r.type === 'INCOME' ? '#4A8A4A' : '#C0524A'
-    var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'汽車位', OTHER:'其他' }[r.category] || r.category
+    var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'車位', OTHER:'其他' }[r.category] || r.category
     return '<tr>' +
       '<td style="padding:8px;font-size:12px;">' + new Date(r.recordDate).toLocaleDateString('zh-TW') + '</td>' +
       '<td style="padding:8px;font-size:12px;">' + catLabel + '</td>' +
@@ -9146,7 +9146,7 @@ async function openLeaseLedger(leaseId) {
   })
   var income = inPeriod.filter(function(r){ return r.type === 'INCOME' }).reduce(function(s,r){ return s + r.amount }, 0)
   var expense = inPeriod.filter(function(r){ return r.type === 'EXPENSE' }).reduce(function(s,r){ return s + r.amount }, 0)
-  var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'汽車位', OTHER:'其他' }
+  var catLabel = { RENT:'租金', REPAIR:'維修', UTILITY:'水電', PARKING:'車位', OTHER:'其他' }
   var today = new Date().toISOString().slice(0, 10)
   var lastReading = (billing.utilityReadings || [])[0]
   // 首次抄表起算日：有上期抄表→接續上期迄日；否則以「合約抄表日」為準（電錶抄表日常與租約起日不同），
@@ -9458,9 +9458,10 @@ async function uploadPaymentReceipt(input, targetId) {
 
 // 租金收款確認：房客將收到的 LINE 卡片預覽（模擬 rentReceiptFlex 版面）
 function rentReceiptPreviewHtml(d) {
+  var noun = d.isParking ? '車位租金' : '租金'
   var subtitle = esc(d.title || '') + (d.room ? '　·　' + esc(d.room) : '')
   var rows = [
-    ['租金期間', (d.periodStart || '—') + ' ~ ' + (d.periodEnd || '—')],
+    [noun + '期間', (d.periodStart || '—') + ' ~ ' + (d.periodEnd || '—')],
     ['繳款日期', d.paidDate || '—'],
     ['繳費方式', d.payMethod || '—']
   ]
@@ -9471,12 +9472,12 @@ function rentReceiptPreviewHtml(d) {
   }).join('')
   return '<div style="text-align:left;border:1px solid #E5E0D5;border-radius:14px;overflow:hidden;max-width:320px;margin:0 auto 4px;">' +
     '<div style="background:#5E8663;padding:12px 14px;">' +
-      '<div style="color:#fff;font-weight:700;font-size:15px;">租金收款確認</div>' +
+      '<div style="color:#fff;font-weight:700;font-size:15px;">' + noun + '收款確認</div>' +
       '<div style="color:#DCEBDD;font-size:12px;margin-top:2px;">' + subtitle + '</div>' +
     '</div>' +
     '<div style="padding:14px;">' +
       '<div style="font-weight:700;font-size:14px;color:#2B2B2B;">' + esc(d.tenant || '房客') + ' 您好</div>' +
-      '<div style="font-size:12px;color:#8C877D;margin:2px 0 10px;">已收到您的租金，感謝您的配合</div>' +
+      '<div style="font-size:12px;color:#8C877D;margin:2px 0 10px;">已收到您的' + noun + '，感謝您的配合</div>' +
       '<div style="background:#EFF5EF;border-radius:10px;padding:11px 13px;margin-bottom:10px;">' +
         '<div style="font-size:11px;color:#3E6144;">本次已收金額</div>' +
         '<div style="font-size:20px;font-weight:800;color:#3E6144;">NT$ ' + Number(d.paidAmount || 0).toLocaleString() + '</div>' +
@@ -9557,11 +9558,12 @@ async function saveRentPayment(leaseId, key, rentPaymentId, kind) {
   if (!res.ok) { showToast('❌ 儲存失敗：' + (data.error || res.status)); return }
   // 未收款：僅儲存修改，不推播收款確認
   if (!hasPaidAmt) { showToast('✅ 已儲存修改（尚未收款）'); openLeaseLedger(leaseId); return }
-  if (kind === 'PARKING') { showToast('✅ 汽車位繳費已儲存'); openLeaseLedger(leaseId); return }
-  showToast('✅ 租金繳費已儲存')
-  // 詢問是否推播「收款確認」給房客——顯示房客將收到的卡片預覽
+  var _isParking = kind === 'PARKING'
+  showToast(_isParking ? '✅ 汽車位繳費已儲存' : '✅ 租金繳費已儲存')
+  // 詢問是否推播「收款確認」給房客——顯示房客將收到的卡片預覽（租金／車位共用流程）
   var _lease = (_LAST_BILLING && _LAST_BILLING.lease) || {}
   var _preview = rentReceiptPreviewHtml({
+    isParking: _isParking,
     tenant: _lease.tenantName,
     title: (_lease.managedProperty && _lease.managedProperty.title) || '',
     room: _lease.roomLabel || '',
@@ -9579,7 +9581,7 @@ async function saveRentPayment(leaseId, key, rentPaymentId, kind) {
       try {
         var r = await fetch('/admin/api/managed/lease/' + leaseId + '/receipt?key=' + encodeURIComponent(KEY), {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ kind: 'RENT', paidAmount: body.paidAmount, paidDate: body.paidDate, payMethod: body.payMethod, periodStart: body.periodStart, periodEnd: body.periodEnd })
+          body: JSON.stringify({ kind: _isParking ? 'PARKING' : 'RENT', paidAmount: body.paidAmount, paidDate: body.paidDate, payMethod: body.payMethod, periodStart: body.periodStart, periodEnd: body.periodEnd })
         })
         var rd = {}; try { rd = await r.json() } catch(e) {}
         if (!r.ok) showInfoModal('❌ 收款確認發送失敗', (rd.error || ('HTTP ' + r.status)) + '\n\n若顯示 invalid（無效的 to），代表此房客尚未加入該 LINE Bot，或合約內 LINE userID 有誤。')
