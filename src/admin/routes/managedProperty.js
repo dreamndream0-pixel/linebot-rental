@@ -356,9 +356,10 @@ function utilityReceiptMarker(readingId) {
 }
 
 function rentReceiptDescription(payment, lease) {
+  const noun = isParkingRentPayment(payment) ? '車位租金' : '租金'
   return [
     rentReceiptMarker(payment.id),
-    `租金 ${ymd(payment.periodStart)}~${ymd(payment.periodEnd)}`,
+    `${noun} ${ymd(payment.periodStart)}~${ymd(payment.periodEnd)}`,
     lease.tenantName || '',
     lease.roomLabel ? `(${lease.roomLabel})` : '',
     payment.payMethod ? `(${payment.payMethod})` : '',
@@ -392,7 +393,8 @@ async function ensureLeaseLedgerRecords(lease) {
 
   const byId = {}
   incomeRecords.forEach(r => { byId[r.id] = r })
-  const rentRecords = incomeRecords.filter(r => r.category === 'RENT')
+  // 租金與車位收款都來自 rentPayments，兩種 category 都要納入比對，避免重複建立
+  const rentRecords = incomeRecords.filter(r => r.category === 'RENT' || r.category === 'PARKING')
   const utilRecords = incomeRecords.filter(r => r.category === 'UTILITY')
   const dt = v => (v ? new Date(v).getTime() : 0)
   // 內容一致就不重複寫入，省下大量無意義 UPDATE
@@ -416,7 +418,7 @@ async function ensureLeaseLedgerRecords(lease) {
       managedPropertyId: lease.managedPropertyId,
       leaseId: lease.id,
       type: 'INCOME',
-      category: 'RENT',
+      category: isParkingRentPayment(payment) ? 'PARKING' : 'RENT',
       amount: payment.paidAmount,
       recordDate: payment.paidDate,
       description: rentReceiptDescription(payment, lease),
