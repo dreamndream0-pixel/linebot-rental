@@ -249,22 +249,24 @@ const CARD_COLORS = {
 
 // 租金提醒訊息（含租期期間、繳費週期明細）
 function rentReminderFlex(lease) {
+  const isParking = !!lease.isParking
+  const noun = isParking ? '車位租金' : '租金'
   const dueStr = lease.dueDateStr ? fmtYMD(lease.dueDateStr) : (lease.rentPayDay ? ('每月 ' + lease.rentPayDay + ' 號') : null)
   const rows = []
   if (lease.periodStartStr && lease.periodEndStr) {
-    rows.push(remRow('租金期間', fmtYMD(lease.periodStartStr) + ' → ' + fmtYMD(lease.periodEndStr)))
+    rows.push(remRow(noun + '期間', fmtYMD(lease.periodStartStr) + ' → ' + fmtYMD(lease.periodEndStr)))
   }
   if (lease.paymentCycle && CYCLE_LABEL[lease.paymentCycle]) {
     rows.push(remRow('繳費週期', CYCLE_LABEL[lease.paymentCycle]))
   }
   if (lease.payMethod) rows.push(remRow('繳費方式', String(lease.payMethod)))
   return reminderBubble({
-    alt: '租金繳費通知', title: '租金繳費通知',
+    alt: noun + '繳費通知', title: noun + '繳費通知',
     subtitle: lease.managedTitle + (lease.roomLabel ? '  ·  ' + lease.roomLabel : ''),
     ...CARD_COLORS.NOTICE,
-    tenant: lease.tenantName, intro: '提醒您本期租金即將到期',
-    amountLabel: '本期應繳租金', amount: Number(lease.rent || 0), dueStr: dueStr,
-    detailTitle: '租金明細', rows: rows, payInfo: lease.rentPayInfo || null,
+    tenant: lease.tenantName, intro: '提醒您本期' + noun + '即將到期',
+    amountLabel: '本期應繳' + noun, amount: Number(lease.rent || 0), dueStr: dueStr,
+    detailTitle: noun + '明細', rows: rows, payInfo: lease.rentPayInfo || null,
     footer: '請於期限前完成繳費，謝謝您',
   })
 }
