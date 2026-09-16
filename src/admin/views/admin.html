@@ -9008,7 +9008,7 @@ function renderRentBillingRows(rows, leaseId, kind) {
         '<td style="padding:4px 6px;text-align:center;">' +
           '<button class="btn" style="width:auto;padding:6px 12px;font-size:12px;background:#7A6A52;white-space:nowrap;" onclick="unlockRow(\'' + key + '\',\'' + leaseId + '\',\'' + (kind === 'PARKING' ? 'parking' : 'rent') + '\')">🔓 解除鎖定</button>' +
         '</td>' +
-        '<td style="padding:4px 6px;text-align:center;">' + (kind === 'PARKING' ? '<span style="font-size:12px;color:#bbb;">—</span>' : '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'RENT\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate) + '\',\'\',\'' + leaseDateInput(r.periodStart) + '\',\'' + leaseDateInput(r.periodEnd) + '\')})">LINE提醒</button>') + '</td>' +
+        '<td style="padding:4px 6px;text-align:center;">' + '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'' + kind + '\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate) + '\',\'\',\'' + leaseDateInput(r.periodStart) + '\',\'' + leaseDateInput(r.periodEnd) + '\')})">LINE提醒</button>' + '</td>' +
         '<td style="padding:4px 6px;text-align:center;">' +
           (r.id ? '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#C0524A;white-space:nowrap;" onclick="btnLoad(this,function(){return deleteRentPayment(\'' + leaseId + '\',\'' + r.id + '\')})">刪除</button>' : '<span style="font-size:12px;color:#bbb;">—</span>') +
         '</td>' +
@@ -9043,9 +9043,9 @@ function renderRentBillingRows(rows, leaseId, kind) {
       '<td style="padding:6px;text-align:center;white-space:nowrap;">' +
         '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;" onclick="btnLoad(this,function(){return saveRentPayment(\'' + leaseId + '\',\'' + key + '\',\'' + (r.id || '') + '\',\'' + kind + '\')})">💾 儲存</button>' +
       '</td>' +
-      '<td style="padding:6px;text-align:center;">' + (kind === 'PARKING' ? '<span style="font-size:12px;color:#bbb;">—</span>' : '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'RENT\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate) + '\',\'\',\'' + leaseDateInput(r.periodStart) + '\',\'' + leaseDateInput(r.periodEnd) + '\')})">LINE提醒</button>') + '</td>' +
+      '<td style="padding:6px;text-align:center;">' + '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'' + kind + '\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate) + '\',\'\',\'' + leaseDateInput(r.periodStart) + '\',\'' + leaseDateInput(r.periodEnd) + '\')})">LINE提醒</button>' + '</td>' +
       '<td style="padding:6px;text-align:center;">' +
-        (r.id ? '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#C0524A;white-space:nowrap;" onclick="btnLoad(this,function(){return deleteRentPayment(\'' + leaseId + '\',\'' + r.id + '\')})">刪除</button>' : (kind === 'PARKING' ? '<span style="font-size:12px;color:#bbb;">—</span>' : '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#C0524A;white-space:nowrap;" onclick="btnLoad(this,function(){return hideGeneratedRentPeriod(\'' + leaseId + '\',\'' + key + '\')})">刪除</button>')) +
+        (r.id ? '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#C0524A;white-space:nowrap;" onclick="btnLoad(this,function(){return deleteRentPayment(\'' + leaseId + '\',\'' + r.id + '\')})">刪除</button>' : '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#C0524A;white-space:nowrap;" onclick="btnLoad(this,function(){return hideGeneratedRentPeriod(\'' + leaseId + '\',\'' + key + '\',\'' + kind + '\')})">刪除</button>') +
       '</td>' +
     '</tr>'
   }).join('')
@@ -9209,8 +9209,7 @@ async function openLeaseLedger(leaseId) {
     '</div>' +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 10px;gap:8px;flex-wrap:wrap;"><h4 style="margin:0;font-size:15px;">租金繳納明細</h4>' +
       '<div style="display:flex;gap:8px;">' +
-      '<button class="btn spin-btn" style="padding:5px 12px;font-size:12px;background:#5566EE;color:#fff;" onclick="btnLoad(this,function(){return regenerateUnpaidRent(\'' + l.id + '\')})">🔄 依新週期重算未收</button>' +
-      '<button class="btn spin-btn" style="padding:5px 12px;font-size:12px;background:#C0524A;color:#fff;" onclick="btnLoad(this,function(){return dedupRentPayments(\'' + l.id + '\')})">清除重複</button>' +
+      '<button class="btn spin-btn" style="padding:5px 12px;font-size:12px;background:#5566EE;color:#fff;display:inline-flex;align-items:center;" onclick="btnLoad(this,function(){return regenerateUnpaidRent(\'' + l.id + '\')})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px;"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><path d="M21 3v6h-6"></path></svg>依新週期重算未收</button>' +
       '</div></div>' +
     '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:1030px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="13" style="padding:6px;text-align:center;font-size:13px;">租金明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">期別</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">說明(起訖)</th><th style="padding:5px 6px;text-align:right;font-size:12px;white-space:nowrap;">應繳租金</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">應繳日期</th><th style="padding:5px 6px;text-align:right;font-size:12px;white-space:nowrap;">未繳差額</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">狀態</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">已繳金額</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">繳款日期</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">方式</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">匯款圖</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">儲存</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">提醒</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">刪除</th></tr></thead><tbody id="rentTbody_' + l.id + '">' + renderRentBillingRows(billing.rentSchedule || [], l.id) + '</tbody></table></div>' +
     (((billing.parkingSchedule || []).length || Number((billing.lease && billing.lease.parkingFee) || l.parkingFee || 0) > 0) ? (
@@ -9382,15 +9381,18 @@ async function deleteRentPayment(leaseId, paymentId) {
   openLeaseLedger(leaseId)
 }
 
-async function hideGeneratedRentPeriod(leaseId, key) {
-  if (!confirm('這一期是系統自動產生的期別，確定要從租金明細隱藏嗎？')) return
+async function hideGeneratedRentPeriod(leaseId, key, kind) {
+  var isParking = kind === 'PARKING'
+  var noun = isParking ? '車位租金' : '租金'
+  if (!confirm('這一期是系統自動產生的期別，確定要從' + noun + '明細隱藏嗎？')) return
   var startEl = document.getElementById(key + '_start')
   var endEl = document.getElementById(key + '_end')
   var dueEl = document.getElementById(key + '_duedate')
   var body = {
     periodStart: startEl ? startEl.value : '',
     periodEnd: endEl ? endEl.value : '',
-    dueDate: dueEl ? dueEl.value : ''
+    dueDate: dueEl ? dueEl.value : '',
+    parking: isParking
   }
   if (!body.periodStart || !body.periodEnd || !body.dueDate) { showToast('❌ 缺少期別日期，無法刪除'); return }
   var res = await fetch('/admin/api/managed/lease/' + leaseId + '/rent-payment/hide?key=' + encodeURIComponent(KEY), {
@@ -9400,7 +9402,7 @@ async function hideGeneratedRentPeriod(leaseId, key) {
   })
   var data = {}; try { data = await res.json() } catch(e) {}
   if (!res.ok) { showToast('❌ 刪除失敗：' + (data.error || res.status)); return }
-  showToast('✅ 已隱藏此期租金明細')
+  showToast('✅ 已隱藏此期' + noun + '明細')
   openLeaseLedger(leaseId)
 }
 
@@ -9710,7 +9712,7 @@ function showLinePreview(label, msg, onSend, onClose) {
   }
 }
 function sendLeasePaymentReminder(leaseId, kind, amount, dueDate, readingId, periodStart, periodEnd) {
-  var label = kind === 'UTILITY' ? '水電' : '租金'
+  var label = kind === 'UTILITY' ? '水電' : (kind === 'PARKING' ? '車位租金' : '租金')
   var payload = { kind: kind, amount: amount, dueDate: dueDate, readingId: readingId || null, periodStart: periodStart || null, periodEnd: periodEnd || null }
   return (async function() {
     // 先取得卡片預覽（不實際推播）

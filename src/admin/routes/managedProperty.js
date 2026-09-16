@@ -124,7 +124,9 @@ function effectiveRent(lease) {
 }
 
 function isHiddenRentPayment(p) {
-  return p && p.note === HIDDEN_RENT_PAYMENT_NOTE
+  // 前綴比對：租金隱藏標記為 HIDDEN_RENT_PAYMENT_NOTE；車位隱藏標記在其後附「 車位」，
+  // 使其同時被 isParkingRentPayment 判為車位、落到車位排程，仍被視為隱藏列。
+  return !!(p && typeof p.note === 'string' && p.note.startsWith(HIDDEN_RENT_PAYMENT_NOTE))
 }
 
 function isParkingRentPayment(p) {
@@ -216,8 +218,12 @@ function buildRentSchedule(lease, rentPayments, opts = {}) {
     return a
   }
   const dedupedStored = []
+  const hiddenPeriods = []   // 使用者手動刪除（隱藏）的期別：不顯示，但要擋住產生器重建
   stored.forEach(p => {
-    if (isHiddenRentPayment(p)) return
+    if (isHiddenRentPayment(p)) {
+      if (p.periodStart && p.periodEnd) hiddenPeriods.push(p)
+      return
+    }
     if (!isValidRentPeriod(p) && !isPaidRentPayment(p)) return
     const idx = dedupedStored.findIndex(k => rentPeriodsOverlap(k, p))
     if (idx === -1) dedupedStored.push(p)
@@ -251,8 +257,9 @@ function buildRentSchedule(lease, rentPayments, opts = {}) {
   //    （已儲存為準）。舊版只把產生期別接在最後一筆之後，導致開頭若缺一期（例如首期
   //    只記在收支明細、未建立租金期別，或因日期位移被去重）就永遠補不回來；改為全期間
   //    掃描後，開頭／中間／結尾任何缺漏的期別都能補齊。 ──
-  const genOverlapsStored = (s, e) => dedupedStored.some(p =>
-    dateTime(p.periodStart) < e.getTime() && s.getTime() < dateTime(p.periodEnd))
+  const genOverlapsStored = (s, e) =>
+    dedupedStored.some(p => dateTime(p.periodStart) < e.getTime() && s.getTime() < dateTime(p.periodEnd)) ||
+    hiddenPeriods.some(p => dateTime(p.periodStart) < e.getTime() && s.getTime() < dateTime(p.periodEnd))
   let periodStart = new Date(start)
   let guard = 0
   while (!opts.skipGenerated && periodStart <= leaseEnd && guard < 120) {
@@ -2306,14 +2313,17 @@ router.post('/admin/api/managed/lease/:leaseId/rent-payment/hide', express.json(
     const lease = await getOwnedLease(auth, req.params.leaseId)
     if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
     const b = req.body || {}
+    const isParking = b.parking === true || b.kind === 'PARKING'
     const periodStart = b.periodStart ? startOfDay(b.periodStart) : null
     const periodEnd = b.periodEnd ? startOfDay(b.periodEnd) : null
     const dueDate = b.dueDate ? startOfDay(b.dueDate) : null
     if (!periodStart || !periodEnd || !dueDate) return res.status(400).json({ error: '缺少租金期別資料' })
 
-    const existing = await prisma.rentPayment.findFirst({
+    // 只在「同類別」（租金／車位）的期別中找已存在紀錄，避免刪到另一類同期別。
+    const sameStartDue = await prisma.rentPayment.findMany({
       where: { leaseId: lease.id, periodStart, dueDate },
     })
+    const existing = sameStartDue.find(p => isParkingRentPayment(p) === isParking) || null
     if (existing) {
       if (existing.recordId) {
         await prisma.managementRecord.deleteMany({ where: { id: existing.recordId } })
@@ -2334,7 +2344,8 @@ router.post('/admin/api/managed/lease/:leaseId/rent-payment/hide', express.json(
         payMethod: null,
         receiptUrl: null,
         settled: true,
-        note: HIDDEN_RENT_PAYMENT_NOTE,
+        // 車位隱藏標記附「 車位」，讓它被判為車位並落到車位排程（仍視為隱藏列）
+        note: HIDDEN_RENT_PAYMENT_NOTE + (isParking ? ' 車位' : ''),
       },
     })
     res.json({ ok: true, hidden: true, id: hidden.id })
@@ -2368,7 +2379,7 @@ router.post('/admin/api/managed/lease/:leaseId/rent-payment/dedup', async (req, 
 
     const all = await prisma.rentPayment.findMany({ where: { leaseId: lease.id } })
     // 隱藏標記列不納入去重
-    const rows = all.filter(p => p.note !== HIDDEN_RENT_PAYMENT_NOTE)
+    const rows = all.filter(p => !isHiddenRentPayment(p))
       .slice().sort((a, b) => new Date(a.periodStart) - new Date(b.periodStart))
 
     // 分組：相同起始日（同一天）或期間重疊者視為同一期
@@ -2509,7 +2520,7 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
     try {
       data.rentPayInfo = await resolvePayInfo(lease.managedProperty)
     } catch (e) { console.error('讀取收款帳戶失敗:', e.message) }
-    const kind = req.body.kind === 'UTILITY' ? 'UTILITY' : 'RENT'
+    const kind = req.body.kind === 'UTILITY' ? 'UTILITY' : (req.body.kind === 'PARKING' ? 'PARKING' : 'RENT')
     let message
     if (kind === 'UTILITY') {
       // 帶入該筆抄表明細（起算日/度數、結算日/度數、使用度數、金額、應繳日）
@@ -2522,15 +2533,17 @@ router.post('/admin/api/managed/lease/:leaseId/remind', express.json(), async (r
       data.dueDateStr = req.body.dueDate || null
       message = utilReminderFlex(data)
     } else {
-      data.rent = parseInt(req.body.amount) || lease.rent || 0
+      const isParking = kind === 'PARKING'
+      data.isParking = isParking
+      data.rent = parseInt(req.body.amount) || (isParking ? lease.parkingFee : lease.rent) || 0
       data.dueDateStr = req.body.dueDate || null  // 應繳日期以設定日期為準
       data.periodStartStr = req.body.periodStart || null
       data.periodEndStr = req.body.periodEnd || null
-      // 若前端沒帶期間 → 以租金排程回算（對應應繳日，否則取最近未繳期）
+      // 若前端沒帶期間 → 以（租金／車位）排程回算（對應應繳日，否則取最近未繳期）
       if (!data.periodStartStr || !data.periodEndStr) {
         try {
           const rps = await prisma.rentPayment.findMany({ where: { leaseId: lease.id } })
-          const sched = buildRentSchedule(lease, rps)
+          const sched = isParking ? buildParkingSchedule(lease, rps) : buildRentSchedule(lease, rps)
           let row = null
           if (req.body.dueDate) {
             const dt = startOfDay(req.body.dueDate).getTime()
