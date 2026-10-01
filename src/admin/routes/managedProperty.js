@@ -1726,10 +1726,11 @@ router.get('/admin/api/managed-pending', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
   try {
-    // 待繳費清單以「款項是否已繳／已處理」為準，不因合約到期或被標記終止就消失：
-    // 只要合約尚未結算（settledAt 為空），其未繳款項就持續列出，直到繳清或結算後才移除。
+    // 待繳費清單以「款項是否已繳」為準，不因合約到期、被標記終止或已結算就消失：
+    // 只要還有未繳的租金期別或水電費，就持續列出（已結算合約也一樣要顯示欠款）。
     // 排除未生效（PENDING）合約，避免把還沒開始的未來期別列入。
-    const where = { settledAt: null, status: { not: 'PENDING' } }
+    // 已結算合約：只列到實際結束日（endedAt）為止的未繳期別，不再產生搬離後的未來期別。
+    const where = { status: { not: 'PENDING' } }
     if (auth.role !== 'super') where.managedProperty = { landlordId: auth.landlordId }
     const leases = await prisma.lease.findMany({
       where,
@@ -1755,12 +1756,16 @@ router.get('/admin/api/managed-pending', async (req, res) => {
       ownerName: l.managedProperty ? l.managedProperty.ownerName : '（未填房東）',
       // 合約是否已到期／已被標記終止（仍列在待繳，供前端標記提醒）
       inactive: l.status !== 'ACTIVE' || !!(l.leaseEnd && new Date(l.leaseEnd) < now),
+      // 已結算（供前端標示「已結算·仍有欠款」）
+      settled: !!l.settledAt,
     })
 
     const rent = []
     for (const l of leases) {
       let sched = []
-      try { sched = buildRentSchedule(l, rpByLease[l.id] || []) } catch (e) { continue }
+      // 已結算合約：把排程的迄日收斂到實際結束日，避免產生搬離後的未來未繳期別
+      const schedLease = (l.settledAt && l.endedAt) ? { ...l, leaseEnd: l.endedAt } : l
+      try { sched = buildRentSchedule(schedLease, rpByLease[l.id] || []) } catch (e) { continue }
       sched.forEach(r => {
         if ((r.unpaid || 0) > 0 && r.dueDate) {
           rent.push({ ...meta(l), dueDate: r.dueDate, amount: r.unpaid, daysUntil: dayDiff(r.dueDate) })
