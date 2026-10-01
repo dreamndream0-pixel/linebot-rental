@@ -9090,7 +9090,7 @@ function renderUtilityBillingRows(rows, leaseId) {
       '<td style="padding:3px;font-size:12px;white-space:nowrap;"><input id="' + key + '_receipt" type="hidden" value="' + esc(r.receiptUrl || '') + '"><label style="display:inline-block;padding:5px 10px;background:#EFEDE8;border:1px solid #E5E0D5;border-radius:6px;font-size:12px;cursor:pointer;">📎 上傳<input type="file" accept="image/*" onchange="uploadPaymentReceipt(this,\'' + key + '_receipt\')" style="display:none;"></label> ' + receipt + '</td>' +
       '<td style="padding:3px;text-align:center;white-space:nowrap;">' +
         '<button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;" onclick="btnLoad(this,function(){return saveUtilityPayment(\'' + leaseId + '\',\'' + r.id + '\',\'' + key + '\')})">💾 儲存</button>' +
-        ' <button class="btn spin-btn" style="width:auto;padding:5px 8px;font-size:12px;background:#5A7D8C;" title="編輯抄表" onclick="editUtilityReading(\'' + leaseId + '\',' + JSON.stringify(r) + ')">✎</button>' +
+        ' <button class="btn spin-btn" style="width:auto;padding:5px 8px;font-size:12px;background:#5A7D8C;" title="編輯抄表" onclick="editUtilityReading(\'' + leaseId + '\',\'' + r.id + '\')">✎</button>' +
         ' <button class="btn spin-btn" style="width:auto;padding:5px 8px;font-size:12px;background:#C0524A;" onclick="btnLoad(this,function(){return deleteUtilityReading(\'' + leaseId + '\',\'' + r.id + '\')})">×</button>' +
       '</td>' +
       '<td style="padding:8px;text-align:center;"><button class="btn spin-btn" style="width:auto;padding:6px 10px;font-size:12px;background:#06C755;" onclick="btnLoad(this,function(){return sendLeasePaymentReminder(\'' + leaseId + '\',\'UTILITY\',' + Number(r.amount || 0) + ',\'' + leaseDateInput(r.dueDate || r.endDate) + '\',\'' + (r.id || '') + '\')})">LINE提醒</button></td>' +
@@ -9280,7 +9280,11 @@ async function addUtilityReading(leaseId) {
   openLeaseLedger(leaseId)
 }
 
-function editUtilityReading(leaseId, r) {
+function editUtilityReading(leaseId, readingId) {
+  // 由 id 從目前帳務快取取回該筆抄表（原本把整個物件 JSON 塞進 onclick，
+  // JSON 內含雙引號會把 onclick="..." 屬性截斷，導致點鉛筆沒反應）
+  var r = ((_LAST_BILLING && _LAST_BILLING.utilityReadings) || []).filter(function(x){ return String(x.id) === String(readingId) })[0]
+  if (!r) { showToast('❌ 找不到抄表資料'); return }
   var el = document.getElementById('util_edit_id'); if (el) el.value = r.id
   var sd = document.getElementById('util_start_date'); if (sd) sd.value = leaseDateInput(r.startDate)
   var sg = document.getElementById('util_start_degree'); if (sg) sg.value = r.startDegree || 0
