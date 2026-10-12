@@ -1763,9 +1763,10 @@ router.get('/admin/api/managed-pending', async (req, res) => {
     const rent = []
     for (const l of leases) {
       let sched = []
-      // 已結算合約：把排程的迄日收斂到實際結束日，避免產生搬離後的未來未繳期別
-      const schedLease = (l.settledAt && l.endedAt) ? { ...l, leaseEnd: l.endedAt } : l
-      try { sched = buildRentSchedule(schedLease, rpByLease[l.id] || []) } catch (e) { continue }
+      // 已結算合約：只列「實際已登記卻未繳」的期別（skipGenerated），不自動產生推測期別——
+      // 否則合約結清後，排程仍會補出從未開立的期別，讓已結算合約誤顯示為有欠款。
+      const opts = l.settledAt ? { skipGenerated: true } : {}
+      try { sched = buildRentSchedule(l, rpByLease[l.id] || [], opts) } catch (e) { continue }
       sched.forEach(r => {
         if ((r.unpaid || 0) > 0 && r.dueDate) {
           rent.push({ ...meta(l), dueDate: r.dueDate, amount: r.unpaid, daysUntil: dayDiff(r.dueDate) })
