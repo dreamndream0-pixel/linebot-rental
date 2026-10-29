@@ -1819,8 +1819,9 @@ router.post('/admin/api/managed/leases/bulk-prepaid', express.json(), async (req
 })
 
 // ── 暫時性診斷：檢視某租約的原始 rentPayment 與計算後排程（排查「只剩一期」問題）──
-// 用法：登入後台後於瀏覽器開啟 /admin/api/managed/debug-rent?q=房號或房客名
-router.get('/admin/api/managed/debug-rent', async (req, res) => {
+// 用法：登入後台後於瀏覽器開啟 /admin/api/managed-debug-rent?q=房號或房客名
+// （用 managed-debug-rent 連字號路徑，避免被 /admin/api/managed/:id 攔截成「找不到」）
+router.get('/admin/api/managed-debug-rent', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
   try {
