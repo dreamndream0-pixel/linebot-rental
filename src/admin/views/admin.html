@@ -9210,6 +9210,7 @@ async function openLeaseLedger(leaseId) {
     '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 10px;gap:8px;flex-wrap:wrap;"><h4 style="margin:0;font-size:15px;">租金繳納明細</h4>' +
       '<div style="display:flex;gap:8px;">' +
       '<button class="btn spin-btn" style="padding:5px 12px;font-size:12px;background:#5566EE;color:#fff;display:inline-flex;align-items:center;" onclick="btnLoad(this,function(){return regenerateUnpaidRent(\'' + l.id + '\')})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px;"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><path d="M21 3v6h-6"></path></svg>依新週期重算未收</button>' +
+      '<button class="btn spin-btn" style="padding:5px 12px;font-size:12px;background:#5A7D8C;color:#fff;display:inline-flex;align-items:center;" title="把先前被刪除/隱藏的期別恢復顯示" onclick="btnLoad(this,function(){return restoreHiddenPeriods(\'' + l.id + '\')})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px;"><path d="M3 12a9 9 0 1 0 2.64-6.36"></path><path d="M3 3v6h6"></path></svg>恢復被刪期別</button>' +
       '</div></div>' +
     '<div style="overflow-x:auto;border:1px solid #EEE;border-radius:8px;margin-bottom:16px;"><table style="min-width:1030px;width:100%;border-collapse:collapse;"><thead><tr style="background:#0D5CB8;color:#fff;"><th colspan="13" style="padding:6px;text-align:center;font-size:13px;">租金明細表</th></tr><tr style="background:#F5F0EA;"><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">期別</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">說明(起訖)</th><th style="padding:5px 6px;text-align:right;font-size:12px;white-space:nowrap;">應繳租金</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">應繳日期</th><th style="padding:5px 6px;text-align:right;font-size:12px;white-space:nowrap;">未繳差額</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">狀態</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">已繳金額</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">繳款日期</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">方式</th><th style="padding:5px 6px;text-align:left;font-size:12px;white-space:nowrap;">匯款圖</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">儲存</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">提醒</th><th style="padding:5px 6px;text-align:center;font-size:12px;white-space:nowrap;">刪除</th></tr></thead><tbody id="rentTbody_' + l.id + '">' + renderRentBillingRows(billing.rentSchedule || [], l.id) + '</tbody></table></div>' +
     (((billing.parkingSchedule || []).length || Number((billing.lease && billing.lease.parkingFee) || l.parkingFee || 0) > 0) ? (
@@ -9328,6 +9329,15 @@ function unlockRow(key, leaseId, tableType) {
     var tbody = document.getElementById('utilTbody_' + leaseId)
     if (tbody) tbody.innerHTML = renderUtilityBillingRows(_LAST_BILLING.utilityReadings || [], leaseId)
   }
+}
+
+async function restoreHiddenPeriods(leaseId) {
+  if (!confirm('把先前被「刪除/隱藏」的未繳期別恢復顯示？\n系統會刪除這些隱藏標記，讓排程重新推算出這些期別。\n（已繳款與正常期別不受影響）')) return
+  var res = await fetch('/admin/api/managed/lease/' + leaseId + '/restore-hidden?key=' + encodeURIComponent(KEY), { method: 'POST' })
+  var d = {}; try { d = await res.json() } catch (e) {}
+  if (!res.ok) { showToast('❌ 恢復失敗：' + (d.error || res.status)); return }
+  showToast(d.restored ? ('✅ 已恢復 ' + d.restored + ' 筆被刪除的期別') : '✅ 沒有被刪除的期別需要恢復')
+  openLeaseLedger(leaseId)
 }
 
 async function regenerateUnpaidRent(leaseId) {
