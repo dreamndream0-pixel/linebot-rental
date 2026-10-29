@@ -1859,6 +1859,24 @@ router.get('/admin/api/managed-debug-rent', async (req, res) => {
   }
 })
 
+// ── 恢復被刪除/隱藏的租金（車位）期別：刪掉未繳的隱藏標記，讓排程重新推算這些期別 ──
+router.post('/admin/api/managed/lease/:leaseId/restore-hidden', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const lease = await getOwnedLease(auth, req.params.leaseId)
+    if (!lease) return res.status(lease === false ? 403 : 404).json({ error: lease === false ? 'forbidden' : 'not found' })
+    // 只刪未繳（paidAmount=0）的隱藏標記；已繳或正常期別不動
+    const result = await prisma.rentPayment.deleteMany({
+      where: { leaseId: lease.id, paidAmount: 0, note: { startsWith: HIDDEN_RENT_PAYMENT_NOTE } },
+    })
+    res.json({ ok: true, restored: result.count })
+  } catch (e) {
+    console.error('恢復被刪期別失敗:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
