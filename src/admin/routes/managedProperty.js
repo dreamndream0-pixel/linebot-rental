@@ -229,11 +229,11 @@ function buildRentSchedule(lease, rentPayments, opts = {}) {
     if (idx === -1) dedupedStored.push(p)
     else dedupedStored[idx] = _betterRow(dedupedStored[idx], p)
   })
-  // 只有「不與任何已保留期別重疊」的隱藏標記，才視為使用者實際刪除的期別、擋住產生器重建。
-  // 與已保留期別重疊的隱藏標記多半是去重/Ragic 同步殘留的重複列（例如整年一筆覆蓋多期），
-  // 它們不應擋住正常期別的產生——否則整張排程只會剩下已保留那一期。
-  const hiddenPeriods = hiddenRaw.filter(h => !dedupedStored.some(k =>
-    dateTime(k.periodStart) < dateTime(h.periodEnd) && dateTime(h.periodStart) < dateTime(k.periodEnd)))
+  // 隱藏標記（去重殘留 + 使用者手動刪除）全部收集；是否擋住某期產生，改以
+  // 「精準對齊該期網格」判斷（見下方 genOverlapsStored），而非範圍重疊——
+  // 這樣使用者刪除的單一期別（與網格完全吻合）會被擋住重建，而 Ragic 同步／去重
+  // 殘留的大範圍或位移隱藏列（不對齊任何單期網格）不會誤擋正常期別產生。
+  const hiddenPeriods = hiddenRaw
   let storedIndex = 0
   dedupedStored.forEach((p) => {
     const paidAmt = p.paidAmount || 0
@@ -262,9 +262,11 @@ function buildRentSchedule(lease, rentPayments, opts = {}) {
   //    （已儲存為準）。舊版只把產生期別接在最後一筆之後，導致開頭若缺一期（例如首期
   //    只記在收支明細、未建立租金期別，或因日期位移被去重）就永遠補不回來；改為全期間
   //    掃描後，開頭／中間／結尾任何缺漏的期別都能補齊。 ──
+  // 允許 ≤2 天的日期位移（時區／來回換算），但遠小於一期的寬度，故不會誤判大範圍同步列。
+  const genCloseDay = (a, b) => a && b && Math.abs(startOfDay(a).getTime() - startOfDay(b).getTime()) <= 2 * 86400000
   const genOverlapsStored = (s, e) =>
     dedupedStored.some(p => dateTime(p.periodStart) < e.getTime() && s.getTime() < dateTime(p.periodEnd)) ||
-    hiddenPeriods.some(p => dateTime(p.periodStart) < e.getTime() && s.getTime() < dateTime(p.periodEnd))
+    hiddenPeriods.some(h => genCloseDay(h.periodStart, s) && genCloseDay(h.periodEnd, e))
   let periodStart = new Date(start)
   let guard = 0
   while (!opts.skipGenerated && periodStart <= leaseEnd && guard < 120) {
