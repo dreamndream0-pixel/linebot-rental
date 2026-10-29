@@ -1818,6 +1818,44 @@ router.post('/admin/api/managed/leases/bulk-prepaid', express.json(), async (req
   }
 })
 
+// ── 暫時性診斷：檢視某租約的原始 rentPayment 與計算後排程（排查「只剩一期」問題）──
+// 用法：登入後台後於瀏覽器開啟 /admin/api/managed/debug-rent?q=房號或房客名
+router.get('/admin/api/managed/debug-rent', async (req, res) => {
+  const auth = await resolveRole(req.query.key)
+  if (!auth) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const q = String(req.query.q || '').trim()
+    if (!q) return res.status(400).json({ error: '請帶 ?q=房號或房客名' })
+    const where = { OR: [{ roomLabel: { contains: q } }, { tenantName: { contains: q } }] }
+    if (auth.role !== 'super') where.managedProperty = { landlordId: auth.landlordId }
+    const lease = await prisma.lease.findFirst({ where, include: { managedProperty: { select: { title: true } } } })
+    if (!lease) return res.json({ error: '找不到租約', q })
+    const rps = await prisma.rentPayment.findMany({ where: { leaseId: lease.id }, orderBy: { periodStart: 'asc' } })
+    const sched = buildRentSchedule(lease, rps)
+    const ymdOnly = d => (d ? new Date(d).toISOString().slice(0, 10) : null)
+    res.json({
+      lease: {
+        id: lease.id, tenantName: lease.tenantName, roomLabel: lease.roomLabel,
+        title: lease.managedProperty ? lease.managedProperty.title : null,
+        paymentCycle: lease.paymentCycle, rent: lease.rent,
+        leaseStart: ymdOnly(lease.leaseStart), leaseEnd: ymdOnly(lease.leaseEnd),
+        settledAt: ymdOnly(lease.settledAt),
+      },
+      rentPaymentsRaw: rps.map(p => ({
+        id: p.id, periodStart: ymdOnly(p.periodStart), periodEnd: ymdOnly(p.periodEnd),
+        dueDate: ymdOnly(p.dueDate), amount: p.amount, paidAmount: p.paidAmount,
+        note: p.note, settled: p.settled,
+      })),
+      scheduleComputed: sched.map(r => ({
+        index: r.index, periodStart: ymdOnly(r.periodStart), periodEnd: ymdOnly(r.periodEnd),
+        amount: r.amount, unpaid: r.unpaid, stored: !!r.id, locked: r.locked,
+      })),
+    })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 router.get('/admin/api/managed/lease/:leaseId/billing', async (req, res) => {
   const auth = await resolveRole(req.query.key)
   if (!auth) return res.status(401).json({ error: 'unauthorized' })
