@@ -218,10 +218,10 @@ function buildRentSchedule(lease, rentPayments, opts = {}) {
     return a
   }
   const dedupedStored = []
-  const hiddenPeriods = []   // 使用者手動刪除（隱藏）的期別：不顯示，但要擋住產生器重建
+  const hiddenRaw = []       // 所有隱藏標記（去重殘留 + 使用者手動刪除）
   stored.forEach(p => {
     if (isHiddenRentPayment(p)) {
-      if (p.periodStart && p.periodEnd) hiddenPeriods.push(p)
+      if (p.periodStart && p.periodEnd) hiddenRaw.push(p)
       return
     }
     if (!isValidRentPeriod(p) && !isPaidRentPayment(p)) return
@@ -229,6 +229,11 @@ function buildRentSchedule(lease, rentPayments, opts = {}) {
     if (idx === -1) dedupedStored.push(p)
     else dedupedStored[idx] = _betterRow(dedupedStored[idx], p)
   })
+  // 只有「不與任何已保留期別重疊」的隱藏標記，才視為使用者實際刪除的期別、擋住產生器重建。
+  // 與已保留期別重疊的隱藏標記多半是去重/Ragic 同步殘留的重複列（例如整年一筆覆蓋多期），
+  // 它們不應擋住正常期別的產生——否則整張排程只會剩下已保留那一期。
+  const hiddenPeriods = hiddenRaw.filter(h => !dedupedStored.some(k =>
+    dateTime(k.periodStart) < dateTime(h.periodEnd) && dateTime(h.periodStart) < dateTime(k.periodEnd)))
   let storedIndex = 0
   dedupedStored.forEach((p) => {
     const paidAmt = p.paidAmount || 0
