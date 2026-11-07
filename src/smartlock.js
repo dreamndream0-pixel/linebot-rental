@@ -404,7 +404,12 @@ function buildingLabelOf(roomKey) {
 function calcKeypadPassword(room, dateObj) {
   const d = dateObj || new Date()
   const dow = d.getDay() === 0 ? 7 : d.getDay()
-  const roomStr = String(room).replace(/[^0-9]/g, '')
+  // 青雲巷房號在本系統以字母式呈現（1A/1B…4A/4B），但密碼算式必須用原始 3 碼房號
+  // （101/102…401/402），否則去字母後只剩一碼、算出的密碼是錯的。先還原成數字房號。
+  let roomInput = String(room).trim()
+  const qyLetter = roomInput.match(/^([1-4])\s*([AB])$/i)
+  if (qyLetter) roomInput = `${qyLetter[1]}0${qyLetter[2].toUpperCase() === 'A' ? '1' : '2'}`
+  const roomStr = roomInput.replace(/[^0-9]/g, '')
   const r1 = parseInt(roomStr[0]) || 0
   const r3 = parseInt(roomStr[2]) || 0
   const isOdd = dow % 2 === 1
