@@ -1,0 +1,23 @@
+.ptr-pill {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  left: 50%;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(23, 33, 28, .85);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -60px);
+  transition: opacity .15s ease;
+}
+.ptr-pill.ptr-ready .ptr-icon { transform: rotate(180deg); }
+.ptr-icon { display: inline-block; transition: transform .15s ease; }
+.ptr-pill.ptr-anim { transition: opacity .15s ease, transform .2s ease; }
