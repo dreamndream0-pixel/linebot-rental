@@ -3237,3 +3237,8 @@ router.post('/admin/api/ragic/sync-rent', async (req, res) => {
 module.exports = router
 // 供自動繳費提醒排程（leaseReminder.js）重用租金排程計算
 module.exports.buildRentSchedule = buildRentSchedule
+// 供 KAZU 對帳（kazuLedger.js）重用，與後台使用同一套期別／收入帳計算
+module.exports.ledger = {
+  buildRentSchedule, buildParkingSchedule, isParkingRentPayment,
+  utilityReceiptMarker, utilityReceiptDescription,
+}

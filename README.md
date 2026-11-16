@@ -48,6 +48,11 @@ cp .env.example .env
 # 填入你的 LINE Token 和資料庫連線字串
 ```
 
+可選：`KAZU_LEDGER_KEY`（至少 32 字元）— KAZU 對帳專用金鑰，只能呼叫
+`/api/kazu/ledger/pending`、`/payment`、`/reminders`（Authorization: Bearer）。
+未設定、不足 32 字元，或與 `ADMIN_KEY`／房東金鑰相同時，這些端點一律回 404；
+此金鑰不能登入後台或呼叫任何 `/admin/api` 路由。
+
 ### 3. 初始化資料庫
 ```bash
 npx prisma db push

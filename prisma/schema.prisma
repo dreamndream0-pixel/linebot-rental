@@ -313,6 +313,25 @@ model AuditLog {
 }
 
 // ─────────────────────────────────────────────
+// 繳租提醒推播紀錄（success＝LINE 受理推播請求，不代表房客已收到）；不存 LINE userId
+// ─────────────────────────────────────────────
+model ReminderLog {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  source     String   // CRON_MONTHLY（每月 1/5 號）/ LEASE_AUTO（每日代管提醒）/ LEASE_CONFIRM（房東待確認通知）
+  recipient  String   @default("TENANT") // TENANT / LANDLORD
+  leaseId    String?
+  tenantId   String?
+  tenantName String?
+  period     String?  // 月份 YYYY-MM 或期別應繳日 YYYY-MM-DD
+  success    Boolean
+  error      String?  @db.Text
+
+  @@index([createdAt])
+  @@map("reminder_logs")
+}
+
+// ─────────────────────────────────────────────
 // 會員瀏覽記錄（每位會員對每個房源保留最後一次瀏覽時間）
 // ─────────────────────────────────────────────
 model PropertyView {

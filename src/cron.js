@@ -1,6 +1,7 @@
 const cron = require('node-cron')
 const { Client } = require('@line/bot-sdk')
 const prisma = require('./db')
+const { logReminder } = require('./reminderLog')
 
 function startCronJobs(client) {
   // 每月1號早上9點 + 5號早上9點，提醒繳租
@@ -25,6 +26,9 @@ async function sendRentReminders(client) {
       landlord: { select: { lineChannelToken: true, lineChannelSecret: true } }
     }
   })
+
+  // 提醒月份（台北時間 YYYY-MM）
+  const reminderMonth = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 7)
 
   for (const tenant of tenants) {
     if (!tenant.lineUserId || !tenant.property) continue
@@ -67,10 +71,12 @@ async function sendRentReminders(client) {
         : client
       await pushClient.pushMessage(tenant.lineUserId, message)
       console.log(`✅ 已通知租客：${tenant.lineUserId}`)
+      await logReminder({ source: 'CRON_MONTHLY', tenantId: tenant.id, tenantName: tenant.customName || tenant.name, period: reminderMonth, success: true })
     } catch (err) {
       console.error(`❌ 通知失敗：${tenant.lineUserId}`, err.message)
+      await logReminder({ source: 'CRON_MONTHLY', tenantId: tenant.id, tenantName: tenant.customName || tenant.name, period: reminderMonth, success: false, error: err.message })
     }
   }
 }
 
-module.exports = { startCronJobs }
+module.exports = { startCronJobs, sendRentReminders }

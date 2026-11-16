@@ -2,6 +2,7 @@
 const cron = require('node-cron')
 const { Client } = require('@line/bot-sdk')
 const prisma = require('./db')
+const { logReminder } = require('./reminderLog')
 
 // 取得某租約對應的 LINE Client（用該物業所屬房東的 Bot；沒有則用主 Bot）
 async function getClientForLease(lease) {
@@ -608,17 +609,21 @@ async function checkLeaseReminders() {
           if (mode === 'confirm') {
             // 先推播給房東確認，房東按「確認送出」才會發給房客
             const ok = await sendRentApprovalToLandlord(lease, mp.landlord, dueRow)
+            await logReminder({ source: 'LEASE_CONFIRM', recipient: 'LANDLORD', leaseId: lease.id, tenantName: lease.tenantName, period: fmtYMD(dueRow.dueDate).replace(/\//g, '-'), success: !!ok, error: ok ? null : '房東確認推播未送出（未設定通知 LINE 或推播失敗）' })
             if (ok) await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRemindCycleDue: dueRow.dueDate } })
           } else {
             // auto：直接發給房客 + 寫操作紀錄
             const remindData = rentReminderDataForDue(data, dueRow)
+            const logPeriod = fmtYMD(dueRow.dueDate).replace(/\//g, '-')
             try {
               await pushToLeaseTenant(lease, rentReminderFlex(remindData))
+              await logReminder({ source: 'LEASE_AUTO', leaseId: lease.id, tenantName: lease.tenantName, period: logPeriod, success: true })
               await prisma.lease.update({ where: { id: lease.id }, data: { lastRentRemind: new Date(), lastRentRemindDue: dueRow.dueDate, lastRemindCycleDue: dueRow.dueDate } })
               await writeReminderAudit(lease, remindData.rent, '系統自動', 'system', '租金提醒（自動發送）')
               console.log(`✅ 已推租金提醒：${lease.tenantName}（${remindMode === 'FIXED_DAY' ? '每月 ' + (lease.rentPayDay || 5) + ' 號' : '應繳日 ' + fmtYMD(dueRow.dueDate) + ' 前 ' + (lease.rentRemindDaysBefore || REMIND_BEFORE) + ' 天'}）`)
             } catch (e) {
               console.error(`租金提醒推播失敗（${lease.tenantName}）:`, e.message)
+              await logReminder({ source: 'LEASE_AUTO', leaseId: lease.id, tenantName: lease.tenantName, period: logPeriod, success: false, error: e.message })
             }
           }
         }

@@ -21,6 +21,9 @@ const app = express()
 // 真實客戶端 IP（否則登入失敗鎖定機制可被自填 X-Forwarded-For 繞過）。
 app.set('trust proxy', 1)
 
+// ── KAZU 對帳專用 API（獨立金鑰 KAZU_LEDGER_KEY，掛在後台之前） ──
+app.use('/api/kazu/ledger', require('./kazuLedger'))
+
 // ── 管理後台 ───────────────────────────────────────────────────
 app.use(adminRouter)
 
@@ -229,6 +232,27 @@ prisma.$connect()
       console.log('✅ 操作紀錄資料表已確認')
     } catch (e) {
       console.error('⚠️ 操作紀錄資料表確認失敗:', e.message)
+    }
+    try {
+      // 繳租提醒推播紀錄（只新增資料表）
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS reminder_logs (
+          id           TEXT PRIMARY KEY,
+          "createdAt"  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          source       TEXT NOT NULL,
+          recipient    TEXT NOT NULL DEFAULT 'TENANT',
+          "leaseId"    TEXT,
+          "tenantId"   TEXT,
+          "tenantName" TEXT,
+          period       TEXT,
+          success      BOOLEAN NOT NULL,
+          error        TEXT
+        )
+      `)
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "reminder_logs_createdAt_idx" ON reminder_logs ("createdAt")`)
+      console.log('✅ 提醒推播紀錄資料表已確認')
+    } catch (e) {
+      console.error('⚠️ 提醒推播紀錄資料表確認失敗:', e.message)
     }
     try {
       // 會員瀏覽記錄
