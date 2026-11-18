@@ -21,6 +21,9 @@ const app = express()
 // 真實客戶端 IP（否則登入失敗鎖定機制可被自填 X-Forwarded-For 繞過）。
 app.set('trust proxy', 1)
 
+// ── KAZU 對帳 API（Bearer 鑰匙驗證；只在此路徑解析 JSON，不影響 LINE webhook） ──
+app.use('/api/kazu', express.json(), require('./kazuLedger'))
+
 // ── 管理後台 ───────────────────────────────────────────────────
 app.use(adminRouter)
 
