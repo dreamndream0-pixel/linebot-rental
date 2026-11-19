@@ -177,6 +177,29 @@ function buildRentSchedule(lease, rentPayments, opts = {}) {
   return rows
 }
 
+// 車位租金排程（同 admin managedProperty.js 的 buildParkingSchedule，但不改 label/note）
+function buildParkingRows(lease, rentPayments, opts = {}) {
+  const parkingFee = lease.parkingFee || 0
+  const parkingPayments = (rentPayments || []).filter(p => isParkingRentPayment(p))
+  if (!lease.leaseStart || (parkingFee <= 0 && !parkingPayments.length)) return []
+  const parkingLease = { ...lease, rent: parkingFee, discountType: null, discountValue: 0 }
+  return buildRentSchedule(parkingLease, parkingPayments, {
+    onlyParking: true,
+    skipGenerated: parkingFee <= 0 || !!opts.skipGenerated,
+    generatedNote: '汽車位租金',
+  })
+}
+
+// 某合約的租金／車位期別列（kind = 'rent' | 'parking'）；與待繳清單用同一套排程
+function buildLeaseRows(lease, rentPayments) {
+  // 已結算合約不自動產生推測期別（同 buildPendingItems 說明）
+  const opts = lease.settledAt ? { skipGenerated: true } : {}
+  const out = []
+  buildRentSchedule(lease, rentPayments || [], opts).forEach(row => out.push({ kind: 'rent', row }))
+  buildParkingRows(lease, rentPayments || [], opts).forEach(row => out.push({ kind: 'parking', row }))
+  return out
+}
+
 // 待繳費清單計算（原 GET /admin/api/managed-pending）。
 // leases 需帶 managedProperty（title、ownerName）；每筆多帶內部欄位 _ref，供 KAZU 組 itemId，
 // 路由回傳給前端前要先去掉。
@@ -204,14 +227,13 @@ function buildPendingItems(leases, rentPayments, readings, now = new Date()) {
     let sched = []
     // 已結算合約：只列「實際已登記卻未繳」的期別（skipGenerated），不自動產生推測期別——
     // 否則合約結清後，排程仍會補出從未開立的期別，讓已結算合約誤顯示為有欠款。
-    const opts = l.settledAt ? { skipGenerated: true } : {}
-    try { sched = buildRentSchedule(l, rpByLease[l.id] || [], opts) } catch (e) { continue }
-    sched.forEach(r => {
+    try { sched = buildLeaseRows(l, rpByLease[l.id] || []) } catch (e) { continue }
+    sched.forEach(({ kind, row: r }) => {
       if ((r.unpaid || 0) > 0 && r.dueDate) {
         rent.push({
           ...meta(l), dueDate: r.dueDate, amount: r.unpaid, daysUntil: dayDiff(r.dueDate),
           _ref: {
-            kind: isParkingRentPayment(r) ? 'parking' : 'rent',
+            kind,
             leaseId: l.id,
             rentPaymentId: r.id || null,
             periodStart: r.periodStart,
@@ -262,5 +284,7 @@ module.exports = {
   rentPeriodsOverlap,
   rentPeriodDuration,
   buildRentSchedule,
+  buildParkingRows,
+  buildLeaseRows,
   buildPendingItems,
 }

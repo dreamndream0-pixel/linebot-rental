@@ -234,6 +234,24 @@ prisma.$connect()
       console.error('⚠️ 操作紀錄資料表確認失敗:', e.message)
     }
     try {
+      // KAZU 對帳登記收款稽核（POST /api/kazu/ledger/payment 每次寫入一筆）
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS kazu_ledger_audit (
+          id          TEXT PRIMARY KEY,
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          item_id     TEXT,
+          lease_id    TEXT,
+          kind        TEXT,
+          paid_amount INTEGER,
+          paid_date   TEXT,
+          result      TEXT
+        )
+      `)
+      console.log('✅ KAZU 對帳稽核資料表已確認')
+    } catch (e) {
+      console.error('⚠️ KAZU 對帳稽核資料表確認失敗:', e.message)
+    }
+    try {
       // 會員瀏覽記錄
       await prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS property_views (
